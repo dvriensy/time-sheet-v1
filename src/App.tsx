@@ -5,7 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Clock, User, Sun, Moon, Monitor, Smartphone } from 'lucide-react';
+import { Clock, User, Sun, Moon } from 'lucide-react';
 import { getTimesheets, getAppSettings, initializeStorage, getCurrentUser, logoutUser, UserAccount } from './utils/storage';
 import { TimesheetEntry } from './types';
 
@@ -55,15 +55,6 @@ export default function App() {
 
   const handleRefreshAll = () => {
     handleLoadData();
-  };
-
-  const [viewMode, setViewMode] = useState<'computer' | 'iphone' | 'android'>(() => {
-    return (localStorage.getItem('timesheets_tracker_view_mode') as 'computer' | 'iphone' | 'android') || 'computer';
-  });
-
-  const handleSetViewMode = (mode: 'computer' | 'iphone' | 'android') => {
-    setViewMode(mode);
-    localStorage.setItem('timesheets_tracker_view_mode', mode);
   };
 
   const handleTogglePrivacy = () => {
@@ -165,191 +156,14 @@ export default function App() {
     );
   };
 
-  if (viewMode === 'computer') {
-    return (
-      <div className="min-h-screen bg-app-bg text-main-text flex flex-col font-sans selection:bg-blue-600 selection:text-white transition-colors duration-200">
-        
-        {/* Floating Device Simulator Switcher Toolbar */}
-        <div className="bg-zinc-900 border-b border-zinc-800 text-zinc-200 px-4 py-2.5 flex flex-wrap items-center justify-between gap-4 sticky top-0 z-50 shadow-md font-sans">
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-            <span className="text-xs font-semibold uppercase tracking-wider font-mono text-zinc-300">Device Simulator</span>
-          </div>
-
-          <div className="flex items-center bg-zinc-950 p-1 rounded-xl border border-zinc-800">
-            <button
-              onClick={() => handleSetViewMode('computer')}
-              className={`px-3 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition cursor-pointer ${
-                viewMode === 'computer' 
-                  ? 'bg-blue-600 text-white shadow-sm font-semibold' 
-                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
-              }`}
-            >
-              <Monitor className="h-3.5 w-3.5" />
-              <span>Computer View</span>
-            </button>
-            
-            <button
-              onClick={() => handleSetViewMode('iphone')}
-              className={`px-3 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition cursor-pointer ${
-                viewMode === 'iphone' 
-                  ? 'bg-blue-600 text-white shadow-sm font-semibold' 
-                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
-              }`}
-            >
-              <Smartphone className="h-3.5 w-3.5 text-rose-400" />
-              <span>iPhone View</span>
-            </button>
-
-            <button
-              onClick={() => handleSetViewMode('android')}
-              className={`px-3 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition cursor-pointer ${
-                viewMode === 'android' 
-                  ? 'bg-blue-600 text-white shadow-sm font-semibold' 
-                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
-              }`}
-            >
-              <Smartphone className="h-3.5 w-3.5 text-emerald-400" />
-              <span>Android View</span>
-            </button>
-          </div>
-
-          <div className="hidden sm:flex items-center gap-3 text-[11px] font-mono text-zinc-400">
-            <span>Active View: <strong>Computer View (Full Responsive Workspace)</strong></span>
-          </div>
-        </div>
-
-        {/* Decorative radial lighting nodes */}
-        <div className="fixed top-12 left-1/2 -translate-x-1/2 w-full max-w-7xl h-[400px] bg-gradient-to-b from-blue-500/5 to-transparent blur-3xl pointer-events-none" />
-
-        {/* MAIN SYSTEM CONTAINER SHELL */}
-        <div className="relative z-10 flex-grow flex flex-col max-w-7xl w-full mx-auto px-4 py-4 md:px-8 md:py-6">
-          {renderAppContent()}
-        </div>
-      </div>
-    );
-  }
-
-  // Mobile Device simulated renders (iPhone / Android)
   return (
-    <div className="min-h-screen bg-zinc-950 text-main-text flex flex-col font-sans selection:bg-blue-600 selection:text-white overflow-x-hidden">
-      
-      {/* Floating Device Simulator Switcher Toolbar */}
-      <div className="bg-zinc-900 border-b border-zinc-800 text-zinc-200 px-4 py-2.5 flex flex-wrap items-center justify-between gap-4 sticky top-0 z-50 shadow-md font-sans">
-        <div className="flex items-center gap-2">
-          <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
-          <span className="text-xs font-semibold uppercase tracking-wider font-mono text-zinc-300">Device Simulator</span>
-        </div>
+    <div className="min-h-screen bg-app-bg text-main-text flex flex-col font-sans selection:bg-blue-600 selection:text-white transition-colors duration-200">
+      {/* Decorative radial lighting nodes */}
+      <div className="fixed top-12 left-1/2 -translate-x-1/2 w-full max-w-7xl h-[400px] bg-gradient-to-b from-blue-500/5 to-transparent blur-3xl pointer-events-none" />
 
-        <div className="flex items-center bg-zinc-950 p-1 rounded-xl border border-zinc-800">
-          <button
-            onClick={() => handleSetViewMode('computer')}
-            className={`px-3 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition cursor-pointer ${
-              viewMode === 'computer' 
-                ? 'bg-blue-600 text-white shadow-sm font-semibold' 
-                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
-            }`}
-          >
-            <Monitor className="h-3.5 w-3.5" />
-            <span>Computer View</span>
-          </button>
-          
-          <button
-            onClick={() => handleSetViewMode('iphone')}
-            className={`px-3 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition cursor-pointer ${
-              viewMode === 'iphone' 
-                ? 'bg-blue-600 text-white shadow-sm font-semibold' 
-                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
-            }`}
-          >
-            <Smartphone className="h-3.5 w-3.5 text-rose-400" />
-            <span>iPhone View</span>
-          </button>
-
-          <button
-            onClick={() => handleSetViewMode('android')}
-            className={`px-3 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition cursor-pointer ${
-              viewMode === 'android' 
-                ? 'bg-blue-600 text-white shadow-sm font-semibold' 
-                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
-            }`}
-          >
-            <Smartphone className="h-3.5 w-3.5 text-emerald-400" />
-            <span>Android View</span>
-          </button>
-        </div>
-
-        <div className="hidden sm:flex items-center gap-3 text-[11px] font-mono text-zinc-400">
-          <span>Active View: <strong>{viewMode === 'iphone' ? 'iPhone 15 Pro (390 x 844)' : 'Android / Pixel 8 (412 x 915)'}</strong></span>
-        </div>
-      </div>
-
-      {/* Simulator Presentation Layer */}
-      <div className="flex-grow flex items-center justify-center bg-[#09090C] py-8 px-4 overflow-y-auto">
-        <div className="relative flex flex-col items-center">
-          {/* Label indicating model size and responsiveness */}
-          <div className="absolute -top-6 text-[10px] font-mono text-zinc-500 uppercase tracking-widest select-none">
-            {viewMode === 'iphone' ? 'Apple iOS Simulator Frame (Haptic)' : 'Google Android Simulator Frame (Material)'}
-          </div>
-
-          {/* DEVICE MOCKUP FRAME */}
-          {viewMode === 'iphone' ? (
-            <div className="w-[390px] h-[844px] rounded-[55px] border-[12px] border-zinc-800 bg-[#09090B] shadow-2xl relative flex flex-col overflow-hidden outline outline-2 outline-offset-1 outline-zinc-700/40 select-none transition-all duration-300">
-              
-              {/* Dynamic Island / Notch */}
-              <div className="absolute top-3 left-1/2 -translate-x-1/2 w-28 h-6 bg-black rounded-full z-50 flex items-center justify-center">
-                <div className="w-1.5 h-1.5 rounded-full bg-zinc-900 ml-12" />
-              </div>
-
-              {/* iOS Status Bar */}
-              <div className="h-10 bg-app-bg px-6 flex items-center justify-between text-[11px] font-semibold text-main-text/80 select-none z-40 shrink-0">
-                <span className="font-mono">9:41</span>
-                <div className="flex items-center gap-1.5 animate-pulse">
-                  <svg className="w-3.5 h-3 text-main-text/85 fill-current" viewBox="0 0 24 24"><path d="M12 3c-4.97 0-9 4.03-9 9 0 2.12.74 4.07 1.97 5.61L17.61 4.97C16.07 3.74 14.12 3 12 3zm0 18c4.97 0 9-4.03 9-9 0-2.12-.74-4.07-1.97-5.61L6.39 19.03C7.93 20.26 9.88 21 12 21z"/></svg>
-                  <div className="w-5 h-2.5 rounded-sm border border-main-text/30 p-0.5 flex items-center">
-                    <div className="h-full w-3.5 bg-main-text/80 rounded-[1px]" />
-                  </div>
-                </div>
-              </div>
-
-              {/* Frame inner App view container */}
-              <div className="flex-grow overflow-y-auto w-full relative h-full bg-app-bg">
-                {renderAppContent(true)}
-              </div>
-
-              {/* Bottom Home gesture line */}
-              <div className="h-5 bg-app-bg relative flex items-center justify-center z-40 shrink-0">
-                <div className="w-32 h-1 bg-main-text/30 rounded-full" />
-              </div>
-            </div>
-          ) : (
-            <div className="w-[412px] h-[915px] rounded-[40px] border-[10px] border-zinc-800 bg-[#09090B] shadow-2xl relative flex flex-col overflow-hidden outline outline-2 outline-offset-1 outline-zinc-700/40 select-none transition-all duration-300">
-              
-              {/* Android Hole Punch Camera */}
-              <div className="absolute top-3 left-1/2 -translate-x-1/2 w-3.5 h-3.5 bg-black rounded-full z-50" />
-
-              {/* Android Status Bar */}
-              <div className="h-8 bg-app-bg px-6 flex items-center justify-between text-[11px] font-medium text-main-text/80 select-none z-40 shrink-0">
-                <span className="font-mono">10:00</span>
-                <div className="flex items-center gap-1.5 animate-pulse">
-                  <span className="text-[9px] font-mono font-bold tracking-tighter text-blue-500">5G</span>
-                  <svg className="w-3 h-3 text-main-text/85 fill-current" viewBox="0 0 24 24"><path d="M2 22h20V2z"/></svg>
-                  <svg className="w-3 h-3 text-main-text/85 fill-current" viewBox="0 0 24 24"><path d="M17 5H16V3H8V5H7C5.9 5 5 5.9 5 7V21C5 22.1 5.9 23 7 23H17C18.1 23 19 22.1 19 21V7C19 5.9 18.1 5 17 5Z"/></svg>
-                </div>
-              </div>
-
-              {/* Frame inner App view container */}
-              <div className="flex-grow overflow-y-auto w-full relative h-full bg-app-bg">
-                {renderAppContent(true)}
-              </div>
-
-              {/* Bottom Gesture line */}
-              <div className="h-5 bg-app-bg relative flex items-center justify-center z-40 shrink-0">
-                <div className="w-24 h-1 bg-main-text/25 rounded-full" />
-              </div>
-            </div>
-          )}
-        </div>
+      {/* MAIN SYSTEM CONTAINER SHELL */}
+      <div className="relative z-10 flex-grow flex flex-col max-w-7xl w-full mx-auto px-4 py-4 md:px-8 md:py-6">
+        {renderAppContent()}
       </div>
     </div>
   );

@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Play, Coffee, Square, Plus, Trash2, FileOutput, Printer, X, MapPin, Briefcase, Calendar, CheckCircle2, Pencil, ClipboardList } from 'lucide-react';
+import { Play, Coffee, Square, Plus, Trash2, FileOutput, Printer, X, MapPin, Briefcase, Calendar, CheckCircle2, Pencil, ClipboardList, Folder, FolderOpen, ChevronDown, ChevronRight, Archive } from 'lucide-react';
 import { 
   getPayPeriodsGrouped, 
   addTimesheetEntry, 
@@ -48,6 +48,8 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
   const [editingEntry, setEditingEntry] = useState<TimesheetEntry | null>(null);
   const [showPdfPreview, setShowPdfPreview] = useState<PayPeriodGroup | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [expandedPastPeriods, setExpandedPastPeriods] = useState<Record<string, boolean>>({});
 
   // Manual Form State
   const [manualDate, setManualDate] = useState(new Date().toISOString().slice(0, 10));
@@ -233,6 +235,55 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
 
   const payPeriods = useMemo(() => getPayPeriodsGrouped(), [entries]);
 
+  const todayStr = useMemo(() => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const date = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${date}`;
+  }, []);
+
+  const { currentPeriods, pastPeriods } = useMemo(() => {
+    const current: PayPeriodGroup[] = [];
+    const past: PayPeriodGroup[] = [];
+    
+    payPeriods.forEach(period => {
+      if (period.end < todayStr) {
+        past.push(period);
+      } else {
+        current.push(period);
+      }
+    });
+    
+    return { currentPeriods: current, pastPeriods: past };
+  }, [payPeriods, todayStr]);
+
+  const activePeriodDates = useMemo(() => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = d.getMonth();
+    const day = d.getDate();
+    
+    let startStr = '';
+    let endStr = '';
+    if (day <= 15) {
+      startStr = new Date(year, month, 1).toLocaleDateString(undefined, {month: 'short', day: 'numeric'});
+      endStr = new Date(year, month, 15).toLocaleDateString(undefined, {month: 'short', day: 'numeric', year: 'numeric'});
+    } else {
+      startStr = new Date(year, month, 16).toLocaleDateString(undefined, {month: 'short', day: 'numeric'});
+      const lastDay = new Date(year, month + 1, 0).getDate();
+      endStr = new Date(year, month, lastDay).toLocaleDateString(undefined, {month: 'short', day: 'numeric', year: 'numeric'});
+    }
+    return `${startStr} – ${endStr}`;
+  }, []);
+
+  const togglePastPeriod = (periodStr: string) => {
+    setExpandedPastPeriods(prev => ({
+      ...prev,
+      [periodStr]: !prev[periodStr]
+    }));
+  };
+
   const totalCalculated = useMemo(() => {
     if (!showPdfPreview) return { hours: 0 };
     const h = showPdfPreview.entries.reduce((sum, e) => sum + e.totalHours, 0);
@@ -416,7 +467,18 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
         
         <div className="flex items-center justify-between">
           <h2 className="text-base font-medium text-main-text">Timesheet Cycles</h2>
-          <span className="text-xs text-muted-text font-mono">LOCAL PERSISTENCE ONLY</span>
+          <div className="flex items-center gap-2">
+            {pastPeriods.length > 0 && (
+              <button
+                onClick={() => setIsSidebarOpen(true)}
+                className="flex items-center gap-1.5 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 border border-blue-500/20 px-3 py-1.5 text-xs font-semibold transition cursor-pointer animate-pulse-subtle"
+              >
+                <ClipboardList className="h-3.5 w-3.5" />
+                <span>Past Archive ({pastPeriods.length})</span>
+              </button>
+            )}
+            <span className="text-xs text-muted-text font-mono">LOCAL PERSISTENCE ONLY</span>
+          </div>
         </div>
 
         {payPeriods.length === 0 ? (
@@ -424,10 +486,66 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
             <Calendar className="mx-auto h-10 w-10 text-muted-text/60 mb-3" />
             <p className="text-sm font-medium text-muted-text">No shifts logged yet.</p>
             <p className="mt-1 text-xs text-muted-text/80">Clock in above or record shifts manually to initiate your ledger.</p>
+            <p className="mt-2 text-xs text-muted-text/60">
+              Active Cycle: <span className="text-main-text font-semibold">{activePeriodDates}</span>
+            </p>
+          </div>
+        ) : currentPeriods.length === 0 ? (
+          <div className="space-y-4">
+            <div className="rounded-3xl border border-dashed border-main-border bg-card-bg/20 p-12 text-center">
+              <Calendar className="mx-auto h-10 w-10 text-muted-text/60 mb-3" />
+              <p className="text-sm font-medium text-muted-text">No shifts logged in the current active period.</p>
+              <p className="mt-1 text-xs text-muted-text/80">
+                Active Period: <span className="text-main-text font-semibold">{activePeriodDates}</span>
+              </p>
+              <p className="mt-2 text-xs text-muted-text/60">
+                Clock in or record shifts manually to start logging time for this cycle.
+              </p>
+            </div>
+            
+            {pastPeriods.length > 0 && (
+              <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="bg-blue-500/20 p-2 rounded-xl text-blue-500">
+                    <ClipboardList className="h-5 w-5" />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-sm font-semibold text-main-text">Past Timesheets Archive Available</p>
+                    <p className="text-xs text-muted-text">You have {pastPeriods.length} completed timesheet cycle{pastPeriods.length > 1 ? 's' : ''} stored safely in your logs.</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsSidebarOpen(true)}
+                  className="w-full sm:w-auto flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 text-xs font-semibold shadow-md shadow-blue-900/20 transition cursor-pointer shrink-0"
+                >
+                  <span>Open Archive Sidebar</span>
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <div className={isMobileView ? 'space-y-4' : 'space-y-6'}>
-            {payPeriods.map((period) => {
+            {pastPeriods.length > 0 && (
+              <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 mb-2">
+                <div className="flex items-center gap-3">
+                  <div className="bg-blue-500/20 p-2 rounded-xl text-blue-500">
+                    <ClipboardList className="h-5 w-5" />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-sm font-semibold text-main-text">Past Timesheets Archive</p>
+                    <p className="text-xs text-muted-text">You have {pastPeriods.length} completed timesheet cycle{pastPeriods.length > 1 ? 's' : ''} archived in your logs.</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsSidebarOpen(true)}
+                  className="w-full sm:w-auto flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 text-xs font-semibold shadow-md shadow-blue-900/20 transition cursor-pointer shrink-0"
+                >
+                  <span>Open Archive Sidebar</span>
+                </button>
+              </div>
+            )}
+
+            {currentPeriods.map((period) => {
               const periodHours = period.entries.reduce((acc, e) => acc + e.totalHours, 0);
 
               return (
@@ -437,8 +555,23 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                   <div className={`flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between bg-app-bg/50 ${isMobileView ? 'px-4 py-3' : 'px-6 py-4'} border-b border-main-border`}>
                     <div>
                       <h3 className="text-xs font-semibold text-blue-500 font-mono uppercase tracking-wider">Pay Period Ledger</h3>
-                      <p className="text-sm font-medium text-main-text mt-0.5">
-                        {new Date(period.start).toLocaleDateString(undefined, {month:'short', day:'numeric'})} – {new Date(period.end).toLocaleDateString(undefined, {month:'short', day:'numeric', year:'numeric'})}
+                      <p className="text-sm font-medium text-main-text mt-0.5 flex flex-wrap items-center gap-2">
+                        <span>
+                          {new Date(period.start + 'T00:00:00').toLocaleDateString(undefined, {month:'short', day:'numeric'})} – {new Date(period.end + 'T00:00:00').toLocaleDateString(undefined, {month:'short', day:'numeric', year:'numeric'})}
+                        </span>
+                        {(() => {
+                          const endDateObj = new Date(period.end + 'T00:00:00');
+                          const tempDate = new Date(endDateObj.getFullYear(), endDateObj.getMonth() + 1, 0);
+                          const lastDayOfMonth = tempDate.getDate();
+                          if (endDateObj.getDate() === lastDayOfMonth) {
+                            return (
+                              <span className="inline-flex items-center gap-1 rounded bg-blue-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-blue-500 uppercase tracking-wider border border-blue-500/20">
+                                Tracked to Last Day of Month
+                              </span>
+                            );
+                          }
+                          return null;
+                        })()}
                       </p>
                     </div>
 
@@ -480,9 +613,11 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                           </div>
 
                           {/* Task Description / Explanation */}
-                          <p className="text-xs text-muted-text leading-relaxed">
-                            {entry.notes}
-                          </p>
+                          {entry.notes && (
+                            <p className="text-xs text-muted-text leading-relaxed">
+                              {entry.notes}
+                            </p>
+                          )}
 
                           {/* Time bounds */}
                           <p className="text-[11px] font-mono text-muted-text">
@@ -783,6 +918,217 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
 
             </div>
           </div>
+        )}
+      </AnimatePresence>
+
+      {/* SIDEBAR: PAST TIMESHEETS ARCHIVE */}
+      <AnimatePresence>
+        {isSidebarOpen && (
+          <>
+            {/* Backdrop Overlay */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsSidebarOpen(false)}
+              className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm"
+            />
+
+            {/* Sidebar Drawer Container */}
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="fixed inset-y-0 right-0 z-50 w-full sm:w-[500px] md:w-[580px] bg-card-bg shadow-2xl border-l border-main-border flex flex-col h-full overflow-hidden transition-colors duration-200"
+            >
+              {/* Sidebar Header */}
+              <div className="p-5 md:p-6 border-b border-main-border flex items-center justify-between bg-app-bg/40">
+                <div className="flex items-center gap-2.5">
+                  <div className="bg-blue-500/10 p-2.5 rounded-xl text-blue-500 border border-blue-500/20">
+                    <Archive className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-main-text">Past Timesheets</h3>
+                    <p className="text-xs text-muted-text mt-0.5">Closed pay periods and archived shift ledgers</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsSidebarOpen(false)}
+                  className="rounded-xl p-2 text-muted-text hover:bg-app-bg hover:text-main-text border border-main-border/40 hover:border-main-border transition cursor-pointer"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Sidebar Content (Scrollable) */}
+              <div className="flex-grow overflow-y-auto p-5 md:p-6 space-y-4">
+                {pastPeriods.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-center p-8">
+                    <div className="bg-muted-text/5 p-4 rounded-full mb-4">
+                      <Folder className="h-10 w-10 text-muted-text/40" />
+                    </div>
+                    <h4 className="text-sm font-semibold text-main-text">No Closed Pay Periods</h4>
+                    <p className="text-xs text-muted-text max-w-xs mt-1.5 leading-relaxed">
+                      When a pay period concludes (its end date is in the past), it will be automatically compiled and archived here.
+                    </p>
+                  </div>
+                ) : (
+                  pastPeriods.map((period) => {
+                    const isExpanded = !!expandedPastPeriods[period.periodStr];
+                    const periodHours = period.entries.reduce((acc, e) => acc + e.totalHours, 0);
+                    
+                    return (
+                      <div
+                        key={period.periodStr}
+                        className="rounded-2xl border border-main-border bg-app-bg/30 overflow-hidden shadow-sm hover:border-blue-500/30 transition-colors duration-200"
+                      >
+                        {/* Period "File" Row (Header) */}
+                        <button
+                          onClick={() => togglePastPeriod(period.periodStr)}
+                          className="w-full text-left p-4 flex items-center justify-between gap-4 hover:bg-app-bg/50 transition cursor-pointer animate-fade-in"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="p-2.5 rounded-xl bg-blue-500/10 text-blue-500 border border-blue-500/20 shrink-0">
+                              {isExpanded ? (
+                                <FolderOpen className="h-5 w-5" />
+                              ) : (
+                                <Folder className="h-5 w-5" />
+                              )}
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-semibold uppercase tracking-wider text-blue-500 font-mono">
+                                  Archive File
+                                </span>
+                                <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-semibold text-emerald-500 uppercase tracking-wider border border-emerald-500/20">
+                                  Closed
+                                </span>
+                              </div>
+                              <p className="text-sm font-semibold text-main-text mt-1">
+                                {new Date(period.start + 'T00:00:00').toLocaleDateString(undefined, {month:'short', day:'numeric'})} – {new Date(period.end + 'T00:00:00').toLocaleDateString(undefined, {month:'short', day:'numeric', year:'numeric'})}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-3">
+                            <div className="text-right font-mono">
+                              <p className="text-sm font-bold text-main-text">{periodHours.toFixed(2)}</p>
+                              <p className="text-[10px] text-muted-text">Total Hours</p>
+                            </div>
+                            <div className="text-muted-text/60 p-1">
+                              {isExpanded ? (
+                                <ChevronDown className="h-4 w-4" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4" />
+                              )}
+                            </div>
+                          </div>
+                        </button>
+
+                        {/* Expanded Shift Log inside the specific pay period */}
+                        <AnimatePresence>
+                          {isExpanded && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.25 }}
+                              className="border-t border-main-border/60 bg-card-bg/40 overflow-hidden"
+                            >
+                              <div className="p-4 space-y-4">
+                                {/* Actions Area for this period */}
+                                <div className="flex items-center justify-between bg-app-bg/40 p-2.5 rounded-xl border border-main-border/50">
+                                  <span className="text-[10px] font-semibold text-muted-text uppercase font-mono tracking-wider">
+                                    {period.entries.length} shift{period.entries.length > 1 ? 's' : ''} logged
+                                  </span>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setShowPdfPreview(period);
+                                    }}
+                                    className="flex items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 text-xs font-semibold transition cursor-pointer shadow-sm"
+                                  >
+                                    <FileOutput className="h-3.5 w-3.5" />
+                                    <span>Export Report</span>
+                                  </button>
+                                </div>
+
+                                {/* Shift List */}
+                                <div className="divide-y divide-main-border/40 space-y-3">
+                                  {period.entries.map((entry) => (
+                                    <div key={entry.id} className="pt-3 first:pt-0 flex flex-col justify-between gap-2.5">
+                                      <div className="space-y-1.5">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          <span className="text-xs font-semibold text-main-text">
+                                            {new Date(entry.date + 'T00:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'})}
+                                          </span>
+                                          <span className="inline-flex items-center gap-0.5 rounded-md bg-app-bg px-1.5 py-0.5 text-[9px] font-medium text-main-text border border-main-border">
+                                            Task: {entry.project}
+                                          </span>
+                                          <span className="inline-flex items-center gap-0.5 rounded-md bg-app-bg px-1.5 py-0.5 text-[9px] font-medium text-main-text border border-main-border">
+                                            Where: {entry.locationName}
+                                          </span>
+                                        </div>
+
+                                        {entry.notes && (
+                                          <p className="text-xs text-muted-text leading-relaxed bg-app-bg/25 p-2 rounded-lg border border-main-border/30">
+                                            {entry.notes}
+                                          </p>
+                                        )}
+
+                                        <p className="text-[10px] font-mono text-muted-text">
+                                          Shift: {entry.startTime} – {entry.endTime} ({entry.breakMinutes}m break)
+                                        </p>
+                                      </div>
+
+                                      <div className="flex items-center justify-between border-t border-main-border/30 pt-2 mt-1">
+                                        <span className="text-xs font-semibold font-mono text-blue-400">
+                                          {entry.totalHours.toFixed(2)} hours
+                                        </span>
+
+                                        <div className="flex items-center gap-1.5">
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleEditClick(entry);
+                                            }}
+                                            className="p-1.5 rounded-lg text-muted-text hover:text-blue-500 hover:bg-app-bg transition cursor-pointer"
+                                            title="Edit entry"
+                                          >
+                                            <Pencil className="h-3.5 w-3.5" />
+                                          </button>
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setDeletingId(entry.id);
+                                            }}
+                                            className="p-1.5 rounded-lg text-muted-text hover:text-rose-500 hover:bg-app-bg transition cursor-pointer"
+                                            title="Delete entry"
+                                          >
+                                            <Trash2 className="h-3.5 w-3.5" />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Sidebar Footer */}
+              <div className="p-5 border-t border-main-border bg-app-bg/30 text-center text-[10px] text-muted-text/80 uppercase font-mono tracking-wider select-none shrink-0">
+                Archived Ledger Sandbox Environment
+              </div>
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
 
