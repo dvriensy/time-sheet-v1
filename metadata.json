@@ -1,0 +1,6 @@
+{
+  "name": "Time Sheets",
+  "description": "A secure, offline-ready work timesheet tracker designed for twice-a-month pay periods (1-15 & 16-31). Includes easy Start Day/End Day tracking with explanation of location, manual log adjustments, user account verification, and supervisor-ready PDF export reports.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

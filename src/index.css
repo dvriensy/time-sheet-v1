@@ -1,0 +1,42 @@
+@import "tailwindcss";
+
+:root {
+  --bg-app: #f8fafc;
+  --bg-card: #ffffff;
+  --bg-input: #f1f5f9;
+  --bg-timer: #eff6ff;
+  --border-main: #e2e8f0;
+  --text-main: #0f172a;
+  --text-muted: #64748b;
+  --text-muted-darker: #334155;
+  --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+}
+
+.dark {
+  --bg-app: #09090b;
+  --bg-card: #18181b;
+  --bg-input: #09090b;
+  --bg-timer: #172554;
+  --border-main: #27272a;
+  --text-main: #f4f4f5;
+  --text-muted: #a1a1aa;
+  --text-muted-darker: #d4d4d8;
+  --card-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -4px rgba(0, 0, 0, 0.3);
+}
+
+@theme {
+  --color-app-bg: var(--bg-app);
+  --color-card-bg: var(--bg-card);
+  --color-input-bg: var(--bg-input);
+  --color-timer-bg: var(--bg-timer);
+  --color-main-border: var(--border-main);
+  --color-main-text: var(--text-main);
+  --color-muted-text: var(--text-muted);
+  --color-muted-darker: var(--text-muted-darker);
+}
+
+body {
+  background-color: var(--bg-app);
+  color: var(--text-main);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
