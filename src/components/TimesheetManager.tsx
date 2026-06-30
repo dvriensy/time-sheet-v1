@@ -16,7 +16,8 @@ import {
   PayPeriodGroup,
   getCurrentUser,
   updateActiveSession,
-  clearActiveSession
+  clearActiveSession,
+  getActiveSessions
 } from '../utils/storage';
 import { TimesheetEntry } from '../types';
 
@@ -32,17 +33,63 @@ interface TimesheetManagerProps {
 export default function TimesheetManager({ entries, onRefreshEntries, privacyMode, geofenceStatus, simulatedGeoTrigger, isMobileView = false }: TimesheetManagerProps) {
   const settings = useMemo(() => getAppSettings(), []);
 
+  // Synchronous initialization of state from localStorage for seamless background tracking
+  const { 
+    initialIsClockedIn, 
+    initialIsOnBreak, 
+    initialTimerStart, 
+    initialProject, 
+    initialLocation, 
+    initialNotes, 
+    initialSecondsElapsed, 
+    initialBreakSecondsElapsed 
+  } = useMemo(() => {
+    const user = getCurrentUser();
+    if (user) {
+      const allSessions = getActiveSessions();
+      const session = allSessions[user.username];
+      if (session && session.isClockedIn) {
+        const lastActive = new Date(session.lastActiveTimestamp).getTime();
+        const now = Date.now();
+        const elapsedBg = Math.max(0, Math.floor((now - lastActive) / 1000));
+        const storedWork = session.secondsElapsed || 0;
+        const storedBreak = session.breakSecondsElapsed || 0;
+
+        return {
+          initialIsClockedIn: true,
+          initialIsOnBreak: session.isOnBreak,
+          initialTimerStart: session.startTime,
+          initialProject: session.project || '',
+          initialLocation: session.location || '',
+          initialNotes: session.notes || '',
+          initialSecondsElapsed: session.isOnBreak ? storedWork : storedWork + elapsedBg,
+          initialBreakSecondsElapsed: session.isOnBreak ? storedBreak + elapsedBg : storedBreak,
+        };
+      }
+    }
+    return {
+      initialIsClockedIn: false,
+      initialIsOnBreak: false,
+      initialTimerStart: '',
+      initialProject: '',
+      initialLocation: '',
+      initialNotes: '',
+      initialSecondsElapsed: 0,
+      initialBreakSecondsElapsed: 0,
+    };
+  }, []);
+
   // Timer States
-  const [isClockedIn, setIsClockedIn] = useState(false);
-  const [isOnBreak, setIsOnBreak] = useState(false);
-  const [secondsElapsed, setSecondsElapsed] = useState(0);
-  const [breakSecondsElapsed, setBreakSecondsElapsed] = useState(0);
-  const [timerStart, setTimerStart] = useState<string>('');
+  const [isClockedIn, setIsClockedIn] = useState(initialIsClockedIn);
+  const [isOnBreak, setIsOnBreak] = useState(initialIsOnBreak);
+  const [secondsElapsed, setSecondsElapsed] = useState(initialSecondsElapsed);
+  const [breakSecondsElapsed, setBreakSecondsElapsed] = useState(initialBreakSecondsElapsed);
+  const [timerStart, setTimerStart] = useState<string>(initialTimerStart);
   
   // New entry details (configured before clock-in or finalized on clock-out)
-  const [activeProject, setActiveProject] = useState('');
-  const [activeLocation, setActiveLocation] = useState('');
-  const [activeNotes, setActiveNotes] = useState('');
+  const [activeProject, setActiveProject] = useState(initialProject);
+  const [activeLocation, setActiveLocation] = useState(initialLocation);
+  const [activeNotes, setActiveNotes] = useState(initialNotes);
   const [switchNotification, setSwitchNotification] = useState<string | null>(null);
 
   // UI state
@@ -63,7 +110,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
   const [manualLocation, setManualLocation] = useState('');
   const [manualNotes, setManualNotes] = useState('');
 
-  // Active Timer Intervals
+  // Active Timer Intervals & LocalStorage Sync
   useEffect(() => {
     const user = getCurrentUser();
     if (!user) return;
@@ -76,11 +123,13 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
         project: activeProject || 'General Task',
         location: activeLocation || 'Office',
         notes: activeNotes || 'Working...',
+        secondsElapsed,
+        breakSecondsElapsed,
       });
     } else {
       clearActiveSession();
     }
-  }, [isClockedIn, isOnBreak, timerStart, activeProject, activeLocation, activeNotes]);
+  }, [isClockedIn, isOnBreak, timerStart, activeProject, activeLocation, activeNotes, secondsElapsed, breakSecondsElapsed]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;

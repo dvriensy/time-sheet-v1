@@ -52,6 +52,11 @@ export default function ManagerView({ currentUser, isMobileView = false }: Manag
   // Dynamic poll for live sessions
   const [liveSessions, setLiveSessions] = useState<Record<string, ActiveSession>>({});
   
+  // Real-time user accounts and system notifications
+  const [allUsers, setAllUsers] = useState<UserAccount[]>([]);
+  const [notifications, setNotifications] = useState<{ id: string; message: string; timestamp: string }[]>([]);
+  const knownUsernamesRef = React.useRef<Set<string>>(new Set());
+
   const refreshLiveSessions = () => {
     setLiveSessions(getActiveSessions());
   };
@@ -60,13 +65,44 @@ export default function ManagerView({ currentUser, isMobileView = false }: Manag
     setTimeOffList(getTimeOffRequests());
   };
 
+  const refreshUsersList = () => {
+    const currentUsers = getAllUsers();
+    
+    // Check for newly registered user accounts
+    if (knownUsernamesRef.current.size > 0) {
+      currentUsers.forEach(user => {
+        if (!knownUsernamesRef.current.has(user.username)) {
+          // Add system notification for the manager
+          const newNotif = {
+            id: 'notif_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9),
+            message: `${user.fullName} (@${user.username}) registered a new account. Added to database!`,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          };
+          setNotifications(prev => [newNotif, ...prev]);
+          knownUsernamesRef.current.add(user.username);
+        }
+      });
+    } else {
+      // First load: populate seen set
+      currentUsers.forEach(user => {
+        knownUsernamesRef.current.add(user.username);
+      });
+    }
+    
+    setAllUsers(currentUsers);
+  };
+
   useEffect(() => {
+    refreshUsersList();
     refreshLiveSessions();
     refreshTimeOffRequests();
+    
     const interval = setInterval(() => {
+      refreshUsersList();
       refreshLiveSessions();
       refreshTimeOffRequests();
-    }, 5000); // refresh live status and timeoff every 5 seconds
+    }, 5000); // refresh live status, timeoff requests, and new users every 5 seconds
+    
     return () => clearInterval(interval);
   }, [refreshTrigger]);
 
@@ -87,6 +123,10 @@ export default function ManagerView({ currentUser, isMobileView = false }: Manag
     if (success) {
       setSuccessMessage(`Successfully deleted account "${fullName}" and cleared all logs.`);
       setConfirmDeleteUsername(null);
+      
+      // Keep seen set synchronized
+      knownUsernamesRef.current.delete(username);
+      
       setRefreshTrigger(prev => prev + 1);
       setTimeout(() => setSuccessMessage(null), 4000);
     } else {
@@ -97,7 +137,6 @@ export default function ManagerView({ currentUser, isMobileView = false }: Manag
   };
 
   // Retrieve raw data
-  const allUsers = useMemo(() => getAllUsers(), [successMessage, refreshTrigger]);
   const allEntries = useMemo(() => getTimesheetsAllRaw(), [successMessage, refreshTrigger]);
 
   const toggleUserExpanded = (username: string) => {
@@ -285,6 +324,42 @@ export default function ManagerView({ currentUser, isMobileView = false }: Manag
   return (
     <div className="w-full space-y-6 max-w-6xl mx-auto animate-fade-in" id="manager-dashboard-view">
       
+      {/* Real-time New Account Live Alerts */}
+      <div className="fixed bottom-6 right-6 z-50 space-y-3 max-w-sm pointer-events-none">
+        <AnimatePresence>
+          {notifications.map(notif => (
+            <motion.div
+              key={notif.id}
+              initial={{ opacity: 0, x: 50, y: 20, scale: 0.9 }}
+              animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
+              exit={{ opacity: 0, x: 50, scale: 0.9 }}
+              className="bg-slate-900/95 backdrop-blur-md border border-emerald-500/30 rounded-2xl p-4 shadow-2xl flex items-start gap-3 pointer-events-auto text-left"
+            >
+              <div className="h-8 w-8 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-400 shrink-0">
+                <Bell className="h-4 w-4 animate-bounce" />
+              </div>
+              <div className="flex-1 space-y-1">
+                <span className="text-[9px] font-mono font-black text-emerald-400 uppercase tracking-widest">
+                  Staff Ledger Sync
+                </span>
+                <p className="text-xs font-semibold text-slate-100 leading-snug">
+                  {notif.message}
+                </p>
+                <span className="text-[8px] font-mono text-slate-400 block">
+                  Received at {notif.timestamp}
+                </span>
+              </div>
+              <button 
+                onClick={() => setNotifications(prev => prev.filter(n => n.id !== notif.id))}
+                className="text-slate-400 hover:text-slate-100 p-1 rounded-lg hover:bg-slate-800 transition cursor-pointer shrink-0 animate-fade-in"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </div>
+
       {/* Simulation Banner Notification */}
       <AnimatePresence>
         {successMessage && (

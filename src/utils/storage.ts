@@ -530,6 +530,8 @@ export interface ActiveSession {
   location: string;
   notes: string;
   lastActiveTimestamp: string;
+  secondsElapsed?: number;
+  breakSecondsElapsed?: number;
 }
 
 export function getActiveSessions(): Record<string, ActiveSession> {
