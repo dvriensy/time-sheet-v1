@@ -5,13 +5,24 @@
 
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Clock, User, Sun, Moon } from 'lucide-react';
-import { getTimesheets, getAppSettings, initializeStorage, getCurrentUser, logoutUser, UserAccount } from './utils/storage';
+import { Clock, User, Sun, Moon, Users, CalendarDays, Bell } from 'lucide-react';
+import { 
+  getTimesheets, 
+  getAppSettings, 
+  initializeStorage, 
+  getCurrentUser, 
+  logoutUser, 
+  UserAccount,
+  getTimeOffRequests
+} from './utils/storage';
 import { TimesheetEntry } from './types';
 
 // Import our modular sub-components
 import UserAuthGate from './components/UserAuthGate';
 import TimesheetManager from './components/TimesheetManager';
+import AccountView from './components/AccountView';
+import ManagerView from './components/ManagerView';
+import TimeOffSidebar from './components/TimeOffSidebar';
 
 export default function App() {
   // Initialize standard LocalStorage templates on mount
@@ -20,10 +31,36 @@ export default function App() {
   }, []);
 
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(getCurrentUser());
+  const isManager = !!(currentUser && (currentUser.username === 'derek_vriens' || currentUser.fullName.toLowerCase() === 'derek vriens'));
+  const [activeTab, setActiveTab] = useState<'timesheets' | 'account' | 'manager'>('timesheets');
   const [privacyMode, setPrivacyMode] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     return (localStorage.getItem('timesheets_tracker_theme') as 'light' | 'dark') || 'dark';
   });
+
+  const [isTimeOffOpen, setIsTimeOffOpen] = useState(false);
+  const [timeOffBadge, setTimeOffBadge] = useState(0);
+
+  const updateTimeOffBadgeCount = () => {
+    if (!currentUser) {
+      setTimeOffBadge(0);
+      return;
+    }
+    const allReqs = getTimeOffRequests();
+    if (isManager) {
+      const pendingCount = allReqs.filter(r => r.status === 'pending').length;
+      setTimeOffBadge(pendingCount);
+    } else {
+      const unacknowledgedCount = allReqs.filter(r => r.username === currentUser.username && !r.acknowledgedByRequester && r.status !== 'pending').length;
+      setTimeOffBadge(unacknowledgedCount);
+    }
+  };
+
+  useEffect(() => {
+    updateTimeOffBadgeCount();
+    const interval = setInterval(updateTimeOffBadgeCount, 5000);
+    return () => clearInterval(interval);
+  }, [currentUser]);
 
   // Track and apply theme changes to root document
   useEffect(() => {
@@ -93,6 +130,62 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap">
+            {/* Navigation Tabs */}
+            <div className="flex items-center bg-app-bg/50 p-1 rounded-xl border border-main-border/80 mr-1 shrink-0">
+              <button
+                onClick={() => setActiveTab('timesheets')}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  activeTab === 'timesheets' 
+                    ? 'bg-blue-600 text-white shadow-sm' 
+                    : 'text-muted-text hover:text-main-text'
+                }`}
+              >
+                <Clock className="h-3.5 w-3.5" />
+                {!isMobileView && <span>Ledger</span>}
+              </button>
+              {isManager && (
+                <button
+                  onClick={() => setActiveTab('manager')}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    activeTab === 'manager' 
+                      ? 'bg-blue-600 text-white shadow-sm' 
+                      : 'text-muted-text hover:text-main-text'
+                  }`}
+                >
+                  <Users className="h-3.5 w-3.5" />
+                  {!isMobileView && <span>Manager</span>}
+                </button>
+              )}
+              <button
+                onClick={() => setActiveTab('account')}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  activeTab === 'account' 
+                    ? 'bg-blue-600 text-white shadow-sm' 
+                    : 'text-muted-text hover:text-main-text'
+                }`}
+              >
+                <User className="h-3.5 w-3.5" />
+                {!isMobileView && <span>Account</span>}
+              </button>
+            </div>
+            
+            {/* Request Time Off Button */}
+            <button
+              onClick={() => setIsTimeOffOpen(true)}
+              className={`flex items-center gap-1.5 cursor-pointer relative border border-blue-500/10 bg-blue-500/5 hover:bg-blue-600 hover:text-white hover:border-blue-600 text-blue-500 shadow-sm transition-all duration-200 ${
+                isMobileView ? 'px-2.5 py-1.5 text-[10px] rounded-lg' : 'px-3 py-2 text-xs rounded-xl'
+              }`}
+              title="Request Absence or Time Off"
+            >
+              <CalendarDays className="h-3.5 w-3.5" />
+              <span>Time Off</span>
+              {timeOffBadge > 0 && (
+                <span className="absolute -top-1 -right-1 flex h-4.5 w-4.5 items-center justify-center rounded-full bg-red-500 text-[9px] font-black text-white border border-card-bg shadow animate-bounce">
+                  {timeOffBadge}
+                </span>
+              )}
+            </button>
+
             {/* Theme Toggle Button */}
             <button
               onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
@@ -122,13 +215,22 @@ export default function App() {
                   <p className="text-[10px] text-muted-text font-mono truncate max-w-[120px]">@{currentUser.username}</p>
                 </div>
               )}
-              <div className={`${isMobileView ? 'w-8 h-8' : 'w-10 h-10'} rounded-full bg-app-bg border border-main-border flex items-center justify-center text-muted-text shrink-0`} title={`${currentUser.fullName} (@${currentUser.username})`}>
-                <User className={`${isMobileView ? 'h-4 w-4' : 'h-5 w-5'}`} />
-              </div>
+              <button
+                onClick={() => setActiveTab('account')}
+                className={`${isMobileView ? 'w-8 h-8' : 'w-10 h-10'} rounded-full bg-app-bg border ${activeTab === 'account' ? 'border-blue-500 ring-2 ring-blue-500/20' : 'border-main-border hover:border-blue-500/50'} flex items-center justify-center text-muted-text shrink-0 overflow-hidden cursor-pointer transition-all duration-200 focus:outline-none`} 
+                title={`${currentUser.fullName} (@${currentUser.username})`}
+              >
+                {currentUser.avatarUrl ? (
+                  <img src={currentUser.avatarUrl} alt={currentUser.fullName} referrerPolicy="no-referrer" className="w-full h-full object-cover select-none animate-fade-in" />
+                ) : (
+                  <User className={`${isMobileView ? 'h-4 w-4' : 'h-5 w-5'}`} />
+                )}
+              </button>
               <button
                 onClick={() => {
                   logoutUser();
                   setCurrentUser(null);
+                  setActiveTab('timesheets');
                 }}
                 className={`text-xs font-medium cursor-pointer transition shrink-0 ${isMobileView ? 'bg-transparent text-rose-400 hover:text-rose-300 p-1' : 'bg-[#271c1f] hover:bg-[#3d2429] border border-rose-500/20 px-3 py-1.5 rounded-xl ml-2 text-rose-400 hover:text-rose-300'}`}
               >
@@ -140,13 +242,70 @@ export default function App() {
 
         {/* ACTIVE TAB RENDER BLOCK */}
         <main className="flex-grow">
-          <TimesheetManager 
-            entries={timesheets} 
-            onRefreshEntries={handleRefreshAll}
-            privacyMode={privacyMode}
-            isMobileView={isMobileView}
-          />
+          <AnimatePresence mode="wait">
+            {activeTab === 'timesheets' ? (
+              <motion.div
+                key="timesheets-tab"
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+                transition={{ duration: 0.15 }}
+              >
+                <TimesheetManager 
+                  entries={timesheets} 
+                  onRefreshEntries={handleRefreshAll}
+                  privacyMode={privacyMode}
+                  isMobileView={isMobileView}
+                />
+              </motion.div>
+            ) : activeTab === 'manager' && isManager ? (
+              <motion.div
+                key="manager-tab"
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+                transition={{ duration: 0.15 }}
+              >
+                <ManagerView 
+                  currentUser={currentUser}
+                  isMobileView={isMobileView}
+                />
+              </motion.div>
+            ) : (
+              <motion.div
+                key="account-tab"
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+                transition={{ duration: 0.15 }}
+              >
+                <AccountView
+                  currentUser={currentUser}
+                  onUpdateUser={(updatedUser) => {
+                    setCurrentUser(updatedUser);
+                    handleRefreshAll();
+                  }}
+                  onLogout={() => {
+                    logoutUser();
+                    setCurrentUser(null);
+                    setActiveTab('timesheets');
+                  }}
+                  isMobileView={isMobileView}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
         </main>
+
+        {/* Modular Right Sidebar Drawer for Time Off Requests */}
+        <TimeOffSidebar 
+          currentUser={currentUser}
+          isOpen={isTimeOffOpen}
+          onClose={() => setIsTimeOffOpen(false)}
+          onNewRequestSubmitted={() => {
+            updateTimeOffBadgeCount();
+          }}
+        />
 
         {/* Footer info line */}
         <footer className="mt-12 border-t border-main-border pt-6 text-center text-[10px] text-muted-text font-mono tracking-wide uppercase select-none pb-4">

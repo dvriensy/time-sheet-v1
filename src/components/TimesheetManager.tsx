@@ -14,7 +14,9 @@ import {
   getAppSettings,
   calculateHoursAndEarnings,
   PayPeriodGroup,
-  getCurrentUser
+  getCurrentUser,
+  updateActiveSession,
+  clearActiveSession
 } from '../utils/storage';
 import { TimesheetEntry } from '../types';
 
@@ -38,8 +40,8 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
   const [timerStart, setTimerStart] = useState<string>('');
   
   // New entry details (configured before clock-in or finalized on clock-out)
-  const [activeProject, setActiveProject] = useState('General Task');
-  const [activeLocation, setActiveLocation] = useState('Office');
+  const [activeProject, setActiveProject] = useState('');
+  const [activeLocation, setActiveLocation] = useState('');
   const [activeNotes, setActiveNotes] = useState('');
   const [switchNotification, setSwitchNotification] = useState<string | null>(null);
 
@@ -50,17 +52,36 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [expandedPastPeriods, setExpandedPastPeriods] = useState<Record<string, boolean>>({});
+  const [expandedDays, setExpandedDays] = useState<Record<string, boolean>>({});
 
   // Manual Form State
   const [manualDate, setManualDate] = useState(new Date().toISOString().slice(0, 10));
   const [manualStart, setManualStart] = useState('09:00');
   const [manualEnd, setManualEnd] = useState('17:00');
   const [manualBreak, setManualBreak] = useState(30);
-  const [manualProject, setManualProject] = useState('General Task');
-  const [manualLocation, setManualLocation] = useState('Office');
+  const [manualProject, setManualProject] = useState('');
+  const [manualLocation, setManualLocation] = useState('');
   const [manualNotes, setManualNotes] = useState('');
 
   // Active Timer Intervals
+  useEffect(() => {
+    const user = getCurrentUser();
+    if (!user) return;
+    
+    if (isClockedIn) {
+      updateActiveSession({
+        isClockedIn: true,
+        isOnBreak,
+        startTime: timerStart,
+        project: activeProject || 'General Task',
+        location: activeLocation || 'Office',
+        notes: activeNotes || 'Working...',
+      });
+    } else {
+      clearActiveSession();
+    }
+  }, [isClockedIn, isOnBreak, timerStart, activeProject, activeLocation, activeNotes]);
+
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (isClockedIn && !isOnBreak) {
@@ -281,6 +302,13 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     setExpandedPastPeriods(prev => ({
       ...prev,
       [periodStr]: !prev[periodStr]
+    }));
+  };
+
+  const toggleDayExpanded = (dateStr: string) => {
+    setExpandedDays(prev => ({
+      ...prev,
+      [dateStr]: !prev[dateStr]
     }));
   };
 
@@ -593,85 +621,185 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
 
                   {/* Shifts logged in this cycle */}
                   <div className="divide-y divide-main-border/60">
-                    {period.entries.map((entry) => (
-                      <div key={entry.id} className={`${isMobileView ? 'p-4 gap-3' : 'p-5 gap-4'} flex flex-col sm:flex-row sm:items-start justify-between group`}>
-                        <div className="space-y-2 max-w-xl">
-                          
-                          {/* Date and Tasks Tags */}
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-xs font-semibold text-main-text">
-                              {new Date(entry.date + 'T00:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'})}
-                            </span>
-                            <span className="inline-flex items-center gap-1 rounded-md bg-app-bg px-2 py-0.5 text-[10px] font-medium text-main-text border border-main-border">
-                              <Briefcase className="h-3 w-3 text-blue-500" />
-                              Task: {entry.project}
-                            </span>
-                            <span className="inline-flex items-center gap-1 rounded-md bg-app-bg px-2 py-0.5 text-[10px] font-medium text-main-text border border-main-border">
-                              <MapPin className="h-3 w-3 text-blue-500" />
-                              Where: {entry.locationName}
-                            </span>
-                          </div>
-
-                          {/* Task Description / Explanation */}
-                          {entry.notes && (
-                            <p className="text-xs text-muted-text leading-relaxed">
-                              {entry.notes}
-                            </p>
-                          )}
-
-                          {/* Time bounds */}
-                          <p className="text-[11px] font-mono text-muted-text">
-                            Shift: <strong className="text-muted-text/80">{entry.startTime} – {entry.endTime}</strong> (Break: {entry.breakMinutes} mins)
-                          </p>
-                        </div>
-
-                        {/* Totals & Actions */}
-                        <div className={`flex ${isMobileView ? 'flex-row items-center justify-between border-t border-main-border/35 pt-2.5 mt-1' : 'sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-2'}`}>
-                          <div className="text-right">
-                            <p className="text-sm font-semibold font-mono text-main-text">{entry.totalHours} hrs</p>
-                          </div>
-
-                          {deletingId === entry.id ? (
-                            <div className="flex items-center gap-1.5 mt-1 bg-rose-500/10 px-2.5 py-1.5 rounded-xl border border-rose-500/20 animate-pulse shrink-0">
-                              <span className="text-[10px] font-mono text-rose-500 font-bold uppercase tracking-wider">Delete?</span>
-                              <button
-                                onClick={() => {
-                                  handleDelete(entry.id);
-                                  setDeletingId(null);
-                                }}
-                                className="px-1.5 py-0.5 text-[10px] font-bold bg-rose-600 hover:bg-rose-500 text-white rounded-md transition cursor-pointer"
-                              >
-                                Yes
-                              </button>
-                              <button
-                                onClick={() => setDeletingId(null)}
-                                className="px-1.5 py-0.5 text-[10px] font-bold bg-app-bg hover:bg-input-bg text-muted-text border border-main-border rounded-md transition cursor-pointer"
-                              >
-                                No
-                              </button>
+                    {(() => {
+                      // Group entries by date
+                      const groups: Record<string, TimesheetEntry[]> = {};
+                      period.entries.forEach(entry => {
+                        if (!groups[entry.date]) {
+                          groups[entry.date] = [];
+                        }
+                        groups[entry.date].push(entry);
+                      });
+                      
+                      // Sort dates descending
+                      const sortedDates = Object.keys(groups).sort((a, b) => b.localeCompare(a));
+                      
+                      return sortedDates.map(dateStr => {
+                        const dayEntries = groups[dateStr];
+                        const dayTotalHours = dayEntries.reduce((sum, e) => sum + e.totalHours, 0);
+                        const hasMultipleTasks = dayEntries.length > 1;
+                        const isExpanded = !!expandedDays[dateStr];
+                        const singleEntry = dayEntries[0];
+                        
+                        return (
+                          <div key={dateStr} className="flex flex-col">
+                            {/* Day Header / Main Row */}
+                            <div 
+                              onClick={() => {
+                                if (hasMultipleTasks) {
+                                  toggleDayExpanded(dateStr);
+                                }
+                              }}
+                              className={`flex items-center justify-between ${isMobileView ? 'p-4' : 'p-5'} ${hasMultipleTasks ? 'cursor-pointer hover:bg-app-bg/30' : ''} transition-colors duration-150`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <span className="text-xs font-semibold text-main-text">
+                                  {new Date(dateStr + 'T00:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'})}
+                                </span>
+                                {hasMultipleTasks && (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-2.5 py-0.5 text-[9px] font-semibold text-blue-500 uppercase tracking-wider border border-blue-500/20">
+                                    {dayEntries.length} Tasks
+                                  </span>
+                                )}
+                              </div>
+                              
+                              <div className="flex items-center gap-3">
+                                <span className="text-sm font-semibold font-mono text-main-text">
+                                  {dayTotalHours.toFixed(2)} hrs
+                                </span>
+                                
+                                {hasMultipleTasks ? (
+                                  <div className="text-muted-text/60">
+                                    {isExpanded ? (
+                                      <ChevronDown className="h-4 w-4" />
+                                    ) : (
+                                      <ChevronRight className="h-4 w-4" />
+                                    )}
+                                  </div>
+                                ) : (
+                                  /* Inline Edit/Delete for single entry */
+                                  <div className="flex items-center gap-1.5 animate-fade-in" onClick={(e) => e.stopPropagation()}>
+                                    {deletingId === singleEntry.id ? (
+                                      <div className="flex items-center gap-1 bg-rose-500/10 px-2 py-1 rounded-lg border border-rose-500/20 animate-pulse shrink-0">
+                                        <span className="text-[9px] font-mono text-rose-500 font-bold uppercase">Delete?</span>
+                                        <button
+                                          onClick={() => {
+                                            handleDelete(singleEntry.id);
+                                            setDeletingId(null);
+                                          }}
+                                          className="px-1.5 py-0.5 text-[9px] font-bold bg-rose-600 hover:bg-rose-500 text-white rounded transition cursor-pointer"
+                                        >
+                                          Yes
+                                        </button>
+                                        <button
+                                          onClick={() => setDeletingId(null)}
+                                          className="px-1.5 py-0.5 text-[9px] font-bold bg-app-bg hover:bg-input-bg text-muted-text border border-main-border rounded transition cursor-pointer"
+                                        >
+                                          No
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <>
+                                        <button
+                                          onClick={() => handleEditClick(singleEntry)}
+                                          title="Edit Entry"
+                                          className="p-1 rounded-lg text-muted-text hover:text-blue-500 hover:bg-app-bg transition cursor-pointer"
+                                        >
+                                          <Pencil className="h-3.5 w-3.5" />
+                                        </button>
+                                        <button
+                                          onClick={() => setDeletingId(singleEntry.id)}
+                                          title="Delete Entry"
+                                          className="p-1 rounded-lg text-muted-text hover:text-rose-500 hover:bg-app-bg transition cursor-pointer"
+                                        >
+                                          <Trash2 className="h-3.5 w-3.5" />
+                                        </button>
+                                      </>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                          ) : (
-                            <div className="flex items-center gap-1.5 mt-1">
-                              <button
-                                onClick={() => handleEditClick(entry)}
-                                title="Edit Ledger Entry"
-                                className="p-1.5 rounded-lg text-muted-text hover:text-blue-500 hover:bg-app-bg transition cursor-pointer"
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </button>
-                              <button
-                                onClick={() => setDeletingId(entry.id)}
-                                title="Delete Entry"
-                                className="p-1.5 rounded-lg text-muted-text hover:text-rose-500 hover:bg-app-bg transition cursor-pointer"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            </div>
-                          )}
-                        </div>
-
-                      </div>
-                    ))}
+                            
+                            {/* Expandable Dropdown List of Tasks (for days with multiple tasks) */}
+                            {hasMultipleTasks && isExpanded && (
+                              <div className="bg-app-bg/20 border-t border-main-border/30 px-5 py-3.5 space-y-3.5 divide-y divide-main-border/10">
+                                {dayEntries.map((entry) => (
+                                  <div key={entry.id} className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 pt-3.5 first:pt-0">
+                                    <div className="space-y-1.5 max-w-xl">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="inline-flex items-center gap-1 rounded-md bg-app-bg px-2 py-0.5 text-[10px] font-medium text-main-text border border-main-border">
+                                          <Briefcase className="h-3 w-3 text-blue-500" />
+                                          Task: {entry.project}
+                                        </span>
+                                        <span className="inline-flex items-center gap-1 rounded-md bg-app-bg px-2 py-0.5 text-[10px] font-medium text-main-text border border-main-border">
+                                          <MapPin className="h-3 w-3 text-blue-500" />
+                                          Where: {entry.locationName}
+                                        </span>
+                                      </div>
+                                      
+                                      {entry.notes && (
+                                        <p className="text-xs text-muted-text leading-relaxed">
+                                          {entry.notes}
+                                        </p>
+                                      )}
+                                      
+                                      <p className="text-[11px] font-mono text-muted-text">
+                                        Shift: <strong className="text-muted-text/80">{entry.startTime} – {entry.endTime}</strong> (Break: {entry.breakMinutes} mins)
+                                      </p>
+                                    </div>
+                                    
+                                    <div className="flex items-center justify-between sm:flex-col sm:items-end gap-2 shrink-0">
+                                      <span className="text-xs font-semibold font-mono text-main-text">
+                                        {entry.totalHours.toFixed(2)} hrs
+                                      </span>
+                                      
+                                      {deletingId === entry.id ? (
+                                        <div className="flex items-center gap-1 bg-rose-500/10 px-2 py-1 rounded-lg border border-rose-500/20 animate-pulse">
+                                          <span className="text-[9px] font-mono text-rose-500 font-bold uppercase">Delete?</span>
+                                          <button
+                                            onClick={() => {
+                                              handleDelete(entry.id);
+                                              setDeletingId(null);
+                                            }}
+                                            className="px-1.5 py-0.5 text-[9px] font-bold bg-rose-600 hover:bg-rose-500 text-white rounded transition cursor-pointer"
+                                          >
+                                            Yes
+                                          </button>
+                                          <button
+                                            onClick={() => setDeletingId(null)}
+                                            className="px-1.5 py-0.5 text-[9px] font-bold bg-app-bg hover:bg-input-bg text-muted-text border border-main-border rounded transition cursor-pointer"
+                                          >
+                                            No
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <div className="flex items-center gap-1.5">
+                                          <button
+                                            onClick={() => handleEditClick(entry)}
+                                            title="Edit Task"
+                                            className="p-1 rounded-lg text-muted-text hover:text-blue-500 hover:bg-app-bg transition cursor-pointer"
+                                          >
+                                            <Pencil className="h-3 w-3" />
+                                          </button>
+                                          <button
+                                            onClick={() => setDeletingId(entry.id)}
+                                            title="Delete Task"
+                                            className="p-1 rounded-lg text-muted-text hover:text-rose-500 hover:bg-app-bg transition cursor-pointer"
+                                          >
+                                            <Trash2 className="h-3 w-3" />
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      });
+                    })()}
                   </div>
 
                 </div>

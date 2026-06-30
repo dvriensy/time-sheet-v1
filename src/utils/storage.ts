@@ -61,22 +61,54 @@ const KEY_CURRENT_USER = 'timesheets_tracker_current_user';
 
 export interface UserAccount {
   username: string;
-  passwordHash: string;
+  passwordHash?: string;
+  firstName: string;
+  lastName: string;
   fullName: string;
   hourlyRate?: number;
+  avatarUrl?: string; // Holds Base64 string or image URL
+  bio?: string;
+  email?: string;
+  phone?: string;
+  department?: string;
 }
 
-export function registerUser(username: string, password: string, fullName: string, hourlyRate?: number): boolean {
+export function updateUserAccount(updated: Partial<UserAccount>): UserAccount | null {
+  const currentUsername = localStorage.getItem(KEY_CURRENT_USER);
+  if (!currentUsername) return null;
+
   const usersRaw = localStorage.getItem(KEY_USERS_LIST);
   const users: UserAccount[] = usersRaw ? JSON.parse(usersRaw) : [];
   
-  const exists = users.some(u => u.username.toLowerCase() === username.toLowerCase());
+  const index = users.findIndex(u => u.username === currentUsername);
+  if (index === -1) return null;
+
+  const original = users[index];
+  
+  const updatedUser: UserAccount = {
+    ...original,
+    ...updated,
+    fullName: `${updated.firstName !== undefined ? updated.firstName : original.firstName} ${updated.lastName !== undefined ? updated.lastName : original.lastName}`.trim(),
+  };
+
+  users[index] = updatedUser;
+  localStorage.setItem(KEY_USERS_LIST, JSON.stringify(users));
+  return updatedUser;
+}
+
+export function registerUser(firstName: string, lastName: string, hourlyRate?: number): boolean {
+  const usersRaw = localStorage.getItem(KEY_USERS_LIST);
+  const users: UserAccount[] = usersRaw ? JSON.parse(usersRaw) : [];
+  
+  const username = `${firstName.trim().toLowerCase()}_${lastName.trim().toLowerCase()}`;
+  const exists = users.some(u => u.username === username);
   if (exists) return false;
   
   const newUser: UserAccount = {
-    username: username.trim(),
-    passwordHash: password,
-    fullName: fullName.trim(),
+    username,
+    firstName: firstName.trim(),
+    lastName: lastName.trim(),
+    fullName: `${firstName.trim()} ${lastName.trim()}`,
     hourlyRate: hourlyRate
   };
   
@@ -84,19 +116,20 @@ export function registerUser(username: string, password: string, fullName: strin
   localStorage.setItem(KEY_USERS_LIST, JSON.stringify(users));
   
   // Set current user
-  localStorage.setItem(KEY_CURRENT_USER, username.trim());
+  localStorage.setItem(KEY_CURRENT_USER, username);
   
   // Seed initial data
-  seedInitialDataForUser(username.trim(), hourlyRate);
+  seedInitialDataForUser(username, hourlyRate);
   
   return true;
 }
 
-export function loginUser(username: string, password: string): boolean {
+export function loginUser(firstName: string, lastName: string): boolean {
   const usersRaw = localStorage.getItem(KEY_USERS_LIST);
   const users: UserAccount[] = usersRaw ? JSON.parse(usersRaw) : [];
   
-  const found = users.find(u => u.username.toLowerCase() === username.toLowerCase() && u.passwordHash === password);
+  const username = `${firstName.trim().toLowerCase()}_${lastName.trim().toLowerCase()}`;
+  const found = users.find(u => u.username === username);
   if (found) {
     localStorage.setItem(KEY_CURRENT_USER, found.username);
     return true;
@@ -110,7 +143,22 @@ export function getCurrentUser(): UserAccount | null {
   
   const usersRaw = localStorage.getItem(KEY_USERS_LIST);
   const users: UserAccount[] = usersRaw ? JSON.parse(usersRaw) : [];
-  return users.find(u => u.username === username) || null;
+  const found = users.find(u => u.username === username);
+  if (!found) return null;
+  
+  // Dynamic fallback for firstName & lastName if missing from legacy account
+  if (!found.firstName || !found.lastName) {
+    const parts = found.fullName.split(' ');
+    found.firstName = parts[0] || found.username;
+    found.lastName = parts.slice(1).join(' ') || '';
+  }
+  
+  return found;
+}
+
+export function getAllUsers(): UserAccount[] {
+  const usersRaw = localStorage.getItem(KEY_USERS_LIST);
+  return usersRaw ? JSON.parse(usersRaw) : [];
 }
 
 export function logoutUser() {
@@ -471,3 +519,160 @@ export function getPayPeriodsGrouped(): PayPeriodGroup[] {
     };
   }).sort((a, b) => b.start.localeCompare(a.start)); // newest pay periods first
 }
+
+export interface ActiveSession {
+  username: string;
+  fullName: string;
+  isClockedIn: boolean;
+  isOnBreak: boolean;
+  startTime: string;
+  project: string;
+  location: string;
+  notes: string;
+  lastActiveTimestamp: string;
+}
+
+export function getActiveSessions(): Record<string, ActiveSession> {
+  const raw = localStorage.getItem('timesheets_tracker_active_sessions');
+  return raw ? JSON.parse(raw) : {};
+}
+
+export function updateActiveSession(session: Partial<ActiveSession>) {
+  const currentUsername = localStorage.getItem('timesheets_tracker_current_user');
+  if (!currentUsername) return;
+  
+  const currentUserObj = getCurrentUser();
+  const fullName = currentUserObj ? currentUserObj.fullName : currentUsername;
+  
+  const all = getActiveSessions();
+  const existing = all[currentUsername] || {
+    username: currentUsername,
+    fullName,
+    isClockedIn: false,
+    isOnBreak: false,
+    startTime: '',
+    project: '',
+    location: '',
+    notes: '',
+    lastActiveTimestamp: new Date().toISOString()
+  };
+  
+  all[currentUsername] = {
+    ...existing,
+    ...session,
+    lastActiveTimestamp: new Date().toISOString()
+  };
+  
+  localStorage.setItem('timesheets_tracker_active_sessions', JSON.stringify(all));
+}
+
+export function clearActiveSession() {
+  const currentUsername = localStorage.getItem('timesheets_tracker_current_user');
+  if (!currentUsername) return;
+  
+  const all = getActiveSessions();
+  delete all[currentUsername];
+  localStorage.setItem('timesheets_tracker_active_sessions', JSON.stringify(all));
+}
+
+export function deleteUserAccount(username: string): boolean {
+  const usersRaw = localStorage.getItem(KEY_USERS_LIST);
+  let users: UserAccount[] = usersRaw ? JSON.parse(usersRaw) : [];
+  
+  const exists = users.some(u => u.username === username);
+  if (!exists) return false;
+  
+  const currentUsername = localStorage.getItem(KEY_CURRENT_USER);
+  if (currentUsername === username) {
+    return false;
+  }
+  
+  users = users.filter(u => u.username !== username);
+  localStorage.setItem(KEY_USERS_LIST, JSON.stringify(users));
+  
+  const sessionsRaw = localStorage.getItem('timesheets_tracker_active_sessions');
+  if (sessionsRaw) {
+    const sessions = JSON.parse(sessionsRaw);
+    delete sessions[username];
+    localStorage.setItem('timesheets_tracker_active_sessions', JSON.stringify(sessions));
+  }
+  
+  const entriesRaw = localStorage.getItem(KEY_TIMESHEETS);
+  if (entriesRaw) {
+    const entries: TimesheetEntry[] = JSON.parse(entriesRaw);
+    const filteredEntries = entries.filter(e => e.username !== username);
+    localStorage.setItem(KEY_TIMESHEETS, JSON.stringify(filteredEntries));
+  }
+  
+  return true;
+}
+
+export interface TimeOffRequest {
+  id: string;
+  username: string;
+  fullName: string;
+  startDate: string;
+  endDate: string;
+  reason: string;
+  status: 'pending' | 'approved' | 'denied';
+  createdAt: string;
+  acknowledgedByRequester: boolean;
+  managerNotes?: string;
+  respondedAt?: string;
+}
+
+const KEY_TIME_OFF_REQUESTS = 'timesheets_tracker_time_off_requests';
+
+export function getTimeOffRequests(): TimeOffRequest[] {
+  const raw = localStorage.getItem(KEY_TIME_OFF_REQUESTS);
+  return raw ? JSON.parse(raw) : [];
+}
+
+export function addTimeOffRequest(startDate: string, endDate: string, reason: string): TimeOffRequest | null {
+  const currentUserObj = getCurrentUser();
+  if (!currentUserObj) return null;
+
+  const requests = getTimeOffRequests();
+  const newRequest: TimeOffRequest = {
+    id: 'tr_' + Math.random().toString(36).substr(2, 9),
+    username: currentUserObj.username,
+    fullName: currentUserObj.fullName,
+    startDate,
+    endDate,
+    reason,
+    status: 'pending',
+    createdAt: new Date().toISOString(),
+    acknowledgedByRequester: false
+  };
+
+  requests.push(newRequest);
+  localStorage.setItem(KEY_TIME_OFF_REQUESTS, JSON.stringify(requests));
+  return newRequest;
+}
+
+export function respondToTimeOffRequest(id: string, status: 'approved' | 'denied', managerNotes?: string): boolean {
+  const requests = getTimeOffRequests();
+  const idx = requests.findIndex(r => r.id === id);
+  if (idx === -1) return false;
+
+  requests[idx].status = status;
+  requests[idx].managerNotes = managerNotes;
+  requests[idx].respondedAt = new Date().toISOString();
+  requests[idx].acknowledgedByRequester = false; // reset so requester gets notified
+
+  localStorage.setItem(KEY_TIME_OFF_REQUESTS, JSON.stringify(requests));
+  return true;
+}
+
+export function acknowledgeTimeOffResponse(id: string): boolean {
+  const requests = getTimeOffRequests();
+  const idx = requests.findIndex(r => r.id === id);
+  if (idx === -1) return false;
+
+  requests[idx].acknowledgedByRequester = true;
+  localStorage.setItem(KEY_TIME_OFF_REQUESTS, JSON.stringify(requests));
+  return true;
+}
+
+
+
