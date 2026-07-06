@@ -1,0 +1,102 @@
+{
+  "entities": {
+    "UserAccount": {
+      "title": "UserAccount",
+      "description": "User profile and details including hourly rate and department.",
+      "type": "object",
+      "properties": {
+        "username": { "type": "string" },
+        "firstName": { "type": "string" },
+        "lastName": { "type": "string" },
+        "fullName": { "type": "string" },
+        "hourlyRate": { "type": "number" },
+        "avatarUrl": { "type": "string" },
+        "bio": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "department": { "type": "string" },
+        "role": { "type": "string", "enum": ["employee", "manager"] }
+      },
+      "required": ["username", "firstName", "lastName", "fullName"]
+    },
+    "TimesheetEntry": {
+      "title": "TimesheetEntry",
+      "description": "Shift entry containing clock-in time, clock-out time, project name, location, and computed total hours.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "username": { "type": "string" },
+        "fullName": { "type": "string" },
+        "date": { "type": "string" },
+        "startTime": { "type": "string" },
+        "endTime": { "type": "string" },
+        "breakMinutes": { "type": "number" },
+        "totalHours": { "type": "number" },
+        "earnings": { "type": "number" },
+        "project": { "type": "string" },
+        "locationName": { "type": "string" },
+        "notes": { "type": "string" },
+        "geofencedClockIn": { "type": "boolean" },
+        "geofencedClockOut": { "type": "boolean" },
+        "isSynced": { "type": "boolean" },
+        "isOvertime": { "type": "boolean" }
+      },
+      "required": ["id", "username", "fullName", "date", "startTime", "endTime", "breakMinutes", "totalHours", "project", "isSynced"]
+    },
+    "ActiveSession": {
+      "title": "ActiveSession",
+      "description": "An active timer session representing currently clocked-in employee status.",
+      "type": "object",
+      "properties": {
+        "username": { "type": "string" },
+        "fullName": { "type": "string" },
+        "isClockedIn": { "type": "boolean" },
+        "isOnBreak": { "type": "boolean" },
+        "startTime": { "type": "string" },
+        "project": { "type": "string" },
+        "location": { "type": "string" },
+        "notes": { "type": "string" },
+        "lastActiveTimestamp": { "type": "string" },
+        "secondsElapsed": { "type": "number" },
+        "breakSecondsElapsed": { "type": "number" },
+        "isOvertime": { "type": "boolean" }
+      },
+      "required": ["username", "fullName", "isClockedIn", "isOnBreak", "startTime", "project", "location", "notes", "lastActiveTimestamp"]
+    },
+    "TimeOffRequest": {
+      "title": "TimeOffRequest",
+      "description": "Time-off request submitted by an employee.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "username": { "type": "string" },
+        "fullName": { "type": "string" },
+        "type": { "type": "string" },
+        "startDate": { "type": "string" },
+        "endDate": { "type": "string" },
+        "reason": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "username", "fullName", "type", "startDate", "endDate", "reason", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{username}": {
+      "schema": "UserAccount",
+      "description": "User profiles collection indexed by their unique username."
+    },
+    "/timesheets/{timesheetId}": {
+      "schema": "TimesheetEntry",
+      "description": "Logged timesheet entries for historical record tracking."
+    },
+    "/activeSessions/{username}": {
+      "schema": "ActiveSession",
+      "description": "Currently active sessions for tracking ongoing clocks and breaks."
+    },
+    "/timeOffRequests/{requestId}": {
+      "schema": "TimeOffRequest",
+      "description": "Submitted time-off requests pending review or processed."
+    }
+  }
+}

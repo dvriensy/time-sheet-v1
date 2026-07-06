@@ -5,6 +5,57 @@
 
 import { TimesheetEntry, GeofenceSettings, ReminderSettings, SecurityAuditLog, SyncSettings, AppSettings } from '../types';
 import { DEFAULT_GEOFENCE, MOCK_TIMESHEETS, MOCK_SECURITY_LOGS } from '../data/mockData';
+import { db } from '../lib/firebase';
+import { doc, setDoc, getDoc, getDocs, collection, deleteDoc, updateDoc, onSnapshot } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
+
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const auth = getAuth();
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid || null,
+      email: auth.currentUser?.email || null,
+      emailVerified: auth.currentUser?.emailVerified || null,
+      isAnonymous: auth.currentUser?.isAnonymous || null,
+      tenantId: auth.currentUser?.tenantId || null,
+      providerInfo: auth.currentUser?.providerData?.map(provider => ({
+        providerId: provider.providerId,
+        email: provider.email,
+      })) || []
+    },
+    operationType,
+    path
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
 
 // Storage keys
 const KEY_TIMESHEETS = 'timesheets_tracker_records';
@@ -13,6 +64,186 @@ const KEY_REMINDERS = 'timesheets_tracker_reminders';
 const KEY_SECURITY_LOGS = 'timesheets_tracker_security_logs';
 const KEY_SYNC = 'timesheets_tracker_sync';
 const KEY_APP_SETTINGS = 'timesheets_tracker_app_settings';
+
+// Background Firestore Sync Writers
+export async function syncUserToFirestore(user: UserAccount) {
+  try {
+    await setDoc(doc(db, 'users', user.username), user);
+  } catch (err) {
+    console.error('Firestore syncUserToFirestore error:', err);
+    handleFirestoreError(err, OperationType.WRITE, `users/${user.username}`);
+  }
+}
+
+export async function deleteUserFromFirestore(username: string) {
+  try {
+    await deleteDoc(doc(db, 'users', username));
+  } catch (err) {
+    console.error('Firestore deleteUserFromFirestore error:', err);
+    handleFirestoreError(err, OperationType.DELETE, `users/${username}`);
+  }
+}
+
+export async function syncTimesheetToFirestore(entry: TimesheetEntry) {
+  try {
+    await setDoc(doc(db, 'timesheets', entry.id), entry);
+  } catch (err) {
+    console.error('Firestore syncTimesheetToFirestore error:', err);
+    handleFirestoreError(err, OperationType.WRITE, `timesheets/${entry.id}`);
+  }
+}
+
+export async function deleteTimesheetFromFirestore(id: string) {
+  try {
+    await deleteDoc(doc(db, 'timesheets', id));
+  } catch (err) {
+    console.error('Firestore deleteTimesheetFromFirestore error:', err);
+    handleFirestoreError(err, OperationType.DELETE, `timesheets/${id}`);
+  }
+}
+
+export async function syncActiveSessionToFirestore(username: string, session: ActiveSession) {
+  try {
+    await setDoc(doc(db, 'activeSessions', username), session);
+  } catch (err) {
+    console.error('Firestore syncActiveSessionToFirestore error:', err);
+    handleFirestoreError(err, OperationType.WRITE, `activeSessions/${username}`);
+  }
+}
+
+export async function deleteActiveSessionFromFirestore(username: string) {
+  try {
+    await deleteDoc(doc(db, 'activeSessions', username));
+  } catch (err) {
+    console.error('Firestore deleteActiveSessionFromFirestore error:', err);
+    handleFirestoreError(err, OperationType.DELETE, `activeSessions/${username}`);
+  }
+}
+
+export async function syncTimeOffRequestToFirestore(request: TimeOffRequest) {
+  try {
+    await setDoc(doc(db, 'timeOffRequests', request.id), request);
+  } catch (err) {
+    console.error('Firestore syncTimeOffRequestToFirestore error:', err);
+    handleFirestoreError(err, OperationType.WRITE, `timeOffRequests/${request.id}`);
+  }
+}
+
+export async function initializeFirebaseSync(onSyncCallback?: () => void) {
+  try {
+    // 1. Sync Users
+    const usersSnap = await getDocs(collection(db, 'users'));
+    if (usersSnap.empty) {
+      // Seed Firestore with local users (if any exist)
+      const localUsers = getAllUsers();
+      for (const u of localUsers) {
+        await setDoc(doc(db, 'users', u.username), u);
+      }
+    } else {
+      // Overwrite local storage with firestore users
+      const firestoreUsers: UserAccount[] = [];
+      usersSnap.forEach(docSnap => {
+        firestoreUsers.push(docSnap.data() as UserAccount);
+      });
+      localStorage.setItem(KEY_USERS_LIST, JSON.stringify(firestoreUsers));
+    }
+
+    // 2. Sync Timesheets
+    const timesheetsSnap = await getDocs(collection(db, 'timesheets'));
+    if (timesheetsSnap.empty) {
+      const localTimesheets = getTimesheetsAllRaw();
+      for (const t of localTimesheets) {
+        await setDoc(doc(db, 'timesheets', t.id), t);
+      }
+    } else {
+      const firestoreTimesheets: TimesheetEntry[] = [];
+      timesheetsSnap.forEach(docSnap => {
+        firestoreTimesheets.push(docSnap.data() as TimesheetEntry);
+      });
+      localStorage.setItem(KEY_TIMESHEETS, JSON.stringify(firestoreTimesheets));
+    }
+
+    // 3. Sync Active Sessions
+    const sessionsSnap = await getDocs(collection(db, 'activeSessions'));
+    const firestoreSessions: Record<string, ActiveSession> = {};
+    sessionsSnap.forEach(docSnap => {
+      firestoreSessions[docSnap.id] = docSnap.data() as ActiveSession;
+    });
+    localStorage.setItem('timesheets_tracker_active_sessions', JSON.stringify(firestoreSessions));
+
+    // 4. Sync Time-Off Requests
+    const timeOffSnap = await getDocs(collection(db, 'timeOffRequests'));
+    if (timeOffSnap.empty) {
+      const localTimeOff = getTimeOffRequests();
+      for (const tr of localTimeOff) {
+        await setDoc(doc(db, 'timeOffRequests', tr.id), tr);
+      }
+    } else {
+      const firestoreTimeOff: TimeOffRequest[] = [];
+      timeOffSnap.forEach(docSnap => {
+        firestoreTimeOff.push(docSnap.data() as TimeOffRequest);
+      });
+      localStorage.setItem(KEY_TIME_OFF_REQUESTS, JSON.stringify(firestoreTimeOff));
+    }
+
+    if (onSyncCallback) onSyncCallback();
+
+    // 5. Setup Real-time Listeners
+    onSnapshot(collection(db, 'users'), (snap) => {
+      const updatedUsers: UserAccount[] = [];
+      snap.forEach(docSnap => {
+        updatedUsers.push(docSnap.data() as UserAccount);
+      });
+      if (updatedUsers.length > 0) {
+        localStorage.setItem(KEY_USERS_LIST, JSON.stringify(updatedUsers));
+        if (onSyncCallback) onSyncCallback();
+        window.dispatchEvent(new Event('storage-sync'));
+      }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'users');
+    });
+
+    onSnapshot(collection(db, 'timesheets'), (snap) => {
+      const updatedTimesheets: TimesheetEntry[] = [];
+      snap.forEach(docSnap => {
+        updatedTimesheets.push(docSnap.data() as TimesheetEntry);
+      });
+      localStorage.setItem(KEY_TIMESHEETS, JSON.stringify(updatedTimesheets));
+      if (onSyncCallback) onSyncCallback();
+      window.dispatchEvent(new Event('storage-sync'));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'timesheets');
+    });
+
+    onSnapshot(collection(db, 'activeSessions'), (snap) => {
+      const updatedSessions: Record<string, ActiveSession> = {};
+      snap.forEach(docSnap => {
+        updatedSessions[docSnap.id] = docSnap.data() as ActiveSession;
+      });
+      localStorage.setItem('timesheets_tracker_active_sessions', JSON.stringify(updatedSessions));
+      if (onSyncCallback) onSyncCallback();
+      window.dispatchEvent(new Event('storage-sync'));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'activeSessions');
+    });
+
+    onSnapshot(collection(db, 'timeOffRequests'), (snap) => {
+      const updatedRequests: TimeOffRequest[] = [];
+      snap.forEach(docSnap => {
+        updatedRequests.push(docSnap.data() as TimeOffRequest);
+      });
+      localStorage.setItem(KEY_TIME_OFF_REQUESTS, JSON.stringify(updatedRequests));
+      if (onSyncCallback) onSyncCallback();
+      window.dispatchEvent(new Event('storage-sync'));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'timeOffRequests');
+    });
+
+  } catch (err) {
+    console.error('Firebase synchronization failed to initialize:', err);
+    handleFirestoreError(err, OperationType.GET, null);
+  }
+}
 
 // Initialize data if not already present
 export function initializeStorage() {
@@ -94,6 +325,7 @@ export function updateUserAccount(updated: Partial<UserAccount>): UserAccount | 
 
   users[index] = updatedUser;
   localStorage.setItem(KEY_USERS_LIST, JSON.stringify(users));
+  syncUserToFirestore(updatedUser);
   return updatedUser;
 }
 
@@ -124,6 +356,9 @@ export function registerUser(firstName: string, lastName: string, hourlyRate?: n
   
   // Seed initial data
   seedInitialDataForUser(username, hourlyRate);
+  
+  // Sync to Firestore
+  syncUserToFirestore(newUser);
   
   return true;
 }
@@ -212,6 +447,11 @@ function seedInitialDataForUser(username: string, hourlyRate?: number) {
   
   const combined = [...sampleEntries, ...all];
   localStorage.setItem(KEY_TIMESHEETS, JSON.stringify(combined));
+
+  // Sync seeded entries to Firestore
+  for (const entry of sampleEntries) {
+    syncTimesheetToFirestore(entry);
+  }
 }
 
 // Timesheets
@@ -273,6 +513,7 @@ export function addTimesheetEntry(entry: Omit<TimesheetEntry, 'id' | 'totalHours
   
   entries.unshift(newEntry); // newest first
   saveTimesheets(entries);
+  syncTimesheetToFirestore(newEntry);
   
   addSecurityLog(
     'Manual timesheet edit',
@@ -289,14 +530,16 @@ export function updateTimesheetEntry(updated: TimesheetEntry) {
   const currentUser = localStorage.getItem(KEY_CURRENT_USER) || 'guest';
   if (index !== -1) {
     const { totalHours, earnings } = calculateHoursAndEarnings(updated.startTime, updated.endTime, updated.breakMinutes, updated.hourlyRate || 0);
-    entries[index] = {
+    const updatedEntry = {
       ...updated,
       username: currentUser,
       totalHours,
       earnings: 0,
       isSynced: false
     };
+    entries[index] = updatedEntry;
     saveTimesheets(entries);
+    syncTimesheetToFirestore(updatedEntry);
     addSecurityLog(
       'Manual timesheet edit',
       `Modified timesheet card [${updated.id}] on date ${updated.date}`,
@@ -309,6 +552,7 @@ export function deleteTimesheetEntry(id: string) {
   const entries = getTimesheets();
   const filtered = entries.filter(e => e.id !== id);
   saveTimesheets(filtered);
+  deleteTimesheetFromFirestore(id);
   addSecurityLog(
     'Manual timesheet edit',
     `Deleted timesheet card [${id}]`,
@@ -540,6 +784,7 @@ export interface ActiveSession {
   lastActiveTimestamp: string;
   secondsElapsed?: number;
   breakSecondsElapsed?: number;
+  isOvertime?: boolean;
 }
 
 export function getActiveSessions(): Record<string, ActiveSession> {
@@ -574,6 +819,7 @@ export function updateActiveSession(session: Partial<ActiveSession>) {
   };
   
   localStorage.setItem('timesheets_tracker_active_sessions', JSON.stringify(all));
+  syncActiveSessionToFirestore(currentUsername, all[currentUsername]);
 }
 
 export function clearActiveSession() {
@@ -583,6 +829,7 @@ export function clearActiveSession() {
   const all = getActiveSessions();
   delete all[currentUsername];
   localStorage.setItem('timesheets_tracker_active_sessions', JSON.stringify(all));
+  deleteActiveSessionFromFirestore(currentUsername);
 }
 
 export function deleteUserAccount(username: string): boolean {
@@ -600,6 +847,10 @@ export function deleteUserAccount(username: string): boolean {
   users = users.filter(u => u.username !== username);
   localStorage.setItem(KEY_USERS_LIST, JSON.stringify(users));
   
+  // Sync delete user
+  deleteUserFromFirestore(username);
+  deleteActiveSessionFromFirestore(username);
+  
   const sessionsRaw = localStorage.getItem('timesheets_tracker_active_sessions');
   if (sessionsRaw) {
     const sessions = JSON.parse(sessionsRaw);
@@ -610,6 +861,10 @@ export function deleteUserAccount(username: string): boolean {
   const entriesRaw = localStorage.getItem(KEY_TIMESHEETS);
   if (entriesRaw) {
     const entries: TimesheetEntry[] = JSON.parse(entriesRaw);
+    const userTimesheets = entries.filter(e => e.username === username);
+    for (const e of userTimesheets) {
+      deleteTimesheetFromFirestore(e.id);
+    }
     const filteredEntries = entries.filter(e => e.username !== username);
     localStorage.setItem(KEY_TIMESHEETS, JSON.stringify(filteredEntries));
   }
@@ -657,6 +912,7 @@ export function addTimeOffRequest(startDate: string, endDate: string, reason: st
 
   requests.push(newRequest);
   localStorage.setItem(KEY_TIME_OFF_REQUESTS, JSON.stringify(requests));
+  syncTimeOffRequestToFirestore(newRequest);
   return newRequest;
 }
 
@@ -671,6 +927,7 @@ export function respondToTimeOffRequest(id: string, status: 'approved' | 'denied
   requests[idx].acknowledgedByRequester = false; // reset so requester gets notified
 
   localStorage.setItem(KEY_TIME_OFF_REQUESTS, JSON.stringify(requests));
+  syncTimeOffRequestToFirestore(requests[idx]);
   return true;
 }
 
@@ -681,6 +938,7 @@ export function acknowledgeTimeOffResponse(id: string): boolean {
 
   requests[idx].acknowledgedByRequester = true;
   localStorage.setItem(KEY_TIME_OFF_REQUESTS, JSON.stringify(requests));
+  syncTimeOffRequestToFirestore(requests[idx]);
   return true;
 }
 

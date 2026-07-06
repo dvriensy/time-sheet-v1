@@ -21,6 +21,7 @@ export interface TimesheetEntry {
   totalHours: number; // calculated
   earnings?: number; // calculated
   isSynced: boolean;
+  isOvertime?: boolean;
 }
 
 export interface GeofenceSettings {

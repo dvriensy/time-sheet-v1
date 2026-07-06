@@ -97,13 +97,23 @@ export default function ManagerView({ currentUser, isMobileView = false }: Manag
     refreshLiveSessions();
     refreshTimeOffRequests();
     
+    const handleSync = () => {
+      refreshUsersList();
+      refreshLiveSessions();
+      refreshTimeOffRequests();
+    };
+    window.addEventListener('storage-sync', handleSync);
+    
     const interval = setInterval(() => {
       refreshUsersList();
       refreshLiveSessions();
       refreshTimeOffRequests();
     }, 5000); // refresh live status, timeoff requests, and new users every 5 seconds
     
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('storage-sync', handleSync);
+    };
   }, [refreshTrigger]);
 
   const handleTimeOffDecision = (id: string, status: 'approved' | 'denied', fullName: string) => {

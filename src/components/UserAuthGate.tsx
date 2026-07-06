@@ -22,6 +22,12 @@ export default function UserAuthGate({ onAuthSuccess, isMobileView = false }: Us
 
   useEffect(() => {
     setExistingUsers(getAllUsers());
+    
+    const handleSync = () => {
+      setExistingUsers(getAllUsers());
+    };
+    window.addEventListener('storage-sync', handleSync);
+    return () => window.removeEventListener('storage-sync', handleSync);
   }, [isLogin]);
 
   const [localTheme, setLocalTheme] = useState<'light' | 'dark'>(() => {

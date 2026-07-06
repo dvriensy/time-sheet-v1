@@ -42,7 +42,8 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     initialLocation, 
     initialNotes, 
     initialSecondsElapsed, 
-    initialBreakSecondsElapsed 
+    initialBreakSecondsElapsed,
+    initialIsOvertime
   } = useMemo(() => {
     const user = getCurrentUser();
     if (user) {
@@ -64,6 +65,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
           initialNotes: session.notes || '',
           initialSecondsElapsed: session.isOnBreak ? storedWork : storedWork + elapsedBg,
           initialBreakSecondsElapsed: session.isOnBreak ? storedBreak + elapsedBg : storedBreak,
+          initialIsOvertime: !!session.isOvertime,
         };
       }
     }
@@ -76,6 +78,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
       initialNotes: '',
       initialSecondsElapsed: 0,
       initialBreakSecondsElapsed: 0,
+      initialIsOvertime: false,
     };
   }, []);
 
@@ -85,6 +88,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
   const [secondsElapsed, setSecondsElapsed] = useState(initialSecondsElapsed);
   const [breakSecondsElapsed, setBreakSecondsElapsed] = useState(initialBreakSecondsElapsed);
   const [timerStart, setTimerStart] = useState<string>(initialTimerStart);
+  const [isOvertime, setIsOvertime] = useState<boolean>(initialIsOvertime);
   
   // New entry details (configured before clock-in or finalized on clock-out)
   const [activeProject, setActiveProject] = useState(initialProject);
@@ -109,6 +113,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
   const [manualProject, setManualProject] = useState('');
   const [manualLocation, setManualLocation] = useState('');
   const [manualNotes, setManualNotes] = useState('');
+  const [manualIsOvertime, setManualIsOvertime] = useState(false);
 
   // Active Timer Intervals & LocalStorage Sync
   useEffect(() => {
@@ -125,11 +130,12 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
         notes: activeNotes || 'Working...',
         secondsElapsed,
         breakSecondsElapsed,
+        isOvertime,
       });
     } else {
       clearActiveSession();
     }
-  }, [isClockedIn, isOnBreak, timerStart, activeProject, activeLocation, activeNotes, secondsElapsed, breakSecondsElapsed]);
+  }, [isClockedIn, isOnBreak, timerStart, activeProject, activeLocation, activeNotes, secondsElapsed, breakSecondsElapsed, isOvertime]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -178,6 +184,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     setSecondsElapsed(0);
     setBreakSecondsElapsed(0);
     setActiveNotes('');
+    setIsOvertime(false);
     
     if (geofenced && geofenceStatus) {
       setActiveLocation(geofenceStatus.name);
@@ -208,13 +215,15 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
       locationName: activeLocation,
       notes: activeNotes || 'Standard shift logged via active timer.',
       geofencedClockIn: simulatedGeoTrigger || false,
-      geofencedClockOut: simulatedGeoTrigger || false
+      geofencedClockOut: simulatedGeoTrigger || false,
+      isOvertime: isOvertime
     });
 
     setIsClockedIn(false);
     setIsOnBreak(false);
     setSecondsElapsed(0);
     setBreakSecondsElapsed(0);
+    setIsOvertime(false);
     
     onRefreshEntries();
   };
@@ -238,7 +247,8 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
       locationName: activeLocation,
       notes: activeNotes || 'Work segment completed.',
       geofencedClockIn: false,
-      geofencedClockOut: false
+      geofencedClockOut: false,
+      isOvertime: isOvertime
     });
 
     // Start next task segment immediately
@@ -266,7 +276,8 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
         breakMinutes: Number(manualBreak),
         project: manualProject,
         locationName: manualLocation,
-        notes: manualNotes
+        notes: manualNotes,
+        isOvertime: manualIsOvertime
       });
     } else {
       addTimesheetEntry({
@@ -276,13 +287,15 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
         breakMinutes: Number(manualBreak),
         project: manualProject,
         locationName: manualLocation,
-        notes: manualNotes || 'Manual shift entry.'
+        notes: manualNotes || 'Manual shift entry.',
+        isOvertime: manualIsOvertime
       });
     }
     
     setShowManualForm(false);
     setEditingEntry(null);
     setManualNotes('');
+    setManualIsOvertime(false);
     onRefreshEntries();
   };
 
@@ -295,6 +308,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     setManualBreak(entry.breakMinutes);
     setManualLocation(entry.locationName);
     setManualNotes(entry.notes);
+    setManualIsOvertime(!!entry.isOvertime);
     setShowManualForm(true);
   };
 
@@ -361,10 +375,24 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     }));
   };
 
-  const totalCalculated = useMemo(() => {
-    if (!showPdfPreview) return { hours: 0 };
-    const h = showPdfPreview.entries.reduce((sum, e) => sum + e.totalHours, 0);
-    return { hours: Number(h.toFixed(2)) };
+  const reportHoursSummary = useMemo(() => {
+    if (!showPdfPreview) return { total: 0, regular: 0, overtime: 0 };
+    let total = 0;
+    let regular = 0;
+    let overtime = 0;
+    showPdfPreview.entries.forEach(e => {
+      total += e.totalHours;
+      if (e.isOvertime) {
+        overtime += e.totalHours;
+      } else {
+        regular += e.totalHours;
+      }
+    });
+    return {
+      total: Number(total.toFixed(2)),
+      regular: Number(regular.toFixed(2)),
+      overtime: Number(overtime.toFixed(2))
+    };
   }, [showPdfPreview]);
 
   return (
@@ -469,15 +497,31 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
           </div>
 
           {isClockedIn && (
-            <motion.button
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              onClick={handleSwitchTask}
-              className={`w-full ${isMobileView ? 'mt-3 py-2' : 'mt-4 py-2.5'} flex items-center justify-center gap-1.5 rounded-2xl bg-[#09090B]/40 hover:bg-[#09090B]/60 text-blue-200 border border-blue-400/25 text-xs font-semibold uppercase tracking-wider transition active:scale-[0.98] cursor-pointer`}
-            >
-              <ClipboardList className="h-4 w-4" />
-              <span>Switch Task / Job Change</span>
-            </motion.button>
+            <div className={`grid grid-cols-2 gap-2 ${isMobileView ? 'mt-3' : 'mt-4'}`}>
+              <motion.button
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                onClick={handleSwitchTask}
+                className="w-full py-2.5 flex items-center justify-center gap-1 px-1 rounded-2xl bg-[#09090B]/40 hover:bg-[#09090B]/60 text-blue-200 border border-blue-400/25 text-xs font-semibold uppercase tracking-wider transition active:scale-[0.98] cursor-pointer"
+              >
+                <ClipboardList className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">Switch Task</span>
+              </motion.button>
+
+              <motion.button
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                onClick={() => setIsOvertime(!isOvertime)}
+                className={`w-full py-2.5 flex items-center justify-center gap-1.5 px-1 rounded-2xl border text-xs font-semibold uppercase tracking-wider transition active:scale-[0.98] cursor-pointer ${
+                  isOvertime 
+                    ? 'bg-amber-500/20 text-amber-200 border-amber-400/50 shadow-[0_0_15px_rgba(245,158,11,0.25)]' 
+                    : 'bg-[#09090B]/40 hover:bg-[#09090B]/60 text-blue-200 border-blue-400/25'
+                }`}
+              >
+                <div className={`h-1.5 w-1.5 rounded-full ${isOvertime ? 'bg-amber-400 animate-pulse' : 'bg-blue-400'}`} />
+                <span className="truncate">Overtime: {isOvertime ? 'ON' : 'OFF'}</span>
+              </motion.button>
+            </div>
           )}
 
           {/* Action Trigger Buttons */}
@@ -710,6 +754,11 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                                     {dayEntries.length} Tasks
                                   </span>
                                 )}
+                                {!hasMultipleTasks && singleEntry.isOvertime && (
+                                  <span className="inline-flex items-center rounded bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-bold text-amber-500 border border-amber-500/20 uppercase tracking-wider">
+                                    Overtime
+                                  </span>
+                                )}
                               </div>
                               
                               <div className="flex items-center gap-3">
@@ -785,6 +834,11 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                                           <MapPin className="h-3 w-3 text-blue-500" />
                                           Where: {entry.locationName}
                                         </span>
+                                        {entry.isOvertime && (
+                                          <span className="inline-flex items-center rounded bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-bold text-amber-500 border border-amber-500/20 uppercase tracking-wider">
+                                            Overtime
+                                          </span>
+                                        )}
                                       </div>
                                       
                                       {entry.notes && (
@@ -964,6 +1018,19 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                   />
                 </div>
 
+                <div className="flex items-center gap-3 rounded-xl border border-main-border bg-input-bg p-3">
+                  <input
+                    type="checkbox"
+                    id="manual-overtime-toggle"
+                    checked={manualIsOvertime}
+                    onChange={(e) => setManualIsOvertime(e.target.checked)}
+                    className="h-4 w-4 rounded border-main-border text-blue-600 focus:ring-blue-500/50 bg-[#121214] cursor-pointer"
+                  />
+                  <label htmlFor="manual-overtime-toggle" className="text-xs font-medium text-main-text cursor-pointer select-none">
+                    Mark this shift as <strong className="text-amber-500">Overtime Hours</strong>
+                  </label>
+                </div>
+
                 <div>
                   <label className="text-[11px] font-semibold text-muted-text block mb-1 uppercase font-mono">Tasks / Achievements / Explanation</label>
                   <textarea
@@ -1033,8 +1100,8 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
               {/* Aggregates Summary */}
               <div className="grid grid-cols-2 gap-4 border border-slate-200 rounded-xl p-4 bg-slate-50 mb-8">
                 <div>
-                  <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Total Scheduled Hours</span>
-                  <span className="text-lg font-bold text-slate-950">{totalCalculated.hours} hrs</span>
+                  <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Total Period Hours</span>
+                  <span className="text-lg font-bold text-slate-950">{reportHoursSummary.total} hrs</span>
                 </div>
                 <div>
                   <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Total Logged Shifts</span>
@@ -1043,7 +1110,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
               </div>
 
               {/* Data Table */}
-              <div className="overflow-x-auto mb-8">
+              <div className="overflow-x-auto mb-6">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
                     <tr className="border-b border-slate-300 bg-slate-100 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
@@ -1060,20 +1127,46 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                           {entry.date}
                         </td>
                         <td className="py-3 px-3">
-                          <p className="font-semibold text-slate-800">{entry.project}</p>
+                          <p className="font-semibold text-slate-800">
+                            {entry.project}
+                            {entry.isOvertime && (
+                              <span className="ml-2 inline-flex items-center rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-800 ring-1 ring-inset ring-amber-600/20 uppercase tracking-wider print:bg-slate-100 print:text-black">
+                                Overtime
+                              </span>
+                            )}
+                          </p>
                           <p className="text-[10px] text-slate-500">Where: {entry.locationName}</p>
                           <p className="text-[10px] text-slate-400 italic mt-1 max-w-sm">{entry.notes}</p>
                         </td>
                         <td className="py-3 px-3 whitespace-nowrap">
                           {entry.startTime} – {entry.endTime} ({entry.breakMinutes}m)
                         </td>
-                        <td className="py-3 px-3 text-right font-mono font-medium">
+                        <td className={`py-3 px-3 text-right font-mono font-medium ${entry.isOvertime ? 'text-amber-600 font-semibold' : ''}`}>
                           {entry.totalHours} hrs
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+              </div>
+
+              {/* Three Specific Hourly Categories at the End of the Report */}
+              <div className="mt-6 border-t border-slate-200 pt-6 mb-8">
+                <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-3">Pay Period Hours Breakdown</h4>
+                <div className="grid grid-cols-3 gap-4 border border-slate-200 rounded-xl p-4 bg-slate-50">
+                  <div className="border-r border-slate-200 pr-4">
+                    <span className="text-[9px] font-semibold text-slate-500 uppercase tracking-wider block">Regular Hours</span>
+                    <span className="text-base font-bold text-slate-900 font-mono">{reportHoursSummary.regular} hrs</span>
+                  </div>
+                  <div className="border-r border-slate-200 px-4">
+                    <span className="text-[9px] font-semibold text-amber-700 uppercase tracking-wider block">Overtime Hours</span>
+                    <span className="text-base font-bold text-amber-700 font-mono">{reportHoursSummary.overtime} hrs</span>
+                  </div>
+                  <div className="pl-4">
+                    <span className="text-[9px] font-semibold text-blue-700 uppercase tracking-wider block">Total Time</span>
+                    <span className="text-base font-bold text-blue-700 font-mono">{reportHoursSummary.total} hrs</span>
+                  </div>
+                </div>
               </div>
 
               {/* Signature Blocks */}

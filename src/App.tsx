@@ -13,7 +13,8 @@ import {
   getCurrentUser, 
   logoutUser, 
   UserAccount,
-  getTimeOffRequests
+  getTimeOffRequests,
+  initializeFirebaseSync
 } from './utils/storage';
 import { TimesheetEntry } from './types';
 
@@ -28,6 +29,23 @@ export default function App() {
   // Initialize standard LocalStorage templates on mount
   useEffect(() => {
     initializeStorage();
+    
+    // Initialize Firebase Sync
+    initializeFirebaseSync(() => {
+      setCurrentUser(getCurrentUser());
+      handleLoadData();
+      updateTimeOffBadgeCount();
+    });
+
+    const handleSync = () => {
+      setCurrentUser(getCurrentUser());
+      handleLoadData();
+      updateTimeOffBadgeCount();
+    };
+    window.addEventListener('storage-sync', handleSync);
+    return () => {
+      window.removeEventListener('storage-sync', handleSync);
+    };
   }, []);
 
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(getCurrentUser());
