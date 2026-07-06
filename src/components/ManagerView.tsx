@@ -36,6 +36,7 @@ export default function ManagerView({ currentUser, isMobileView = false }: Manag
   // Tabs: 'live', 'history', or 'timeoff'
   const [managerTab, setManagerTab] = useState<'live' | 'history' | 'timeoff'>('live');
   const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'break' | 'offline'>('all');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Time off decision state
@@ -156,9 +157,10 @@ export default function ManagerView({ currentUser, isMobileView = false }: Manag
     }));
   };
 
-  // Compute stats per user
+  // Compute stats per user (only employee accounts)
   const userStats = useMemo(() => {
-    return allUsers.map(user => {
+    const employees = allUsers.filter(u => u.role !== 'manager' && u.username !== 'derek_vriens' && u.username !== currentUser.username);
+    return employees.map(user => {
       const entries = allEntries.filter(e => e.username === user.username);
       const totalHours = entries.reduce((sum, e) => sum + e.totalHours, 0);
       const hourlyRate = user.hourlyRate || 45;
@@ -176,20 +178,31 @@ export default function ManagerView({ currentUser, isMobileView = false }: Manag
         activeSession
       };
     });
-  }, [allUsers, allEntries, liveSessions]);
+  }, [allUsers, allEntries, liveSessions, currentUser.username]);
 
-  // Filtered stats based on search
+  // Filtered stats based on search and live status
   const filteredStats = useMemo(() => {
+    let list = userStats;
+
+    // Apply status filter
+    if (statusFilter === 'active') {
+      list = list.filter(u => u.isLive && !u.activeSession?.isOnBreak);
+    } else if (statusFilter === 'break') {
+      list = list.filter(u => u.isLive && u.activeSession?.isOnBreak);
+    } else if (statusFilter === 'offline') {
+      list = list.filter(u => !u.isLive);
+    }
+
     const query = searchQuery.toLowerCase().trim();
-    if (!query) return userStats;
-    return userStats.filter(u => {
+    if (!query) return list;
+    return list.filter(u => {
       const matchesName = u.fullName.toLowerCase().includes(query) || u.username.toLowerCase().includes(query);
       const matchesDepartment = u.department?.toLowerCase().includes(query);
       const matchesActiveProject = u.activeSession?.project?.toLowerCase().includes(query);
       const matchesActiveLocation = u.activeSession?.location?.toLowerCase().includes(query);
       return matchesName || matchesDepartment || matchesActiveProject || matchesActiveLocation;
     });
-  }, [userStats, searchQuery]);
+  }, [userStats, searchQuery, statusFilter]);
 
   const filteredTimeOffRequests = useMemo(() => {
     const query = searchQuery.toLowerCase().trim();
@@ -527,6 +540,54 @@ export default function ManagerView({ currentUser, isMobileView = false }: Manag
             </span>
           </div>
 
+          {/* Live Dashboard Filters */}
+          <div className="flex flex-wrap items-center gap-2 bg-card-bg/40 p-2.5 rounded-2xl border border-main-border/30">
+            <span className="text-[11px] text-muted-text font-mono mr-2 pl-1">Status Filter:</span>
+            <button
+              onClick={() => setStatusFilter('all')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-all duration-150 ${
+                statusFilter === 'all'
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'bg-app-bg text-muted-text hover:text-main-text border border-main-border hover:bg-main-border/10'
+              }`}
+            >
+              All Employees ({userStats.length})
+            </button>
+            <button
+              onClick={() => setStatusFilter('active')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-all duration-150 flex items-center gap-1.5 ${
+                statusFilter === 'active'
+                  ? 'bg-emerald-600 text-white shadow-md'
+                  : 'bg-app-bg text-emerald-500 hover:text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/5'
+              }`}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+              Clocked In ({userStats.filter(u => u.isLive && !u.activeSession?.isOnBreak).length})
+            </button>
+            <button
+              onClick={() => setStatusFilter('break')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-all duration-150 flex items-center gap-1.5 ${
+                statusFilter === 'break'
+                  ? 'bg-amber-600 text-white shadow-md'
+                  : 'bg-app-bg text-amber-500 hover:text-amber-400 border border-amber-500/20 hover:bg-amber-500/5'
+              }`}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+              On Break ({userStats.filter(u => u.isLive && u.activeSession?.isOnBreak).length})
+            </button>
+            <button
+              onClick={() => setStatusFilter('offline')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-all duration-150 flex items-center gap-1.5 ${
+                statusFilter === 'offline'
+                  ? 'bg-slate-700 text-white shadow-md'
+                  : 'bg-app-bg text-muted-text hover:text-main-text border border-main-border hover:bg-main-border/10'
+              }`}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
+              Offline ({userStats.filter(u => !u.isLive).length})
+            </button>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredStats.map((user) => {
               const active = user.activeSession;
@@ -638,8 +699,12 @@ export default function ManagerView({ currentUser, isMobileView = false }: Manag
             {filteredStats.length === 0 && (
               <div className="col-span-full bg-card-bg border border-main-border rounded-2xl p-8 text-center text-muted-text">
                 <Search className="h-8 w-8 text-muted-text/40 mx-auto mb-2" />
-                <p className="text-xs font-semibold">No active team members matched "{searchQuery}"</p>
-                <p className="text-[10px] mt-1">Try simulating a mock team or adjusting your filters.</p>
+                <p className="text-xs font-semibold">
+                  No accounts found
+                  {statusFilter !== 'all' && ` with status "${statusFilter}"`}
+                  {searchQuery && ` matching "${searchQuery}"`}
+                </p>
+                <p className="text-[10px] mt-1">Try simulating some mock employee accounts or adjusting your filter selection.</p>
               </div>
             )}
           </div>
