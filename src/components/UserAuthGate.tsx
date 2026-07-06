@@ -15,8 +15,9 @@ interface UserAuthGateProps {
 
 export default function UserAuthGate({ onAuthSuccess, isMobileView = false }: UserAuthGateProps) {
   const [isLogin, setIsLogin] = useState(true);
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [username, setUsername] = useState('');
+  const [loginInput, setLoginInput] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [existingUsers, setExistingUsers] = useState<UserAccount[]>([]);
@@ -49,32 +50,41 @@ export default function UserAuthGate({ onAuthSuccess, isMobileView = false }: Us
     e.preventDefault();
     setError(null);
 
-    const fName = firstName.trim();
-    const lName = lastName.trim();
     const pwd = password.trim();
 
-    if (!fName || !lName) {
-      setError('Please fill in both First Name and Last Name.');
-      return;
-    }
-
-    if (!isLogin && !pwd) {
-      setError('Please choose a password for registration.');
-      return;
-    }
-
     if (isLogin) {
-      const success = loginUser(fName, lName, pwd);
+      const targetLogin = loginInput.trim();
+      if (!targetLogin) {
+        setError('Please enter your Username or Full Name.');
+        return;
+      }
+      const success = loginUser(targetLogin, pwd);
       if (success) {
         const user = getCurrentUser();
         if (user) {
           onAuthSuccess(user);
         }
       } else {
-        setError(`Incorrect password, or no account found under "${fName} ${lName}".`);
+        setError(`Incorrect password, or no account found under "${targetLogin}".`);
       }
     } else {
-      const success = registerUser(fName, lName, pwd);
+      const name = fullName.trim();
+      const uName = username.trim().toLowerCase().replace(/[^a-z0-9_.-]/g, '');
+      
+      if (!name) {
+        setError('Please enter your Full Name.');
+        return;
+      }
+      if (!uName) {
+        setError('Please choose a valid Username (alphanumeric, underscores, dots, hyphens).');
+        return;
+      }
+      if (!pwd) {
+        setError('Please choose a password for registration.');
+        return;
+      }
+      
+      const success = registerUser(name, uName, pwd);
 
       if (success) {
         const user = getCurrentUser();
@@ -82,7 +92,7 @@ export default function UserAuthGate({ onAuthSuccess, isMobileView = false }: Us
           onAuthSuccess(user);
         }
       } else {
-        setError(`An account with the name "${fName} ${lName}" already exists.`);
+        setError(`An account with the username "@${uName}" already exists.`);
       }
     }
   };
@@ -136,10 +146,10 @@ export default function UserAuthGate({ onAuthSuccess, isMobileView = false }: Us
         </AnimatePresence>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
+          {isLogin ? (
             <div>
               <label className="block text-[11px] font-semibold text-muted-text uppercase tracking-wider mb-1.5 font-mono">
-                First Name
+                Username or Full Name
               </label>
               <div className="relative">
                 <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-muted-text">
@@ -147,34 +157,55 @@ export default function UserAuthGate({ onAuthSuccess, isMobileView = false }: Us
                 </span>
                 <input
                   type="text"
-                  value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
-                  placeholder="John"
+                  value={loginInput}
+                  onChange={(e) => setLoginInput(e.target.value)}
+                  placeholder="e.g. derek_vriens or John Doe"
                   className="w-full rounded-xl border border-main-border bg-input-bg pl-9 pr-3 py-2 text-sm text-main-text placeholder-muted-text/60 focus:border-blue-500/50 focus:outline-none transition-colors"
                   required
                 />
               </div>
             </div>
+          ) : (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-[11px] font-semibold text-muted-text uppercase tracking-wider mb-1.5 font-mono">
+                  Full Name
+                </label>
+                <div className="relative">
+                  <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-muted-text">
+                    <User className="h-4 w-4" />
+                  </span>
+                  <input
+                    type="text"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="John Doe"
+                    className="w-full rounded-xl border border-main-border bg-input-bg pl-9 pr-3 py-2 text-sm text-main-text placeholder-muted-text/60 focus:border-blue-500/50 focus:outline-none transition-colors"
+                    required
+                  />
+                </div>
+              </div>
 
-            <div>
-              <label className="block text-[11px] font-semibold text-muted-text uppercase tracking-wider mb-1.5 font-mono">
-                Last Name
-              </label>
-              <div className="relative">
-                <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-muted-text">
-                  <UserPlus className="h-4 w-4" />
-                </span>
-                <input
-                  type="text"
-                  value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
-                  placeholder="Doe"
-                  className="w-full rounded-xl border border-main-border bg-input-bg pl-9 pr-3 py-2 text-sm text-main-text placeholder-muted-text/60 focus:border-blue-500/50 focus:outline-none transition-colors"
-                  required
-                />
+              <div>
+                <label className="block text-[11px] font-semibold text-muted-text uppercase tracking-wider mb-1.5 font-mono">
+                  Username
+                </label>
+                <div className="relative">
+                  <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-muted-text">
+                    <UserPlus className="h-4 w-4" />
+                  </span>
+                  <input
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="johndoe"
+                    className="w-full rounded-xl border border-main-border bg-input-bg pl-9 pr-3 py-2 text-sm text-main-text placeholder-muted-text/60 focus:border-blue-500/50 focus:outline-none transition-colors font-mono"
+                    required
+                  />
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           <div>
             <label className="block text-[11px] font-semibold text-muted-text uppercase tracking-wider mb-1.5 font-mono">
@@ -226,8 +257,7 @@ export default function UserAuthGate({ onAuthSuccess, isMobileView = false }: Us
                 <button
                   key={user.username}
                   onClick={() => {
-                    setFirstName(user.firstName || '');
-                    setLastName(user.lastName || '');
+                    setLoginInput(user.username);
                     setPassword(user.password || '');
                     setIsLogin(true);
                   }}

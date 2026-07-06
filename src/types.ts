@@ -71,3 +71,16 @@ export interface AppSettings {
   privacyMode: boolean; // hide earnings on simple screens
   hourlyRateDefault: number;
 }
+
+export interface FutureShift {
+  id: string;
+  username: string;
+  fullName: string;
+  date: string; // YYYY-MM-DD
+  startTime: string; // HH:MM
+  endTime: string; // HH:MM
+  project: string;
+  notes?: string;
+  createdAt: string;
+}
+

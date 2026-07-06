@@ -47,8 +47,7 @@ const PRESET_AVATARS = [
 
 export default function AccountView({ currentUser, onUpdateUser, onLogout, isMobileView = false }: AccountViewProps) {
   // Local editable form states
-  const [firstName, setFirstName] = useState(currentUser.firstName || '');
-  const [lastName, setLastName] = useState(currentUser.lastName || '');
+  const [fullName, setFullName] = useState(currentUser.fullName || '');
   const [email, setEmail] = useState(currentUser.email || '');
   const [phone, setPhone] = useState(currentUser.phone || '');
   const [department, setDepartment] = useState(currentUser.department || '');
@@ -91,8 +90,7 @@ export default function AccountView({ currentUser, onUpdateUser, onLogout, isMob
     e.preventDefault();
     
     const updated = updateUserAccount({
-      firstName,
-      lastName,
+      fullName,
       email,
       phone,
       department,
@@ -285,11 +283,11 @@ export default function AccountView({ currentUser, onUpdateUser, onLogout, isMob
               <p className="text-xs text-muted-text mt-1">Configure and edit your identity, system information, and contract parameters.</p>
             </div>
 
-            {/* Row 1: Names */}
+            {/* Row 1: Name & Username */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-[10px] font-semibold text-muted-text uppercase tracking-wider mb-1.5 font-mono">
-                  First Name <span className="text-red-500">*</span>
+                  Full Name <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-muted-text/70">
@@ -297,8 +295,8 @@ export default function AccountView({ currentUser, onUpdateUser, onLogout, isMob
                   </span>
                   <input
                     type="text"
-                    value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
                     className="w-full rounded-xl border border-main-border bg-input-bg pl-10 pr-4 py-2.5 text-sm text-main-text placeholder-muted-text/40 focus:border-blue-500/40 focus:outline-none transition-colors"
                     required
                   />
@@ -307,18 +305,17 @@ export default function AccountView({ currentUser, onUpdateUser, onLogout, isMob
 
               <div>
                 <label className="block text-[10px] font-semibold text-muted-text uppercase tracking-wider mb-1.5 font-mono">
-                  Last Name <span className="text-red-500">*</span>
+                  Username
                 </label>
                 <div className="relative">
-                  <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-muted-text/70">
+                  <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-muted-text/50">
                     <User className="h-4 w-4" />
                   </span>
                   <input
                     type="text"
-                    value={lastName}
-                    onChange={(e) => setLastName(e.target.value)}
-                    className="w-full rounded-xl border border-main-border bg-input-bg pl-10 pr-4 py-2.5 text-sm text-main-text placeholder-muted-text/40 focus:border-blue-500/40 focus:outline-none transition-colors"
-                    required
+                    value={`@${currentUser.username}`}
+                    disabled
+                    className="w-full rounded-xl border border-main-border bg-input-bg/50 pl-10 pr-4 py-2.5 text-sm text-muted-text/80 cursor-not-allowed font-mono focus:outline-none"
                   />
                 </div>
               </div>

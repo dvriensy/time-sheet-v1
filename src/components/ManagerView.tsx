@@ -9,7 +9,7 @@ import {
   Users, Radio, Clock, MapPin, Briefcase, DollarSign, Search, 
   Activity, Coffee, ChevronDown, ChevronRight, CheckCircle2, 
   PlusCircle, ShieldAlert, Landmark, HelpCircle, ArrowRight, User, Trash2,
-  CalendarDays, Check, X, AlertTriangle, Bell, Lock
+  CalendarDays, Check, X, AlertTriangle, Bell, Lock, Edit
 } from 'lucide-react';
 import { 
   getAllUsers, 
@@ -20,11 +20,15 @@ import {
   updateActiveSession,
   UserAccount,
   deleteUserAccount,
+  managerUpdateUserAccount,
   getTimeOffRequests,
   respondToTimeOffRequest,
-  TimeOffRequest
+  TimeOffRequest,
+  getFutureShifts,
+  addFutureShift,
+  deleteFutureShift
 } from '../utils/storage';
-import { TimesheetEntry } from '../types';
+import { TimesheetEntry, FutureShift } from '../types';
 import TimeOffCalendar from './TimeOffCalendar';
 
 interface ManagerViewProps {
@@ -34,8 +38,8 @@ interface ManagerViewProps {
 }
 
 export default function ManagerView({ currentUser, isMobileView = false, onLoginAsUser }: ManagerViewProps) {
-  // Tabs: 'live', 'history', or 'timeoff'
-  const [managerTab, setManagerTab] = useState<'live' | 'history' | 'timeoff'>('live');
+  // Tabs: 'live', 'history', 'timeoff', or 'schedule'
+  const [managerTab, setManagerTab] = useState<'live' | 'history' | 'timeoff' | 'schedule'>('live');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'break' | 'offline'>('all');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -51,8 +55,41 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [confirmDeleteUsername, setConfirmDeleteUsername] = useState<string | null>(null);
 
+  // State for Editing a User
+  const [editingUser, setEditingUser] = useState<UserAccount | null>(null);
+  const [editFirstName, setEditFirstName] = useState('');
+  const [editLastName, setEditLastName] = useState('');
+  const [editPassword, setEditPassword] = useState('');
+  const [editHourlyRate, setEditHourlyRate] = useState<number>(45);
+  const [editDepartment, setEditDepartment] = useState('');
+
   // Dynamic poll for live sessions
   const [liveSessions, setLiveSessions] = useState<Record<string, ActiveSession>>({});
+
+  // Scheduler state variables
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  });
+  const [futureShiftsList, setFutureShiftsList] = useState<FutureShift[]>([]);
+  const [assignUsername, setAssignUsername] = useState('');
+  const [assignProject, setAssignProject] = useState('');
+  const [assignStartTime, setAssignStartTime] = useState('09:00');
+  const [assignEndTime, setAssignEndTime] = useState('17:00');
+  const [assignNotes, setAssignNotes] = useState('');
+
+  const refreshFutureShifts = () => {
+    setFutureShiftsList(getFutureShifts());
+  };
+
+  const [allEntries, setAllEntries] = useState<TimesheetEntry[]>([]);
+  const refreshTimesheets = () => {
+    setAllEntries(getTimesheetsAllRaw());
+  };
   
   // Real-time user accounts and system notifications
   const [allUsers, setAllUsers] = useState<UserAccount[]>([]);
@@ -98,11 +135,15 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
     refreshUsersList();
     refreshLiveSessions();
     refreshTimeOffRequests();
+    refreshFutureShifts();
+    refreshTimesheets();
     
     const handleSync = () => {
       refreshUsersList();
       refreshLiveSessions();
       refreshTimeOffRequests();
+      refreshFutureShifts();
+      refreshTimesheets();
     };
     window.addEventListener('storage-sync', handleSync);
     
@@ -110,6 +151,8 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
       refreshUsersList();
       refreshLiveSessions();
       refreshTimeOffRequests();
+      refreshFutureShifts();
+      refreshTimesheets();
     }, 5000); // refresh live status, timeoff requests, and new users every 5 seconds
     
     return () => {
@@ -130,10 +173,91 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
     }
   };
 
-  const handleDeleteUser = (username: string, fullName: string) => {
+  // Month controls for shift scheduler
+  const handlePrevMonth = () => {
+    setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+  };
+  
+  const handleNextMonth = () => {
+    setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
+  };
+
+  const currentYear = currentDate.getFullYear();
+  const currentMonth = currentDate.getMonth(); // 0-11
+  const currentMonthName = currentDate.toLocaleString('default', { month: 'long' });
+
+  // Compute days for calendar
+  const calendarDays = useMemo(() => {
+    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+    const firstDayIndex = new Date(currentYear, currentMonth, 1).getDay(); // 0-6 (Sun-Sat)
+    
+    const days: { dayNum: number; dateStr: string; isCurrentMonth: boolean }[] = [];
+    
+    // Previous month padding days
+    const prevMonthDays = new Date(currentYear, currentMonth, 0).getDate();
+    for (let i = firstDayIndex - 1; i >= 0; i--) {
+      const dNum = prevMonthDays - i;
+      const mNum = currentMonth === 0 ? 12 : currentMonth;
+      const yNum = currentMonth === 0 ? currentYear - 1 : currentYear;
+      const dateStr = `${yNum}-${String(mNum).padStart(2, '0')}-${String(dNum).padStart(2, '0')}`;
+      days.push({ dayNum: dNum, dateStr, isCurrentMonth: false });
+    }
+    
+    // Current month days
+    for (let dNum = 1; dNum <= daysInMonth; dNum++) {
+      const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(dNum).padStart(2, '0')}`;
+      days.push({ dayNum: dNum, dateStr, isCurrentMonth: true });
+    }
+    
+    // Next month padding days to round up grid to multiple of 7
+    const remaining = 42 - days.length;
+    for (let dNum = 1; dNum <= remaining; dNum++) {
+      const mNum = currentMonth === 11 ? 1 : currentMonth + 2;
+      const yNum = currentMonth === 11 ? currentYear + 1 : currentYear;
+      const dateStr = `${yNum}-${String(mNum).padStart(2, '0')}-${String(dNum).padStart(2, '0')}`;
+      days.push({ dayNum: dNum, dateStr, isCurrentMonth: false });
+    }
+    
+    return days;
+  }, [currentYear, currentMonth]);
+
+  const handleAssignShift = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!assignUsername || !assignProject) return;
+    
+    const newShift = addFutureShift(
+      assignUsername,
+      selectedDate,
+      assignStartTime,
+      assignEndTime,
+      assignProject,
+      assignNotes
+    );
+    
+    if (newShift) {
+      setSuccessMessage(`Assigned future shift to ${newShift.fullName} on ${selectedDate}`);
+      setAssignUsername('');
+      setAssignProject('');
+      setAssignNotes('');
+      refreshFutureShifts();
+      setTimeout(() => setSuccessMessage(null), 4000);
+    }
+  };
+
+  const handleDeleteShift = (id: string) => {
+    const success = deleteFutureShift(id);
+    if (success) {
+      setSuccessMessage(`Successfully deleted scheduled shift.`);
+      refreshFutureShifts();
+      setTimeout(() => setSuccessMessage(null), 4000);
+    }
+  };
+
+  const handleDeleteUser = (username: string, fullName?: string) => {
+    const resolvedName = fullName || allUsers.find(u => u.username === username)?.fullName || username;
     const success = deleteUserAccount(username);
     if (success) {
-      setSuccessMessage(`Successfully deleted account "${fullName}" and cleared all logs.`);
+      setSuccessMessage(`Successfully deleted account "${resolvedName}" and cleared all logs.`);
       setConfirmDeleteUsername(null);
       
       // Keep seen set synchronized
@@ -142,14 +266,14 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
       setRefreshTrigger(prev => prev + 1);
       setTimeout(() => setSuccessMessage(null), 4000);
     } else {
-      setSuccessMessage(`Error: Unable to delete account "${fullName}".`);
+      setSuccessMessage(`Error: Unable to delete account "${resolvedName}".`);
       setConfirmDeleteUsername(null);
       setTimeout(() => setSuccessMessage(null), 4000);
     }
   };
 
   // Retrieve raw data
-  const allEntries = useMemo(() => getTimesheetsAllRaw(), [successMessage, refreshTrigger]);
+  // allEntries is now managed as reactive live-updating state to eliminate stats lag
 
   const toggleUserExpanded = (username: string) => {
     setExpandedUsers(prev => ({
@@ -285,7 +409,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
     const username = `${fName.toLowerCase()}_${lName.toLowerCase()}`;
     
     // Register without hijacking current logged-in manager session
-    const success = registerUser(fName, lName, '123456', rate, false);
+    const success = registerUser(`${fName} ${lName}`, username, '123456', rate, false);
     if (success) {
       // Set extra fields on user account
       const usersRaw = localStorage.getItem('timesheets_tracker_users_list');
@@ -370,6 +494,34 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
     refreshTimeOffRequests();
     setSuccessMessage(`Simulated new pending time-off request for ${randUser.fullName}.`);
     setTimeout(() => setSuccessMessage(null), 4000);
+  };
+
+  const handleStartEditing = (user: UserAccount) => {
+    setEditingUser(user);
+    setEditFirstName(user.firstName || '');
+    setEditLastName(user.lastName || '');
+    setEditPassword(user.password || '123456');
+    setEditHourlyRate(user.hourlyRate || 45);
+    setEditDepartment(user.department || 'General');
+  };
+
+  const handleSaveChanges = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
+    const updated = managerUpdateUserAccount(editingUser.username, {
+      firstName: editFirstName.trim(),
+      lastName: editLastName.trim(),
+      password: editPassword.trim(),
+      hourlyRate: Number(editHourlyRate),
+      department: editDepartment.trim()
+    });
+    
+    if (updated) {
+      setSuccessMessage(`Successfully updated profile for ${updated.fullName}.`);
+      setEditingUser(null);
+      refreshUsersList();
+      setTimeout(() => setSuccessMessage(null), 4000);
+    }
   };
 
 
@@ -487,7 +639,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
       <div className="bg-card-bg border border-main-border rounded-2xl p-4 md:p-5 shadow-xl flex flex-col md:flex-row items-center justify-between gap-4">
         
         {/* Toggle between Live Monitor and Complete Ledger */}
-        <div className="flex bg-app-bg p-1 rounded-xl border border-main-border/80 w-full md:w-auto shrink-0">
+        <div className="flex bg-app-bg p-1 rounded-xl border border-main-border/80 w-full md:w-auto shrink-0 gap-1 overflow-x-auto">
           <button
             onClick={() => setManagerTab('live')}
             className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
@@ -525,6 +677,17 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                 {timeOffList.filter(r => r.status === 'pending').length}
               </span>
             )}
+          </button>
+          <button
+            onClick={() => setManagerTab('schedule')}
+            className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              managerTab === 'schedule' 
+                ? 'bg-blue-600 text-white shadow-sm' 
+                : 'text-muted-text hover:text-main-text'
+            }`}
+          >
+            <CalendarDays className="h-3.5 w-3.5" />
+            <span>Shift Scheduler</span>
           </button>
         </div>
 
@@ -742,6 +905,24 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                         </button>
                       )}
                     </div>
+
+                    <div className="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-main-border/10">
+                      <button
+                        onClick={() => handleStartEditing(user)}
+                        className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-600 text-amber-500 hover:text-white border border-amber-500/20 hover:border-amber-600 text-[11px] font-bold transition cursor-pointer"
+                      >
+                        <Edit className="h-3 w-3" />
+                        <span>Edit Account</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleDeleteUser(user.username)}
+                        className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 rounded-xl bg-red-500/10 hover:bg-red-600 text-red-500 hover:text-white border border-red-500/20 hover:border-red-600 text-[11px] font-bold transition cursor-pointer"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                        <span>Delete</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               );
@@ -907,42 +1088,56 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                             <div className="pt-4 border-t border-main-border/30 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-red-500/[0.02] p-4 rounded-xl border border-red-500/10 mt-2">
                               <div className="space-y-0.5 text-left">
                                 <span className="text-xs font-bold text-red-500 uppercase tracking-wider font-mono">Administrative Control</span>
-                                <p className="text-[10px] text-muted-text">Permanently delete this account, active sessions, and associated ledger entries.</p>
+                                <p className="text-[10px] text-muted-text">Modify account permissions, pay details, or permanently delete this contractor.</p>
                               </div>
-                              {confirmDeleteUsername === user.username ? (
-                                <div className="flex items-center gap-2">
-                                  <span className="text-[11px] font-mono text-red-400 font-medium">Are you sure?</span>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleDeleteUser(user.username, user.fullName);
-                                    }}
-                                    className="bg-red-600 hover:bg-red-700 text-white font-bold text-[11px] px-3 py-1.5 rounded-lg cursor-pointer transition"
-                                  >
-                                    Yes, Delete
-                                  </button>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setConfirmDeleteUsername(null);
-                                    }}
-                                    className="bg-app-bg hover:bg-main-border/30 border border-main-border text-muted-text font-bold text-[11px] px-3 py-1.5 rounded-lg cursor-pointer transition"
-                                  >
-                                    Cancel
-                                  </button>
-                                </div>
-                              ) : (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setConfirmDeleteUsername(user.username);
-                                  }}
-                                  className="flex items-center gap-1 bg-red-950/40 hover:bg-red-900/30 text-red-400 hover:text-red-300 border border-red-900/20 px-3 py-1.5 rounded-lg text-[11px] font-bold cursor-pointer transition"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                  <span>Delete User Account</span>
-                                </button>
-                              )}
+                              <div className="flex items-center gap-2">
+                                {confirmDeleteUsername === user.username ? (
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[11px] font-mono text-red-400 font-medium">Are you sure?</span>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleDeleteUser(user.username);
+                                      }}
+                                      className="bg-red-600 hover:bg-red-700 text-white font-bold text-[11px] px-3 py-1.5 rounded-lg cursor-pointer transition"
+                                    >
+                                      Yes, Delete
+                                    </button>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setConfirmDeleteUsername(null);
+                                      }}
+                                      className="bg-app-bg hover:bg-main-border/30 border border-main-border text-muted-text font-bold text-[11px] px-3 py-1.5 rounded-lg cursor-pointer transition"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleStartEditing(user);
+                                      }}
+                                      className="flex items-center gap-1 bg-amber-500/10 hover:bg-amber-600 text-amber-500 hover:text-white border border-amber-500/20 hover:border-amber-600 px-3 py-1.5 rounded-lg text-[11px] font-bold cursor-pointer transition"
+                                    >
+                                      <Edit className="h-3.5 w-3.5" />
+                                      <span>Edit Account</span>
+                                    </button>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setConfirmDeleteUsername(user.username);
+                                      }}
+                                      className="flex items-center gap-1 bg-red-950/40 hover:bg-red-900/30 text-red-400 hover:text-red-300 border border-red-900/20 px-3 py-1.5 rounded-lg text-[11px] font-bold cursor-pointer transition"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                      <span>Delete Account</span>
+                                    </button>
+                                  </>
+                                )}
+                              </div>
                             </div>
                           )}
 
@@ -1157,6 +1352,249 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
 
       )}
 
+      {managerTab === 'schedule' && (
+        <div className="space-y-6">
+          <div className="bg-card-bg border border-main-border rounded-2xl p-5 shadow-xl">
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-6 pb-4 border-b border-main-border/40">
+              <div className="text-left">
+                <h2 className="text-lg font-bold text-main-text uppercase tracking-tight">Shift Scheduler Calendar</h2>
+                <p className="text-xs text-muted-text">Assign, view, and organize future shifts for your team members</p>
+              </div>
+              
+              {/* Month selector */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handlePrevMonth()}
+                  className="p-2 border border-main-border bg-app-bg text-main-text rounded-xl hover:bg-main-border/30 transition cursor-pointer"
+                  type="button"
+                >
+                  <ChevronDown className="h-4 w-4 rotate-90" />
+                </button>
+                <span className="text-sm font-bold text-main-text min-w-[140px] text-center font-mono uppercase">
+                  {currentMonthName} {currentYear}
+                </span>
+                <button
+                  onClick={() => handleNextMonth()}
+                  className="p-2 border border-main-border bg-app-bg text-main-text rounded-xl hover:bg-main-border/30 transition cursor-pointer"
+                  type="button"
+                >
+                  <ChevronDown className="h-4 w-4 -rotate-90" />
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Calendar Grid (left 2 cols) */}
+              <div className="lg:col-span-2 space-y-4">
+                <div className="grid grid-cols-7 gap-1 text-center font-bold text-xs text-muted-text uppercase font-mono tracking-wider">
+                  <span>Sun</span>
+                  <span>Mon</span>
+                  <span>Tue</span>
+                  <span>Wed</span>
+                  <span>Thu</span>
+                  <span>Fri</span>
+                  <span>Sat</span>
+                </div>
+
+                <div className="grid grid-cols-7 gap-1">
+                  {calendarDays.map((day, idx) => {
+                    const dateStr = day.dateStr;
+                    const isCurrentMonth = day.isCurrentMonth;
+                    const isSelected = selectedDate === dateStr;
+                    const dayShifts = futureShiftsList.filter(s => s.date === dateStr);
+                    
+                    return (
+                      <div
+                        key={idx}
+                        onClick={() => setSelectedDate(dateStr)}
+                        className={`min-h-[100px] border rounded-xl p-2 text-left flex flex-col justify-between transition cursor-pointer ${
+                          !isCurrentMonth 
+                            ? 'bg-app-bg/20 border-main-border/30 text-muted-text/30' 
+                            : isSelected
+                            ? 'bg-blue-600/10 border-blue-500 text-main-text'
+                            : 'bg-app-bg/50 border-main-border hover:bg-main-border/20 text-main-text'
+                        }`}
+                      >
+                        <span className={`text-xs font-bold font-mono ${isSelected ? 'text-blue-500 font-extrabold' : ''}`}>
+                          {day.dayNum}
+                        </span>
+                        
+                        {/* Day's scheduled shifts list */}
+                        <div className="mt-1 space-y-1 overflow-y-auto max-h-[70px] pr-0.5">
+                          {dayShifts.map(s => {
+                            const sName = s.fullName || 'Employee';
+                            const sProj = s.project || 'General Shift';
+                            const sStart = s.startTime || '09:00';
+                            return (
+                              <div
+                                key={s.id}
+                                className="text-[9px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 font-semibold truncate"
+                                title={`${sName}: ${sProj} (${sStart}-${s.endTime})`}
+                              >
+                                {sName.split(' ')[0]}: {sProj}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Day details & Assign form (right 1 col) */}
+              <div className="space-y-6">
+                {/* Form to Assign Shift */}
+                <div className="bg-app-bg/50 border border-main-border rounded-xl p-4 space-y-4 text-left">
+                  <div className="flex items-center gap-2 pb-2 border-b border-main-border/30">
+                    <PlusCircle className="h-4 w-4 text-blue-500" />
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-main-text font-mono">
+                      Assign Future Shift
+                    </h3>
+                  </div>
+
+                  <form onSubmit={handleAssignShift} className="space-y-3">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-muted-text uppercase font-mono">Selected Date</label>
+                      <input
+                        type="date"
+                        value={selectedDate}
+                        onChange={(e) => setSelectedDate(e.target.value)}
+                        className="w-full rounded-xl border border-main-border bg-input-bg p-2 text-xs text-main-text font-mono focus:border-blue-500/40 focus:outline-none"
+                        required
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-muted-text uppercase font-mono">Assign Employee</label>
+                      <select
+                        value={assignUsername}
+                        onChange={(e) => setAssignUsername(e.target.value)}
+                        className="w-full rounded-xl border border-main-border bg-input-bg p-2 text-xs text-main-text focus:border-blue-500/40 focus:outline-none"
+                        required
+                      >
+                        <option value="">-- Choose employee --</option>
+                        {allUsers.filter(u => u.role !== 'manager').map(u => (
+                          <option key={u.username} value={u.username}>
+                            {u.fullName || u.username} (@{u.username})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-muted-text uppercase font-mono">Project / Task Name</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Framer Layout development"
+                        value={assignProject}
+                        onChange={(e) => setAssignProject(e.target.value)}
+                        className="w-full rounded-xl border border-main-border bg-input-bg p-2 text-xs text-main-text focus:border-blue-500/40 focus:outline-none"
+                        required
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-muted-text uppercase font-mono">Start Time</label>
+                        <input
+                          type="time"
+                          value={assignStartTime}
+                          onChange={(e) => setAssignStartTime(e.target.value)}
+                          className="w-full rounded-xl border border-main-border bg-input-bg p-2 text-xs text-main-text font-mono focus:border-blue-500/40 focus:outline-none"
+                          required
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-muted-text uppercase font-mono">End Time</label>
+                        <input
+                          type="time"
+                          value={assignEndTime}
+                          onChange={(e) => setAssignEndTime(e.target.value)}
+                          className="w-full rounded-xl border border-main-border bg-input-bg p-2 text-xs text-main-text font-mono focus:border-blue-500/40 focus:outline-none"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-muted-text uppercase font-mono font-sans">Notes (Optional)</label>
+                      <textarea
+                        placeholder="Specific instructions or notes for the shift..."
+                        value={assignNotes}
+                        onChange={(e) => setAssignNotes(e.target.value)}
+                        rows={2}
+                        className="w-full rounded-xl border border-main-border bg-input-bg p-2 text-xs text-main-text focus:border-blue-500/40 focus:outline-none resize-none"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      className="w-full flex items-center justify-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 text-xs shadow-lg shadow-blue-500/15 cursor-pointer active:scale-[0.98] transition animate-fade-in"
+                    >
+                      <PlusCircle className="h-4 w-4" />
+                      <span>Assign Shift</span>
+                    </button>
+                  </form>
+                </div>
+
+                {/* Day Details Box */}
+                <div className="bg-app-bg/30 border border-main-border rounded-xl p-4 space-y-3 text-left">
+                  <div className="flex items-center justify-between pb-2 border-b border-main-border/30">
+                    <div className="flex items-center gap-2">
+                      <CalendarDays className="h-4 w-4 text-blue-500" />
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-main-text font-mono">
+                        Shifts for {selectedDate}
+                      </h3>
+                    </div>
+                    <span className="text-[10px] bg-blue-500/10 text-blue-400 font-bold px-2 py-0.5 rounded-full font-mono">
+                      {futureShiftsList.filter(s => s.date === selectedDate).length} Assigned
+                    </span>
+                  </div>
+
+                  <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                    {futureShiftsList.filter(s => s.date === selectedDate).map(s => {
+                      const sName = s.fullName || 'Employee';
+                      const sProj = s.project || 'General Shift';
+                      return (
+                        <div key={s.id} className="p-3 bg-card-bg border border-main-border rounded-xl flex items-start justify-between gap-2">
+                          <div className="space-y-1 min-w-0">
+                            <span className="text-xs font-bold text-main-text block truncate">{sName}</span>
+                            <span className="text-[10px] text-muted-text block font-mono">
+                              ⏰ {s.startTime} - {s.endTime}
+                            </span>
+                            <span className="text-[10px] text-blue-400 font-semibold block truncate">
+                              💼 {sProj}
+                            </span>
+                            {s.notes && <p className="text-[10px] text-muted-text italic truncate mt-0.5">"{s.notes}"</p>}
+                          </div>
+                          
+                          <button
+                            onClick={() => handleDeleteShift(s.id)}
+                            className="text-red-500/70 hover:text-red-500 p-1.5 rounded-lg hover:bg-red-500/10 transition cursor-pointer"
+                            title="Delete assigned shift"
+                            type="button"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      );
+                    })}
+
+                    {futureShiftsList.filter(s => s.date === selectedDate).length === 0 && (
+                      <div className="py-6 text-center text-muted-text/50">
+                        <p className="text-xs">No future shifts assigned for this date.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* FOOTER AUDIT NOTE */}
       <div className="bg-card-bg/50 border border-main-border/40 rounded-2xl p-4 flex items-start gap-3">
         <ShieldAlert className="h-5 w-5 text-blue-500 shrink-0 mt-0.5" />
@@ -1169,6 +1607,133 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
           </p>
         </div>
       </div>
+
+      {/* EDIT USER ACCOUNT MODAL */}
+      <AnimatePresence>
+        {editingUser && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 15, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.95, y: 15, opacity: 0 }}
+              className="bg-card-bg border border-main-border rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col text-left"
+            >
+              {/* Header */}
+              <div className="p-5 border-b border-main-border/40 flex items-center justify-between bg-app-bg/50">
+                <div className="flex items-center gap-2">
+                  <Edit className="h-4 w-4 text-blue-500" />
+                  <h3 className="text-sm font-bold text-main-text uppercase tracking-wide font-mono">
+                    Edit Account details
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingUser(null)}
+                  className="text-muted-text hover:text-main-text p-1.5 rounded-xl hover:bg-main-border/30 transition cursor-pointer"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Form */}
+              <form onSubmit={handleSaveChanges} className="p-5 space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-muted-text uppercase font-mono">First Name</label>
+                    <input
+                      type="text"
+                      required
+                      value={editFirstName}
+                      onChange={(e) => setEditFirstName(e.target.value)}
+                      className="w-full rounded-xl border border-main-border bg-input-bg p-2.5 text-xs text-main-text focus:border-blue-500/40 focus:outline-none transition-colors"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-muted-text uppercase font-mono">Last Name</label>
+                    <input
+                      type="text"
+                      required
+                      value={editLastName}
+                      onChange={(e) => setEditLastName(e.target.value)}
+                      className="w-full rounded-xl border border-main-border bg-input-bg p-2.5 text-xs text-main-text focus:border-blue-500/40 focus:outline-none transition-colors"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-muted-text uppercase font-mono">Username</label>
+                  <input
+                    type="text"
+                    disabled
+                    value={`@${editingUser.username}`}
+                    className="w-full rounded-xl border border-main-border/50 bg-main-border/10 p-2.5 text-xs text-muted-text cursor-not-allowed font-mono"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-muted-text uppercase font-mono">Password</label>
+                  <input
+                    type="text"
+                    required
+                    value={editPassword}
+                    onChange={(e) => setEditPassword(e.target.value)}
+                    className="w-full rounded-xl border border-main-border bg-input-bg p-2.5 text-xs text-main-text focus:border-blue-500/40 focus:outline-none transition-colors font-mono"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-muted-text uppercase font-mono">Hourly Pay Rate ($)</label>
+                    <input
+                      type="number"
+                      required
+                      min="1"
+                      value={editHourlyRate}
+                      onChange={(e) => setEditHourlyRate(Number(e.target.value))}
+                      className="w-full rounded-xl border border-main-border bg-input-bg p-2.5 text-xs text-main-text focus:border-blue-500/40 focus:outline-none transition-colors font-mono"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-muted-text uppercase font-mono">Department</label>
+                    <input
+                      type="text"
+                      required
+                      value={editDepartment}
+                      onChange={(e) => setEditDepartment(e.target.value)}
+                      className="w-full rounded-xl border border-main-border bg-input-bg p-2.5 text-xs text-main-text focus:border-blue-500/40 focus:outline-none transition-colors"
+                    />
+                  </div>
+                </div>
+
+                {/* Submit / Cancel Buttons */}
+                <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-main-border/30">
+                  <button
+                    type="button"
+                    onClick={() => setEditingUser(null)}
+                    className="bg-app-bg hover:bg-main-border/30 border border-main-border text-muted-text font-bold text-xs py-2 px-4 rounded-xl cursor-pointer transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2 px-5 rounded-xl cursor-pointer transition shadow-md flex items-center gap-1.5"
+                  >
+                    <Check className="h-3.5 w-3.5" />
+                    <span>Save Changes</span>
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
     </div>
   );

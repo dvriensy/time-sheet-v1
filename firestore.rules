@@ -1,8 +1,116 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    
+    // Global Safety Net (Pillar 1)
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
+
+    // Helper functions (Pillar 3)
+    function isValidId(id) {
+      return id is string && id.size() >= 2 && id.size() <= 128;
+    }
+
+    function incoming(req) {
+      return req.resource.data;
+    }
+
+    // --- Users Collection ---
+    match /users/{username} {
+      allow read: if true;
+      allow create: if isValidId(username) && isValidUser(incoming(request));
+      allow update: if isValidId(username) && isValidUser(incoming(request));
+      allow delete: if isValidId(username);
+    }
+
+    function isValidUser(data) {
+      return data.username is string && data.username.size() > 0 &&
+             data.firstName is string && data.firstName.size() >= 0 &&
+             data.lastName is string && data.lastName.size() >= 0 &&
+             data.fullName is string && data.fullName.size() > 0 &&
+             data.password is string && data.password.size() > 0 &&
+             (data.role == 'employee' || data.role == 'manager');
+    }
+
+    // --- Timesheets Collection ---
+    match /timesheets/{timesheetId} {
+      allow read: if true;
+      allow create: if isValidId(timesheetId) && isValidTimesheet(incoming(request));
+      allow update: if isValidId(timesheetId) && isValidTimesheet(incoming(request));
+      allow delete: if isValidId(timesheetId);
+    }
+
+    function isValidTimesheet(data) {
+      return data.id is string && data.id.size() > 0 &&
+             data.username is string && data.username.size() > 0 &&
+             data.date is string && data.date.size() == 10 &&
+             data.startTime is string && data.startTime.size() == 5 &&
+             data.endTime is string && data.endTime.size() == 5 &&
+             data.breakMinutes is int && data.breakMinutes >= 0 &&
+             data.project is string && data.project.size() >= 0 &&
+             data.locationName is string && data.locationName.size() >= 0 &&
+             data.totalHours is float || data.totalHours is int;
+    }
+
+    // --- Active Sessions Collection ---
+    match /activeSessions/{username} {
+      allow read: if true;
+      allow create, update: if isValidId(username) && isValidActiveSession(incoming(request));
+      allow delete: if isValidId(username);
+    }
+
+    function isValidActiveSession(data) {
+      return data.username is string && data.username.size() > 0 &&
+             data.fullName is string && data.fullName.size() > 0 &&
+             data.isClockedIn is bool &&
+             data.isOnBreak is bool &&
+             data.startTime is string &&
+             data.project is string &&
+             data.location is string &&
+             data.notes is string &&
+             data.lastActiveTimestamp is string;
+    }
+
+    // --- Time-Off Requests Collection ---
+    match /timeOffRequests/{requestId} {
+      allow read: if true;
+      allow create: if isValidId(requestId) && isValidTimeOffRequest(incoming(request));
+      allow update: if isValidId(requestId) && isValidTimeOffRequest(incoming(request));
+      allow delete: if isValidId(requestId);
+    }
+
+    function isValidTimeOffRequest(data) {
+      return data.id is string && data.id.size() > 0 &&
+             data.username is string && data.username.size() > 0 &&
+             data.fullName is string && data.fullName.size() > 0 &&
+             data.startDate is string && data.startDate.size() == 10 &&
+             data.endDate is string && data.endDate.size() == 10 &&
+             data.reason is string && data.reason.size() >= 0 &&
+             (data.status == 'pending' || data.status == 'approved' || data.status == 'denied') &&
+             data.createdAt is string &&
+             data.acknowledgedByRequester is bool;
+    }
+
+    // --- Future Shifts Collection ---
+    match /futureShifts/{shiftId} {
+      allow read: if true;
+      allow create: if isValidId(shiftId) && isValidFutureShift(incoming(request));
+      allow update: if isValidId(shiftId) && isValidFutureShift(incoming(request));
+      allow delete: if isValidId(shiftId);
+    }
+
+    function isValidFutureShift(data) {
+      return data.id is string && data.id.size() > 0 &&
+             data.username is string && data.username.size() > 0 &&
+             data.fullName is string && data.fullName.size() > 0 &&
+             data.date is string && data.date.size() == 10 &&
+             data.startTime is string && data.startTime.size() == 5 &&
+             data.endTime is string && data.endTime.size() == 5 &&
+             data.project is string && data.project.size() > 0 &&
+             data.notes is string &&
+             data.createdAt is string;
+    }
+
   }
 }

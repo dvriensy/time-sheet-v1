@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { TimesheetEntry, GeofenceSettings, ReminderSettings, SecurityAuditLog, SyncSettings, AppSettings } from '../types';
+import { TimesheetEntry, GeofenceSettings, ReminderSettings, SecurityAuditLog, SyncSettings, AppSettings, FutureShift } from '../types';
 import { DEFAULT_GEOFENCE, MOCK_TIMESHEETS, MOCK_SECURITY_LOGS } from '../data/mockData';
 import { db } from '../lib/firebase';
 import { doc, setDoc, getDoc, getDocs, collection, deleteDoc, updateDoc, onSnapshot } from 'firebase/firestore';
@@ -64,6 +64,7 @@ const KEY_REMINDERS = 'timesheets_tracker_reminders';
 const KEY_SECURITY_LOGS = 'timesheets_tracker_security_logs';
 const KEY_SYNC = 'timesheets_tracker_sync';
 const KEY_APP_SETTINGS = 'timesheets_tracker_app_settings';
+const KEY_FUTURE_SHIFTS = 'timesheets_tracker_future_shifts';
 
 // Background Firestore Sync Writers
 export async function syncUserToFirestore(user: UserAccount) {
@@ -129,6 +130,24 @@ export async function syncTimeOffRequestToFirestore(request: TimeOffRequest) {
   }
 }
 
+export async function syncFutureShiftToFirestore(shift: FutureShift) {
+  try {
+    await setDoc(doc(db, 'futureShifts', shift.id), shift);
+  } catch (err) {
+    console.error('Firestore syncFutureShiftToFirestore error:', err);
+    handleFirestoreError(err, OperationType.WRITE, `futureShifts/${shift.id}`);
+  }
+}
+
+export async function deleteFutureShiftFromFirestore(id: string) {
+  try {
+    await deleteDoc(doc(db, 'futureShifts', id));
+  } catch (err) {
+    console.error('Firestore deleteFutureShiftFromFirestore error:', err);
+    handleFirestoreError(err, OperationType.DELETE, `futureShifts/${id}`);
+  }
+}
+
 export async function initializeFirebaseSync(onSyncCallback?: () => void) {
   try {
     // 1. Sync Users
@@ -186,6 +205,21 @@ export async function initializeFirebaseSync(onSyncCallback?: () => void) {
       localStorage.setItem(KEY_TIME_OFF_REQUESTS, JSON.stringify(firestoreTimeOff));
     }
 
+    // 4.5 Sync Future Shifts
+    const futureShiftsSnap = await getDocs(collection(db, 'futureShifts'));
+    if (futureShiftsSnap.empty) {
+      const localFutureShifts = getFutureShifts();
+      for (const fs of localFutureShifts) {
+        await setDoc(doc(db, 'futureShifts', fs.id), fs);
+      }
+    } else {
+      const firestoreFutureShifts: FutureShift[] = [];
+      futureShiftsSnap.forEach(docSnap => {
+        firestoreFutureShifts.push(docSnap.data() as FutureShift);
+      });
+      localStorage.setItem(KEY_FUTURE_SHIFTS, JSON.stringify(firestoreFutureShifts));
+    }
+
     if (onSyncCallback) onSyncCallback();
 
     // 5. Setup Real-time Listeners
@@ -237,6 +271,18 @@ export async function initializeFirebaseSync(onSyncCallback?: () => void) {
       window.dispatchEvent(new Event('storage-sync'));
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'timeOffRequests');
+    });
+
+    onSnapshot(collection(db, 'futureShifts'), (snap) => {
+      const updatedShifts: FutureShift[] = [];
+      snap.forEach(docSnap => {
+        updatedShifts.push(docSnap.data() as FutureShift);
+      });
+      localStorage.setItem(KEY_FUTURE_SHIFTS, JSON.stringify(updatedShifts));
+      if (onSyncCallback) onSyncCallback();
+      window.dispatchEvent(new Event('storage-sync'));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'futureShifts');
     });
 
   } catch (err) {
@@ -321,8 +367,17 @@ export function updateUserAccount(updated: Partial<UserAccount>): UserAccount | 
   const updatedUser: UserAccount = {
     ...original,
     ...updated,
-    fullName: `${updated.firstName !== undefined ? updated.firstName : original.firstName} ${updated.lastName !== undefined ? updated.lastName : original.lastName}`.trim(),
   };
+
+  if (updated.fullName !== undefined) {
+    const trimmed = updated.fullName.trim();
+    updatedUser.fullName = trimmed;
+    const parts = trimmed.split(/\s+/);
+    updatedUser.firstName = parts[0] || trimmed;
+    updatedUser.lastName = parts.slice(1).join(' ') || '';
+  } else {
+    updatedUser.fullName = `${updated.firstName !== undefined ? updated.firstName : original.firstName} ${updated.lastName !== undefined ? updated.lastName : original.lastName}`.trim();
+  }
 
   users[index] = updatedUser;
   localStorage.setItem(KEY_USERS_LIST, JSON.stringify(users));
@@ -330,22 +385,53 @@ export function updateUserAccount(updated: Partial<UserAccount>): UserAccount | 
   return updatedUser;
 }
 
-export function registerUser(firstName: string, lastName: string, password?: string, hourlyRate?: number, autoLogin: boolean = true): boolean {
+export function managerUpdateUserAccount(username: string, updated: Partial<UserAccount>): UserAccount | null {
   const usersRaw = localStorage.getItem(KEY_USERS_LIST);
   const users: UserAccount[] = usersRaw ? JSON.parse(usersRaw) : [];
   
-  const username = `${firstName.trim().toLowerCase()}_${lastName.trim().toLowerCase()}`;
-  const exists = users.some(u => u.username === username);
+  const index = users.findIndex(u => u.username === username);
+  if (index === -1) return null;
+
+  const original = users[index];
+  
+  const updatedUser: UserAccount = {
+    ...original,
+    ...updated,
+  };
+  
+  if (updated.firstName !== undefined || updated.lastName !== undefined) {
+    const fName = updated.firstName !== undefined ? updated.firstName : original.firstName;
+    const lName = updated.lastName !== undefined ? updated.lastName : original.lastName;
+    updatedUser.fullName = `${fName} ${lName}`.trim();
+  }
+
+  users[index] = updatedUser;
+  localStorage.setItem(KEY_USERS_LIST, JSON.stringify(users));
+  syncUserToFirestore(updatedUser);
+  return updatedUser;
+}
+
+export function registerUser(fullName: string, username: string, password?: string, hourlyRate?: number, autoLogin: boolean = true): boolean {
+  const usersRaw = localStorage.getItem(KEY_USERS_LIST);
+  const users: UserAccount[] = usersRaw ? JSON.parse(usersRaw) : [];
+  
+  const targetUsername = username.trim().toLowerCase();
+  const exists = users.some(u => u.username === targetUsername);
   if (exists) return false;
   
+  const trimmedName = fullName.trim();
+  const nameParts = trimmedName.split(/\s+/);
+  const firstName = nameParts[0] || trimmedName;
+  const lastName = nameParts.slice(1).join(' ') || '';
+  
   const newUser: UserAccount = {
-    username,
+    username: targetUsername,
     password: password || '123456', // default if not specified
-    firstName: firstName.trim(),
-    lastName: lastName.trim(),
-    fullName: `${firstName.trim()} ${lastName.trim()}`,
+    firstName,
+    lastName,
+    fullName: trimmedName,
     hourlyRate: hourlyRate,
-    role: (username === 'derek_vriens' || `${firstName.trim()} ${lastName.trim()}`.toLowerCase() === 'derek vriens') ? 'manager' : 'employee'
+    role: (targetUsername === 'derek_vriens' || trimmedName.toLowerCase() === 'derek vriens') ? 'manager' : 'employee'
   };
   
   users.push(newUser);
@@ -353,11 +439,11 @@ export function registerUser(firstName: string, lastName: string, password?: str
   
   if (autoLogin) {
     // Set current user
-    localStorage.setItem(KEY_CURRENT_USER, username);
+    localStorage.setItem(KEY_CURRENT_USER, targetUsername);
   }
   
   // Seed initial data
-  seedInitialDataForUser(username, hourlyRate);
+  seedInitialDataForUser(targetUsername, hourlyRate);
   
   // Sync to Firestore
   syncUserToFirestore(newUser);
@@ -365,12 +451,15 @@ export function registerUser(firstName: string, lastName: string, password?: str
   return true;
 }
 
-export function loginUser(firstName: string, lastName: string, password?: string): boolean {
+export function loginUser(usernameOrName: string, password?: string): boolean {
   const usersRaw = localStorage.getItem(KEY_USERS_LIST);
   const users: UserAccount[] = usersRaw ? JSON.parse(usersRaw) : [];
   
-  const username = `${firstName.trim().toLowerCase()}_${lastName.trim().toLowerCase()}`;
-  const found = users.find(u => u.username === username);
+  const query = usernameOrName.trim().toLowerCase();
+  const found = users.find(u => 
+    u.username.toLowerCase() === query || 
+    u.fullName.toLowerCase() === query
+  );
   if (found) {
     // Let derek_vriens in easily, or any user if password matches, or if no password is set/supplied
     if (!found.password || !password || found.password === password) {
@@ -392,13 +481,28 @@ export function getCurrentUser(): UserAccount | null {
   
   // Dynamic fallback for firstName & lastName if missing from legacy account
   if (!found.firstName || !found.lastName) {
-    const parts = found.fullName.split(' ');
-    found.firstName = parts[0] || found.username;
+    const parts = (found.fullName || '').split(' ');
+    found.firstName = parts[0] || found.username || 'Employee';
     found.lastName = parts.slice(1).join(' ') || '';
+  }
+  
+  if (!found.fullName) {
+    found.fullName = `${found.firstName} ${found.lastName}`.trim() || found.username || 'Employee';
   }
   
   if (!found.role) {
     found.role = (found.username === 'derek_vriens' || found.fullName.toLowerCase() === 'derek vriens') ? 'manager' : 'employee';
+  }
+
+  // Strict crash protection fallbacks
+  if (found.hourlyRate === undefined || found.hourlyRate === null || isNaN(found.hourlyRate)) {
+    found.hourlyRate = 45;
+  }
+  if (!found.password) {
+    found.password = '123456';
+  }
+  if (!found.department) {
+    found.department = 'Operations';
   }
   
   return found;
@@ -406,7 +510,27 @@ export function getCurrentUser(): UserAccount | null {
 
 export function getAllUsers(): UserAccount[] {
   const usersRaw = localStorage.getItem(KEY_USERS_LIST);
-  return usersRaw ? JSON.parse(usersRaw) : [];
+  const users: UserAccount[] = usersRaw ? JSON.parse(usersRaw) : [];
+  return users.map(found => {
+    const parts = (found.fullName || '').split(' ');
+    const firstName = found.firstName || parts[0] || found.username || 'Employee';
+    const lastName = found.lastName || parts.slice(1).join(' ') || '';
+    const fullName = found.fullName || `${firstName} ${lastName}`.trim() || found.username || 'Employee';
+    const hourlyRate = (found.hourlyRate === undefined || found.hourlyRate === null || isNaN(found.hourlyRate)) ? 45 : found.hourlyRate;
+    const password = found.password || '123456';
+    const department = found.department || 'Operations';
+    const role = found.role || ((found.username === 'derek_vriens' || fullName.toLowerCase() === 'derek vriens') ? 'manager' : 'employee');
+    return {
+      ...found,
+      firstName,
+      lastName,
+      fullName,
+      hourlyRate,
+      password,
+      department,
+      role
+    };
+  });
 }
 
 export function logoutUser() {
@@ -944,6 +1068,49 @@ export function acknowledgeTimeOffResponse(id: string): boolean {
   requests[idx].acknowledgedByRequester = true;
   localStorage.setItem(KEY_TIME_OFF_REQUESTS, JSON.stringify(requests));
   syncTimeOffRequestToFirestore(requests[idx]);
+  return true;
+}
+
+export function getFutureShifts(): FutureShift[] {
+  const raw = localStorage.getItem(KEY_FUTURE_SHIFTS);
+  return raw ? JSON.parse(raw) : [];
+}
+
+export function addFutureShift(username: string, date: string, startTime: string, endTime: string, project: string, notes?: string): FutureShift | null {
+  const users = getAllUsers();
+  const foundUser = users.find(u => u.username === username);
+  const fullName = foundUser ? foundUser.fullName : username;
+
+  const shifts = getFutureShifts();
+  const newShift: FutureShift = {
+    id: 'fs_' + Math.random().toString(36).substr(2, 9),
+    username,
+    fullName,
+    date,
+    startTime,
+    endTime,
+    project,
+    notes: notes || '',
+    createdAt: new Date().toISOString()
+  };
+
+  shifts.push(newShift);
+  localStorage.setItem(KEY_FUTURE_SHIFTS, JSON.stringify(shifts));
+  syncFutureShiftToFirestore(newShift);
+  
+  window.dispatchEvent(new Event('storage-sync'));
+  return newShift;
+}
+
+export function deleteFutureShift(id: string): boolean {
+  const shifts = getFutureShifts();
+  const filtered = shifts.filter(s => s.id !== id);
+  if (shifts.length === filtered.length) return false;
+  
+  localStorage.setItem(KEY_FUTURE_SHIFTS, JSON.stringify(filtered));
+  deleteFutureShiftFromFirestore(id);
+  
+  window.dispatchEvent(new Event('storage-sync'));
   return true;
 }
 

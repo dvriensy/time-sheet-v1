@@ -80,6 +80,23 @@
         "createdAt": { "type": "string" }
       },
       "required": ["id", "username", "fullName", "type", "startDate", "endDate", "reason", "status", "createdAt"]
+    },
+    "FutureShift": {
+      "title": "FutureShift",
+      "description": "A scheduled future shift assigned to an employee by a manager.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "username": { "type": "string" },
+        "fullName": { "type": "string" },
+        "date": { "type": "string" },
+        "startTime": { "type": "string" },
+        "endTime": { "type": "string" },
+        "project": { "type": "string" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "username", "fullName", "date", "startTime", "endTime", "project", "createdAt"]
     }
   },
   "firestore": {
@@ -98,6 +115,10 @@
     "/timeOffRequests/{requestId}": {
       "schema": "TimeOffRequest",
       "description": "Submitted time-off requests pending review or processed."
+    },
+    "/futureShifts/{shiftId}": {
+      "schema": "FutureShift",
+      "description": "Assigned future employee shifts for the calendar view."
     }
   }
 }
