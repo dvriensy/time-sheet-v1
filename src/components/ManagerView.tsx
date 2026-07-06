@@ -160,8 +160,36 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
 
   // Compute stats per user (only employee accounts)
   const userStats = useMemo(() => {
+    // 1. Get all registered employee accounts
     const employees = allUsers.filter(u => u.role !== 'manager' && u.username !== 'derek_vriens' && u.username !== currentUser.username);
-    return employees.map(user => {
+    
+    // 2. Identify active sessions whose usernames are not currently in the employees list
+    const employeeUsernames = new Set(employees.map(u => u.username));
+    const extraEmployees: UserAccount[] = [];
+    
+    const sessionsList = Object.values(liveSessions) as ActiveSession[];
+    sessionsList.forEach((session) => {
+      if (
+        session.username !== 'derek_vriens' &&
+        session.username !== currentUser.username &&
+        !employeeUsernames.has(session.username)
+      ) {
+        extraEmployees.push({
+          username: session.username,
+          firstName: session.fullName.split(' ')[0] || session.username,
+          lastName: session.fullName.split(' ').slice(1).join(' ') || '',
+          fullName: session.fullName,
+          role: 'employee',
+          password: '123456',
+          department: 'Simulated'
+        });
+        employeeUsernames.add(session.username);
+      }
+    });
+
+    const fullEmployeeList = [...employees, ...extraEmployees];
+
+    return fullEmployeeList.map(user => {
       const entries = allEntries.filter(e => e.username === user.username);
       const totalHours = entries.reduce((sum, e) => sum + e.totalHours, 0);
       const hourlyRate = user.hourlyRate || 45;
@@ -198,9 +226,9 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
     if (!query) return list;
     return list.filter(u => {
       const matchesName = u.fullName.toLowerCase().includes(query) || u.username.toLowerCase().includes(query);
-      const matchesDepartment = u.department?.toLowerCase().includes(query);
-      const matchesActiveProject = u.activeSession?.project?.toLowerCase().includes(query);
-      const matchesActiveLocation = u.activeSession?.location?.toLowerCase().includes(query);
+      const matchesDepartment = u.department ? u.department.toLowerCase().includes(query) : false;
+      const matchesActiveProject = u.activeSession?.project ? u.activeSession.project.toLowerCase().includes(query) : false;
+      const matchesActiveLocation = u.activeSession?.location ? u.activeSession.location.toLowerCase().includes(query) : false;
       return matchesName || matchesDepartment || matchesActiveProject || matchesActiveLocation;
     });
   }, [userStats, searchQuery, statusFilter]);
