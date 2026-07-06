@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { User, UserPlus, Clock, ArrowRight, ShieldCheck, Sun, Moon } from 'lucide-react';
+import { User, UserPlus, Clock, ArrowRight, ShieldCheck, Sun, Moon, Lock } from 'lucide-react';
 import { registerUser, loginUser, getCurrentUser, UserAccount, getAllUsers } from '../utils/storage';
 
 interface UserAuthGateProps {
@@ -17,6 +17,7 @@ export default function UserAuthGate({ onAuthSuccess, isMobileView = false }: Us
   const [isLogin, setIsLogin] = useState(true);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [existingUsers, setExistingUsers] = useState<UserAccount[]>([]);
 
@@ -50,24 +51,30 @@ export default function UserAuthGate({ onAuthSuccess, isMobileView = false }: Us
 
     const fName = firstName.trim();
     const lName = lastName.trim();
+    const pwd = password.trim();
 
     if (!fName || !lName) {
       setError('Please fill in both First Name and Last Name.');
       return;
     }
 
+    if (!isLogin && !pwd) {
+      setError('Please choose a password for registration.');
+      return;
+    }
+
     if (isLogin) {
-      const success = loginUser(fName, lName);
+      const success = loginUser(fName, lName, pwd);
       if (success) {
         const user = getCurrentUser();
         if (user) {
           onAuthSuccess(user);
         }
       } else {
-        setError(`No account found under "${fName} ${lName}". Try switching to Register below.`);
+        setError(`Incorrect password, or no account found under "${fName} ${lName}".`);
       }
     } else {
-      const success = registerUser(fName, lName);
+      const success = registerUser(fName, lName, pwd);
 
       if (success) {
         const user = getCurrentUser();
@@ -129,40 +136,61 @@ export default function UserAuthGate({ onAuthSuccess, isMobileView = false }: Us
         </AnimatePresence>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-[11px] font-semibold text-muted-text uppercase tracking-wider mb-1.5 font-mono">
-              First Name
-            </label>
-            <div className="relative">
-              <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-muted-text">
-                <User className="h-4 w-4" />
-              </span>
-              <input
-                type="text"
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-                placeholder="e.g. John"
-                className="w-full rounded-xl border border-main-border bg-input-bg pl-10 pr-4 py-2.5 text-sm text-main-text placeholder-muted-text/60 focus:border-blue-500/50 focus:outline-none transition-colors"
-                required
-              />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] font-semibold text-muted-text uppercase tracking-wider mb-1.5 font-mono">
+                First Name
+              </label>
+              <div className="relative">
+                <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-muted-text">
+                  <User className="h-4 w-4" />
+                </span>
+                <input
+                  type="text"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  placeholder="John"
+                  className="w-full rounded-xl border border-main-border bg-input-bg pl-9 pr-3 py-2 text-sm text-main-text placeholder-muted-text/60 focus:border-blue-500/50 focus:outline-none transition-colors"
+                  required
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-muted-text uppercase tracking-wider mb-1.5 font-mono">
+                Last Name
+              </label>
+              <div className="relative">
+                <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-muted-text">
+                  <UserPlus className="h-4 w-4" />
+                </span>
+                <input
+                  type="text"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  placeholder="Doe"
+                  className="w-full rounded-xl border border-main-border bg-input-bg pl-9 pr-3 py-2 text-sm text-main-text placeholder-muted-text/60 focus:border-blue-500/50 focus:outline-none transition-colors"
+                  required
+                />
+              </div>
             </div>
           </div>
 
           <div>
             <label className="block text-[11px] font-semibold text-muted-text uppercase tracking-wider mb-1.5 font-mono">
-              Last Name
+              Password
             </label>
             <div className="relative">
               <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-muted-text">
-                <UserPlus className="h-4 w-4" />
+                <Lock className="h-4 w-4" />
               </span>
               <input
-                type="text"
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-                placeholder="e.g. Doe"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder={isLogin ? "••••••••" : "Choose a secure password"}
                 className="w-full rounded-xl border border-main-border bg-input-bg pl-10 pr-4 py-2.5 text-sm text-main-text placeholder-muted-text/60 focus:border-blue-500/50 focus:outline-none transition-colors"
-                required
+                required={!isLogin}
               />
             </div>
           </div>
@@ -200,6 +228,7 @@ export default function UserAuthGate({ onAuthSuccess, isMobileView = false }: Us
                   onClick={() => {
                     setFirstName(user.firstName || '');
                     setLastName(user.lastName || '');
+                    setPassword(user.password || '');
                     setIsLogin(true);
                   }}
                   className="flex items-center gap-2 p-2 rounded-xl bg-app-bg hover:bg-main-border/30 border border-main-border text-left transition text-xs font-semibold text-main-text group cursor-pointer"

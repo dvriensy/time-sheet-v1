@@ -287,6 +287,12 @@ export default function App() {
                 <ManagerView 
                   currentUser={currentUser}
                   isMobileView={isMobileView}
+                  onLoginAsUser={(user) => {
+                    localStorage.setItem('timesheets_tracker_current_user', user.username);
+                    setCurrentUser(user);
+                    setActiveTab('timesheets');
+                    handleRefreshAll();
+                  }}
                 />
               </motion.div>
             ) : (

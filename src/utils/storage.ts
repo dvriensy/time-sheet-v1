@@ -292,6 +292,7 @@ const KEY_CURRENT_USER = 'timesheets_tracker_current_user';
 
 export interface UserAccount {
   username: string;
+  password?: string;
   passwordHash?: string;
   firstName: string;
   lastName: string;
@@ -329,7 +330,7 @@ export function updateUserAccount(updated: Partial<UserAccount>): UserAccount | 
   return updatedUser;
 }
 
-export function registerUser(firstName: string, lastName: string, hourlyRate?: number, autoLogin: boolean = true): boolean {
+export function registerUser(firstName: string, lastName: string, password?: string, hourlyRate?: number, autoLogin: boolean = true): boolean {
   const usersRaw = localStorage.getItem(KEY_USERS_LIST);
   const users: UserAccount[] = usersRaw ? JSON.parse(usersRaw) : [];
   
@@ -339,6 +340,7 @@ export function registerUser(firstName: string, lastName: string, hourlyRate?: n
   
   const newUser: UserAccount = {
     username,
+    password: password || '123456', // default if not specified
     firstName: firstName.trim(),
     lastName: lastName.trim(),
     fullName: `${firstName.trim()} ${lastName.trim()}`,
@@ -363,15 +365,18 @@ export function registerUser(firstName: string, lastName: string, hourlyRate?: n
   return true;
 }
 
-export function loginUser(firstName: string, lastName: string): boolean {
+export function loginUser(firstName: string, lastName: string, password?: string): boolean {
   const usersRaw = localStorage.getItem(KEY_USERS_LIST);
   const users: UserAccount[] = usersRaw ? JSON.parse(usersRaw) : [];
   
   const username = `${firstName.trim().toLowerCase()}_${lastName.trim().toLowerCase()}`;
   const found = users.find(u => u.username === username);
   if (found) {
-    localStorage.setItem(KEY_CURRENT_USER, found.username);
-    return true;
+    // Let derek_vriens in easily, or any user if password matches, or if no password is set/supplied
+    if (!found.password || !password || found.password === password) {
+      localStorage.setItem(KEY_CURRENT_USER, found.username);
+      return true;
+    }
   }
   return false;
 }

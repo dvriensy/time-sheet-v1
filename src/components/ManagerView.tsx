@@ -9,7 +9,7 @@ import {
   Users, Radio, Clock, MapPin, Briefcase, DollarSign, Search, 
   Activity, Coffee, ChevronDown, ChevronRight, CheckCircle2, 
   PlusCircle, ShieldAlert, Landmark, HelpCircle, ArrowRight, User, Trash2,
-  CalendarDays, Check, X, AlertTriangle, Bell
+  CalendarDays, Check, X, AlertTriangle, Bell, Lock
 } from 'lucide-react';
 import { 
   getAllUsers, 
@@ -30,9 +30,10 @@ import TimeOffCalendar from './TimeOffCalendar';
 interface ManagerViewProps {
   currentUser: UserAccount;
   isMobileView?: boolean;
+  onLoginAsUser?: (user: UserAccount) => void;
 }
 
-export default function ManagerView({ currentUser, isMobileView = false }: ManagerViewProps) {
+export default function ManagerView({ currentUser, isMobileView = false, onLoginAsUser }: ManagerViewProps) {
   // Tabs: 'live', 'history', or 'timeoff'
   const [managerTab, setManagerTab] = useState<'live' | 'history' | 'timeoff'>('live');
   const [searchQuery, setSearchQuery] = useState('');
@@ -256,7 +257,7 @@ export default function ManagerView({ currentUser, isMobileView = false }: Manag
     const username = `${fName.toLowerCase()}_${lName.toLowerCase()}`;
     
     // Register without hijacking current logged-in manager session
-    const success = registerUser(fName, lName, rate, false);
+    const success = registerUser(fName, lName, '123456', rate, false);
     if (success) {
       // Set extra fields on user account
       const usersRaw = localStorage.getItem('timesheets_tracker_users_list');
@@ -686,12 +687,34 @@ export default function ManagerView({ currentUser, isMobileView = false }: Manag
                   </div>
 
                   {/* Estimated parameters */}
-                  {user.department && (
-                    <div className="border-t border-main-border/30 pt-3.5 mt-3.5 flex justify-between items-center text-xs font-mono">
-                      <span className="text-muted-text">{user.department}</span>
+                  <div className="border-t border-main-border/30 pt-3.5 mt-3.5 flex flex-col gap-2">
+                    <div className="flex justify-between items-center text-xs font-mono">
+                      <span className="text-muted-text">{user.department || 'General'}</span>
                       <span className="font-semibold text-main-text">${user.hourlyRate || 45}/hr</span>
                     </div>
-                  )}
+                    
+                    <div className="flex items-center justify-between gap-2 mt-1.5 pt-2 border-t border-main-border/20">
+                      <div className="flex items-center gap-1.5 text-[11px] font-mono bg-app-bg/60 border border-main-border/30 px-2.5 py-1 rounded-xl">
+                        <Lock className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                        <span className="text-muted-text">Pwd:</span>
+                        <span className="font-bold text-main-text select-all">{user.password || '123456'}</span>
+                      </div>
+                      
+                      {onLoginAsUser && (
+                        <button
+                          onClick={() => {
+                            if (window.confirm(`Are you sure you want to log in as ${user.fullName}?`)) {
+                              onLoginAsUser(user);
+                            }
+                          }}
+                          className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-blue-600/10 hover:bg-blue-600 text-blue-500 hover:text-white border border-blue-500/20 hover:border-blue-600 text-[11px] font-bold transition cursor-pointer"
+                        >
+                          <ArrowRight className="h-3 w-3" />
+                          <span>Log In As</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
               );
             })}
