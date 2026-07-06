@@ -31,7 +31,7 @@ export default function App() {
   }, []);
 
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(getCurrentUser());
-  const isManager = !!(currentUser && (currentUser.username === 'derek_vriens' || currentUser.fullName.toLowerCase() === 'derek vriens'));
+  const isManager = !!(currentUser && (currentUser.role === 'manager' || currentUser.username === 'derek_vriens' || currentUser.fullName.toLowerCase() === 'derek vriens' || currentUser.email?.toLowerCase() === 'dvriensy@gmail.com'));
   const [activeTab, setActiveTab] = useState<'timesheets' | 'account' | 'manager'>('timesheets');
   const [privacyMode, setPrivacyMode] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {

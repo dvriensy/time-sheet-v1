@@ -71,6 +71,7 @@ export interface UserAccount {
   email?: string;
   phone?: string;
   department?: string;
+  role?: 'employee' | 'manager';
 }
 
 export function updateUserAccount(updated: Partial<UserAccount>): UserAccount | null {
@@ -96,7 +97,7 @@ export function updateUserAccount(updated: Partial<UserAccount>): UserAccount | 
   return updatedUser;
 }
 
-export function registerUser(firstName: string, lastName: string, hourlyRate?: number): boolean {
+export function registerUser(firstName: string, lastName: string, hourlyRate?: number, autoLogin: boolean = true): boolean {
   const usersRaw = localStorage.getItem(KEY_USERS_LIST);
   const users: UserAccount[] = usersRaw ? JSON.parse(usersRaw) : [];
   
@@ -109,14 +110,17 @@ export function registerUser(firstName: string, lastName: string, hourlyRate?: n
     firstName: firstName.trim(),
     lastName: lastName.trim(),
     fullName: `${firstName.trim()} ${lastName.trim()}`,
-    hourlyRate: hourlyRate
+    hourlyRate: hourlyRate,
+    role: (username === 'derek_vriens' || `${firstName.trim()} ${lastName.trim()}`.toLowerCase() === 'derek vriens') ? 'manager' : 'employee'
   };
   
   users.push(newUser);
   localStorage.setItem(KEY_USERS_LIST, JSON.stringify(users));
   
-  // Set current user
-  localStorage.setItem(KEY_CURRENT_USER, username);
+  if (autoLogin) {
+    // Set current user
+    localStorage.setItem(KEY_CURRENT_USER, username);
+  }
   
   // Seed initial data
   seedInitialDataForUser(username, hourlyRate);
@@ -151,6 +155,10 @@ export function getCurrentUser(): UserAccount | null {
     const parts = found.fullName.split(' ');
     found.firstName = parts[0] || found.username;
     found.lastName = parts.slice(1).join(' ') || '';
+  }
+  
+  if (!found.role) {
+    found.role = (found.username === 'derek_vriens' || found.fullName.toLowerCase() === 'derek vriens') ? 'manager' : 'employee';
   }
   
   return found;

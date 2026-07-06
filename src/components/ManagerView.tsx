@@ -232,8 +232,8 @@ export default function ManagerView({ currentUser, isMobileView = false }: Manag
 
     const username = `${fName.toLowerCase()}_${lName.toLowerCase()}`;
     
-    // Register
-    const success = registerUser(fName, lName, rate);
+    // Register without hijacking current logged-in manager session
+    const success = registerUser(fName, lName, rate, false);
     if (success) {
       // Set extra fields on user account
       const usersRaw = localStorage.getItem('timesheets_tracker_users_list');

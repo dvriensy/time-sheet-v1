@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User, UserPlus, Clock, ArrowRight, ShieldCheck, Sun, Moon } from 'lucide-react';
-import { registerUser, loginUser, getCurrentUser, UserAccount } from '../utils/storage';
+import { registerUser, loginUser, getCurrentUser, UserAccount, getAllUsers } from '../utils/storage';
 
 interface UserAuthGateProps {
   onAuthSuccess: (user: UserAccount) => void;
@@ -18,6 +18,11 @@ export default function UserAuthGate({ onAuthSuccess, isMobileView = false }: Us
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [existingUsers, setExistingUsers] = useState<UserAccount[]>([]);
+
+  useEffect(() => {
+    setExistingUsers(getAllUsers());
+  }, [isLogin]);
 
   const [localTheme, setLocalTheme] = useState<'light' | 'dark'>(() => {
     return (localStorage.getItem('timesheets_tracker_theme') as 'light' | 'dark') || 'dark';
@@ -176,6 +181,44 @@ export default function UserAuthGate({ onAuthSuccess, isMobileView = false }: Us
             {isLogin ? "Don't have an account? Register one now" : 'Already have an account? Sign in here'}
           </button>
         </div>
+
+        {existingUsers.length > 0 && (
+          <div className="mt-5 pt-5 border-t border-main-border text-left">
+            <span className="block text-[10px] font-bold text-muted-text uppercase tracking-wider mb-2.5 font-mono">
+              Quick-Select Registered Accounts
+            </span>
+            <div className="grid grid-cols-2 gap-2 max-h-[140px] overflow-y-auto pr-1">
+              {existingUsers.map((user) => (
+                <button
+                  key={user.username}
+                  onClick={() => {
+                    setFirstName(user.firstName || '');
+                    setLastName(user.lastName || '');
+                    setIsLogin(true);
+                  }}
+                  className="flex items-center gap-2 p-2 rounded-xl bg-app-bg hover:bg-main-border/30 border border-main-border text-left transition text-xs font-semibold text-main-text group cursor-pointer"
+                  type="button"
+                >
+                  <div className="w-6 h-6 rounded-full bg-card-bg border border-main-border overflow-hidden shrink-0">
+                    {user.avatarUrl ? (
+                      <img src={user.avatarUrl} alt={user.fullName} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-muted-text/50">
+                        <User className="h-3.5 w-3.5" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="truncate flex-1">
+                    <span className="block truncate leading-tight text-xs">{user.fullName}</span>
+                    <span className="block text-[9px] font-mono text-muted-text font-normal truncate">
+                      @{user.username} {user.role === 'manager' ? '👑' : ''}
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="mt-4 flex items-center justify-center gap-1.5 text-[10px] text-muted-text font-mono">
           <ShieldCheck className="h-3.5 w-3.5 text-blue-500/60" />
