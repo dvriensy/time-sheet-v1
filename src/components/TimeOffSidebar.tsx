@@ -219,7 +219,7 @@ export default function TimeOffSidebar({
                     const isDenied = req.status === 'denied';
 
                     // Warning: Manager has not responded
-                    const hasPassedTime = (Date.now() - new Date(req.createdAt).getTime()) > 30000; // simulated unacknowledged time (e.g. 30s for demo, but normally hours/days)
+                    const hasPassedTime = (Date.now() - new Date(req.createdAt).getTime()) > 30000; // unacknowledged time (e.g. 30s for demo, but normally hours/days)
                     const isUnacknowledged = isPending && hasPassedTime;
 
                     return (

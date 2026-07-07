@@ -208,10 +208,10 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     }
   }, [daySecondsElapsed]);
 
-  // Simulated geofence entry effects
+  // Automated geofence entry effects
   useEffect(() => {
     if (simulatedGeoTrigger && !isClockedIn) {
-      // Auto clock-in simulation
+      // Auto clock-in transition
       handleClockIn(true);
     }
   }, [simulatedGeoTrigger]);

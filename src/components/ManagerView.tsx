@@ -339,7 +339,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
           fullName: session.fullName,
           role: 'employee',
           password: '123456',
-          department: 'Simulated'
+          department: 'Contractor'
         });
         employeeUsernames.add(session.username);
       }
@@ -451,7 +451,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
       const idx = users.findIndex(u => u.username === username);
       if (idx !== -1) {
         users[idx].department = dept;
-        users[idx].bio = 'Simulated contractor account for workspace auditing.';
+        users[idx].bio = 'Contractor account for workspace auditing.';
         users[idx].email = `${username}@ledger-demo.com`;
         users[idx].phone = `+1 (555) 01${Math.floor(Math.random() * 90) + 10}-${Math.floor(Math.random() * 9000) + 1000}`;
         localStorage.setItem('timesheets_tracker_users_list', JSON.stringify(users));
@@ -472,11 +472,11 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
       };
       localStorage.setItem('timesheets_tracker_active_sessions', JSON.stringify(sessions));
 
-      setSuccessMessage(`Successfully simulated contractor "${fName} ${lName}" and clocked them in.`);
+      setSuccessMessage(`Successfully created contractor "${fName} ${lName}" and clocked them in.`);
       refreshLiveSessions();
       setTimeout(() => setSuccessMessage(null), 4000);
     } else {
-      setSuccessMessage(`Simulation conflict: "${fName} ${lName}" already exists. Trying again...`);
+      setSuccessMessage(`Creation conflict: "${fName} ${lName}" already exists. Trying again...`);
       setTimeout(() => setSuccessMessage(null), 3000);
     }
   };
@@ -526,7 +526,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
     requests.push(newRequest);
     localStorage.setItem('timesheets_tracker_time_off_requests', JSON.stringify(requests));
     refreshTimeOffRequests();
-    setSuccessMessage(`Simulated new pending time-off request for ${randUser.fullName}.`);
+    setSuccessMessage(`Created new pending time-off request for ${randUser.fullName}.`);
     setTimeout(() => setSuccessMessage(null), 4000);
   };
 
@@ -600,7 +600,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
         </AnimatePresence>
       </div>
 
-      {/* Simulation Banner Notification */}
+      {/* Banner Notification */}
       <AnimatePresence>
         {successMessage && (
           <motion.div
@@ -752,14 +752,14 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
           />
         </div>
 
-        {/* Simulation trigger */}
+        {/* Sample data generator */}
         <button
           onClick={managerTab === 'timeoff' ? handleAddMockTimeOff : handleAddMockEmployee}
           className="w-full md:w-auto flex items-center justify-center gap-1.5 bg-blue-500/5 hover:bg-blue-500/10 border border-blue-500/10 hover:border-blue-500/20 px-4 py-2 rounded-xl text-xs font-semibold text-blue-500 cursor-pointer transition shrink-0 animate-fade-in"
         >
           <PlusCircle className="h-4 w-4" />
           <span>
-            {managerTab === 'timeoff' ? "Simulate Staff Time-Off Request" : "Simulate Mock Team Members"}
+            {managerTab === 'timeoff' ? "Quick-Add Staff Time-Off Request" : "Quick-Add Sample Team Members"}
           </span>
         </button>
 
@@ -983,7 +983,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                   {statusFilter !== 'all' && ` with status "${statusFilter}"`}
                   {searchQuery && ` matching "${searchQuery}"`}
                 </p>
-                <p className="text-[10px] mt-1">Try simulating some mock employee accounts or adjusting your filter selection.</p>
+                <p className="text-[10px] mt-1">Try adding some sample team members or adjusting your filter selection.</p>
               </div>
             )}
           </div>
@@ -1388,7 +1388,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                 <div className="bg-card-bg border border-main-border rounded-2xl p-10 text-center text-muted-text">
                   <CalendarDays className="h-8 w-8 text-muted-text/30 mx-auto mb-2" />
                   <p className="text-xs font-semibold">No time-off requests matched your filter</p>
-                  <p className="text-[10px] mt-1">To verify features, click "Simulate Staff Time-Off Request" above.</p>
+                  <p className="text-[10px] mt-1">To verify features, click "Quick-Add Staff Time-Off Request" above.</p>
                 </div>
               )}
             </div>

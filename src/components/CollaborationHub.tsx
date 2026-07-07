@@ -22,7 +22,7 @@ export default function CollaborationHub({ onSyncComplete }: CollaborationHubPro
   const [syncCount, setSyncCount] = useState(0);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>(MOCK_TEAM_MEMBERS);
 
-  // Auto trigger members status updates simulating a real web-socket sync
+  // Auto trigger members status updates mimicking a real web-socket sync
   useEffect(() => {
     const interval = setInterval(() => {
       setTeamMembers((prev) => {
@@ -81,7 +81,7 @@ export default function CollaborationHub({ onSyncComplete }: CollaborationHubPro
       setTimeout(() => {
         setSyncState('idle');
       }, 3500);
-    }, 2500); // simulate 2.5 seconds sync roundtrip latency
+    }, 2500); // 2.5 seconds sync roundtrip latency
   };
 
   const formatLastSync = (iso: string) => {

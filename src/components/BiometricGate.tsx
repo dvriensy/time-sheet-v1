@@ -173,7 +173,7 @@ export default function BiometricGate({ onUnlock, isUnlocked }: BiometricGatePro
                 exit={{ opacity: 0, scale: 0.95 }}
                 className="flex flex-col items-center"
               >
-                {/* Simulated Scanner Graphic */}
+                {/* Biometric Scanner Graphic */}
                 <div className="relative mb-6 flex h-40 w-40 items-center justify-center rounded-2xl bg-slate-950/60 border border-slate-800/80">
                   {/* Glowing Scanner Circles */}
                   <div className="absolute inset-2 rounded-full border border-slate-800/40" />

@@ -95,7 +95,7 @@ export default function GeofenceManager({ onGeofenceStateChange, onSimulatedTrig
 
     addSecurityLog(
       'GPS tracking geofence breached',
-      `Manual simulation coordinate altered. Radial distance from center: ${distMeters}m (${distMeters <= settings.radius ? 'INSIDE' : 'OUTSIDE'} geofence)`,
+      `Manual coordinate override altered. Radial distance from center: ${distMeters}m (${distMeters <= settings.radius ? 'INSIDE' : 'OUTSIDE'} geofence)`,
       'geofence'
     );
   };
@@ -124,7 +124,7 @@ export default function GeofenceManager({ onGeofenceStateChange, onSimulatedTrig
             </h2>
             <span className="text-[10px] font-mono text-slate-500 uppercase">GPS CLOCK-IN GATEWAY</span>
           </div>
-          <p className="text-xs text-slate-400">Click anywhere on the radar scanner grid to simulate moving your location.</p>
+          <p className="text-xs text-slate-400">Click anywhere on the radar scanner grid to update your GPS location coordinates.</p>
         </div>
 
         {/* Dynamic SVG Radar Map */}
@@ -177,7 +177,7 @@ export default function GeofenceManager({ onGeofenceStateChange, onSimulatedTrig
               <circle r="12" fill="none" stroke="#3b82f6" strokeWidth="1.5" className="animate-ping" style={{ animationDuration: '3s' }} />
             </g>
 
-            {/* User Simulated Current GPS Dot */}
+            {/* User Current GPS Dot */}
             <g transform={`translate(${userPos.x}, ${userPos.y})`}>
               <circle r="6" fill={isSimulatingInside ? '#60a5fa' : '#3b82f6'} />
               <circle r="14" fill="none" stroke={isSimulatingInside ? '#60a5fa' : '#3b82f6'} strokeWidth="1" className="animate-ping" />
@@ -185,7 +185,7 @@ export default function GeofenceManager({ onGeofenceStateChange, onSimulatedTrig
 
             {/* Label texts */}
             <text x="156" y="142" fill="#3b82f6" fontSize="10" className="font-mono font-medium">{settings.name}</text>
-            <text x={`${userPos.x + 10}`} y={`${userPos.y - 4}`} fill={isSimulatingInside ? '#60a5fa' : '#3b82f6'} fontSize="9" className="font-mono">User (Simulated)</text>
+            <text x={`${userPos.x + 10}`} y={`${userPos.y - 4}`} fill={isSimulatingInside ? '#60a5fa' : '#3b82f6'} fontSize="9" className="font-mono">User Location</text>
           </svg>
 
           {/* Radar Telemetry Metrics Panel overlay */}
@@ -202,7 +202,7 @@ export default function GeofenceManager({ onGeofenceStateChange, onSimulatedTrig
           </div>
         </div>
 
-        {/* Simulated Movement Presets */}
+        {/* Location Movement Presets */}
         <div className="flex gap-3 mt-2">
           <button
             onClick={() => setSimulatedPreset('inside')}
