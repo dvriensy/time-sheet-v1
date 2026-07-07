@@ -17,9 +17,11 @@ import {
   getCurrentUser,
   updateActiveSession,
   clearActiveSession,
-  getActiveSessions
+  getActiveSessions,
+  getFutureShifts,
+  acknowledgeFutureShift
 } from '../utils/storage';
-import { TimesheetEntry } from '../types';
+import { TimesheetEntry, FutureShift } from '../types';
 
 interface TimesheetManagerProps {
   entries: TimesheetEntry[];
@@ -43,6 +45,8 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     initialNotes, 
     initialSecondsElapsed, 
     initialBreakSecondsElapsed,
+    initialDaySecondsElapsed,
+    initialDayBreakSecondsElapsed,
     initialIsOvertime
   } = useMemo(() => {
     const user = getCurrentUser();
@@ -55,6 +59,8 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
         const elapsedBg = Math.max(0, Math.floor((now - lastActive) / 1000));
         const storedWork = session.secondsElapsed || 0;
         const storedBreak = session.breakSecondsElapsed || 0;
+        const storedDayWork = session.daySecondsElapsed || storedWork;
+        const storedDayBreak = session.dayBreakSecondsElapsed || storedBreak;
 
         return {
           initialIsClockedIn: true,
@@ -65,6 +71,8 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
           initialNotes: session.notes || '',
           initialSecondsElapsed: session.isOnBreak ? storedWork : storedWork + elapsedBg,
           initialBreakSecondsElapsed: session.isOnBreak ? storedBreak + elapsedBg : storedBreak,
+          initialDaySecondsElapsed: session.isOnBreak ? storedDayWork : storedDayWork + elapsedBg,
+          initialDayBreakSecondsElapsed: session.isOnBreak ? storedDayBreak + elapsedBg : storedDayBreak,
           initialIsOvertime: !!session.isOvertime,
         };
       }
@@ -78,6 +86,8 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
       initialNotes: '',
       initialSecondsElapsed: 0,
       initialBreakSecondsElapsed: 0,
+      initialDaySecondsElapsed: 0,
+      initialDayBreakSecondsElapsed: 0,
       initialIsOvertime: false,
     };
   }, []);
@@ -87,6 +97,8 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
   const [isOnBreak, setIsOnBreak] = useState(initialIsOnBreak);
   const [secondsElapsed, setSecondsElapsed] = useState(initialSecondsElapsed);
   const [breakSecondsElapsed, setBreakSecondsElapsed] = useState(initialBreakSecondsElapsed);
+  const [daySecondsElapsed, setDaySecondsElapsed] = useState(initialDaySecondsElapsed);
+  const [dayBreakSecondsElapsed, setDayBreakSecondsElapsed] = useState(initialDayBreakSecondsElapsed);
   const [timerStart, setTimerStart] = useState<string>(initialTimerStart);
   const [isOvertime, setIsOvertime] = useState<boolean>(initialIsOvertime);
   
@@ -104,6 +116,32 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [expandedPastPeriods, setExpandedPastPeriods] = useState<Record<string, boolean>>({});
   const [expandedDays, setExpandedDays] = useState<Record<string, boolean>>({});
+
+  // Future Shifts State and Listener
+  const [futureShifts, setFutureShifts] = useState<FutureShift[]>([]);
+  const user = useMemo(() => getCurrentUser(), []);
+
+  useEffect(() => {
+    const loadShifts = () => {
+      const allShifts = getFutureShifts();
+      if (user) {
+        // Filter shifts by current logged-in user
+        const userShifts = allShifts.filter(s => s.username === user.username);
+        // Sort future shifts so that upcoming dates are first
+        userShifts.sort((a, b) => a.date.localeCompare(b.date));
+        setFutureShifts(userShifts);
+      }
+    };
+
+    loadShifts();
+
+    window.addEventListener('storage-sync', loadShifts);
+    window.addEventListener('storage', loadShifts);
+    return () => {
+      window.removeEventListener('storage-sync', loadShifts);
+      window.removeEventListener('storage', loadShifts);
+    };
+  }, [user]);
 
   // Manual Form State
   const [manualDate, setManualDate] = useState(new Date().toISOString().slice(0, 10));
@@ -130,18 +168,21 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
         notes: activeNotes || 'Working...',
         secondsElapsed,
         breakSecondsElapsed,
+        daySecondsElapsed,
+        dayBreakSecondsElapsed,
         isOvertime,
       });
     } else {
       clearActiveSession();
     }
-  }, [isClockedIn, isOnBreak, timerStart, activeProject, activeLocation, activeNotes, secondsElapsed, breakSecondsElapsed, isOvertime]);
+  }, [isClockedIn, isOnBreak, timerStart, activeProject, activeLocation, activeNotes, secondsElapsed, breakSecondsElapsed, daySecondsElapsed, dayBreakSecondsElapsed, isOvertime]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (isClockedIn && !isOnBreak) {
       interval = setInterval(() => {
         setSecondsElapsed(prev => prev + 1);
+        setDaySecondsElapsed(prev => prev + 1);
       }, 1000);
     }
     return () => clearInterval(interval);
@@ -152,10 +193,20 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     if (isClockedIn && isOnBreak) {
       interval = setInterval(() => {
         setBreakSecondsElapsed(prev => prev + 1);
+        setDayBreakSecondsElapsed(prev => prev + 1);
       }, 1000);
     }
     return () => clearInterval(interval);
   }, [isClockedIn, isOnBreak]);
+
+  // Overtime automatic flag checking: shifts longer than 8 hours (28800 seconds) are overtime
+  useEffect(() => {
+    if (daySecondsElapsed > 28800) {
+      setIsOvertime(true);
+    } else {
+      setIsOvertime(false);
+    }
+  }, [daySecondsElapsed]);
 
   // Simulated geofence entry effects
   useEffect(() => {
@@ -183,6 +234,8 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     setIsOnBreak(false);
     setSecondsElapsed(0);
     setBreakSecondsElapsed(0);
+    setDaySecondsElapsed(0);
+    setDayBreakSecondsElapsed(0);
     setActiveNotes('');
     setIsOvertime(false);
     
@@ -202,7 +255,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     const now = new Date();
     const endStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
     
-    // Total break minutes
+    // Total break minutes spent on this task segment
     const breakMins = Math.round(breakSecondsElapsed / 60);
 
     // Save the entry
@@ -223,6 +276,8 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     setIsOnBreak(false);
     setSecondsElapsed(0);
     setBreakSecondsElapsed(0);
+    setDaySecondsElapsed(0);
+    setDayBreakSecondsElapsed(0);
     setIsOvertime(false);
     
     onRefreshEntries();
@@ -255,8 +310,9 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     setTimerStart(endStr);
     setSecondsElapsed(0);
     setBreakSecondsElapsed(0);
+    // KEEP day duration timer running! No reset to daySecondsElapsed!
     
-    setSwitchNotification(`Logged segment for "${activeProject}" (${formatTimer(secondsElapsed)}). Ready for next task!`);
+    setSwitchNotification(`Logged segment for "${activeProject}" (${formatTimer(secondsElapsed)}). Day total running: ${formatTimer(daySecondsElapsed)}. Ready for next task!`);
     setTimeout(() => {
       setSwitchNotification(null);
     }, 6000);
@@ -422,10 +478,30 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
           </div>
  
           {/* Time Display */}
-          <div className={`text-center ${isMobileView ? 'py-4' : 'py-6'}`}>
-            <h2 className={`${isMobileView ? 'text-4xl' : 'text-5xl'} font-bold tracking-tight font-mono select-none ${isClockedIn ? 'text-white' : 'text-main-text'}`}>
-              {formatTimer(secondsElapsed)}
-            </h2>
+          <div className={`text-center ${isMobileView ? 'py-4' : 'py-6'} space-y-4`}>
+            {isClockedIn ? (
+              <div className="grid grid-cols-2 gap-4 border-b border-white/10 pb-4">
+                <div>
+                  <span className="block text-[10px] font-mono text-blue-200/70 uppercase tracking-widest mb-1">Task Duration</span>
+                  <h2 className={`${isMobileView ? 'text-2xl' : 'text-3xl'} font-bold tracking-tight font-mono select-none text-white`}>
+                    {formatTimer(secondsElapsed)}
+                  </h2>
+                </div>
+                <div className="border-l border-white/10">
+                  <span className="block text-[10px] font-mono text-blue-200/70 uppercase tracking-widest mb-1">Day Duration</span>
+                  <h2 className={`${isMobileView ? 'text-2xl' : 'text-3xl'} font-bold tracking-tight font-mono select-none text-white`}>
+                    {formatTimer(daySecondsElapsed)}
+                  </h2>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <span className="block text-[10px] font-mono text-muted-text uppercase tracking-widest mb-1">Shift Duration</span>
+                <h2 className={`${isMobileView ? 'text-4xl' : 'text-5xl'} font-bold tracking-tight font-mono select-none text-main-text`}>
+                  00:00:00
+                </h2>
+              </div>
+            )}
             {isClockedIn && (
               <div className="mt-2 flex items-center justify-center gap-4 text-xs font-mono text-blue-100/80">
                 <span>Start: <strong className="text-white">{timerStart}</strong></span>
@@ -586,6 +662,86 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
       {/* RIGHT COLUMN: WEEKLY LOGS */}
       <div className="lg:col-span-2 space-y-6">
         
+        {/* FUTURE SCHEDULE SECTION */}
+        {futureShifts.length > 0 && (
+          <div className="rounded-3xl border border-blue-500/20 bg-[#1e3a8a]/5 p-6 shadow-xl space-y-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <div className="rounded-xl bg-blue-500/10 p-2 text-blue-400">
+                  <Calendar className="h-4.5 w-4.5" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-semibold text-slate-100">Your Scheduled Shifts</h2>
+                  <p className="text-[10px] text-slate-400 font-mono">Assigned and pending shifts calendar</p>
+                </div>
+              </div>
+              <span className="inline-flex self-start items-center gap-1.5 rounded-full bg-blue-500/10 px-3 py-1 text-xs font-semibold text-blue-300 border border-blue-500/20">
+                <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse" />
+                {futureShifts.filter(s => !s.acknowledged).length} Pending Acknowledgment
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {futureShifts.map((shift) => (
+                <div 
+                  key={shift.id} 
+                  className={`rounded-2xl border p-4.5 transition duration-200 relative overflow-hidden flex flex-col justify-between min-h-[140px] ${
+                    shift.acknowledged 
+                      ? 'border-slate-800 bg-[#18181B]/50 text-slate-400' 
+                      : 'border-blue-500/30 bg-blue-500/5 hover:border-blue-500/50 text-slate-200'
+                  }`}
+                >
+                  {/* Background decoration */}
+                  <div className="absolute right-0 top-0 translate-x-1/4 -translate-y-1/4 h-24 w-24 rounded-full bg-blue-500/5 blur-xl pointer-events-none" />
+
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="inline-flex items-center rounded-lg bg-blue-600/10 px-2 py-0.5 text-[10px] font-bold text-blue-400 uppercase tracking-widest border border-blue-500/15 font-mono">
+                        {shift.project || 'General Shift'}
+                      </span>
+                    </div>
+                    <h4 className="text-sm font-semibold text-slate-100">
+                      {new Date(shift.date + 'T00:00:00').toLocaleDateString(undefined, {
+                        weekday: 'short',
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric'
+                      })}
+                    </h4>
+                    <p className="text-xs font-mono text-slate-300 mt-1 flex items-center gap-1">
+                      <span className="text-blue-400 font-bold">●</span> {shift.startTime} – {shift.endTime}
+                    </p>
+                    {shift.notes && (
+                      <p className="text-[11px] text-slate-400 mt-2 bg-[#09090B]/40 p-2 rounded-lg border border-slate-800/80 font-mono">
+                        {shift.notes}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="mt-4 pt-3 border-t border-slate-800/60 flex justify-end">
+                    {shift.acknowledged ? (
+                      <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20 font-mono">
+                        <CheckCircle2 className="h-3 w-3" />
+                        <span>Acknowledged</span>
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          acknowledgeFutureShift(shift.id);
+                        }}
+                        className="flex items-center gap-1 rounded-xl bg-blue-600 hover:bg-blue-500 text-white px-3.5 py-1.5 text-xs font-semibold transition active:scale-95 cursor-pointer shadow-md shadow-blue-500/10"
+                      >
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        <span>Acknowledge</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="flex items-center justify-between">
           <h2 className="text-base font-medium text-main-text">Timesheet Cycles</h2>
           <div className="flex items-center gap-2">

@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User, UserPlus, Clock, ArrowRight, ShieldCheck, Sun, Moon, Lock } from 'lucide-react';
-import { registerUser, loginUser, getCurrentUser, UserAccount, getAllUsers } from '../utils/storage';
+import { registerUser, loginUser, getCurrentUser, UserAccount, getAllUsers, resetUserPassword } from '../utils/storage';
 
 interface UserAuthGateProps {
   onAuthSuccess: (user: UserAccount) => void;
@@ -15,10 +15,18 @@ interface UserAuthGateProps {
 
 export default function UserAuthGate({ onAuthSuccess, isMobileView = false }: UserAuthGateProps) {
   const [isLogin, setIsLogin] = useState(true);
+  const [isForgot, setIsForgot] = useState(false);
   const [fullName, setFullName] = useState('');
   const [username, setUsername] = useState('');
   const [loginInput, setLoginInput] = useState('');
   const [password, setPassword] = useState('');
+  
+  // Forgot password form states
+  const [forgotUsername, setForgotUsername] = useState('');
+  const [forgotFullName, setForgotFullName] = useState('');
+  const [forgotNewPassword, setForgotNewPassword] = useState('');
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
   const [error, setError] = useState<string | null>(null);
   const [existingUsers, setExistingUsers] = useState<UserAccount[]>([]);
 
@@ -30,7 +38,7 @@ export default function UserAuthGate({ onAuthSuccess, isMobileView = false }: Us
     };
     window.addEventListener('storage-sync', handleSync);
     return () => window.removeEventListener('storage-sync', handleSync);
-  }, [isLogin]);
+  }, [isLogin, isForgot]);
 
   const [localTheme, setLocalTheme] = useState<'light' | 'dark'>(() => {
     return (localStorage.getItem('timesheets_tracker_theme') as 'light' | 'dark') || 'dark';
@@ -45,6 +53,31 @@ export default function UserAuthGate({ onAuthSuccess, isMobileView = false }: Us
     }
     localStorage.setItem('timesheets_tracker_theme', localTheme);
   }, [localTheme]);
+
+  const handleForgotSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSuccessMsg(null);
+
+    const uName = forgotUsername.trim().toLowerCase();
+    const fName = forgotFullName.trim();
+    const newPass = forgotNewPassword.trim();
+
+    if (!uName || !fName || !newPass) {
+      setError('Please fill out all fields.');
+      return;
+    }
+
+    const resetSuccess = resetUserPassword(uName, fName, newPass);
+    if (resetSuccess) {
+      setSuccessMsg(`Successfully reset password for @${uName}! You can now go back and log in.`);
+      setForgotUsername('');
+      setForgotFullName('');
+      setForgotNewPassword('');
+    } else {
+      setError('Account verification failed. The username and full name did not match any registered user.');
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -128,7 +161,7 @@ export default function UserAuthGate({ onAuthSuccess, isMobileView = false }: Us
             TIME <span className="text-blue-500">SHEETS</span>
           </h1>
           <p className="text-xs text-muted-text mt-1">
-            {isLogin ? 'Verify your identity to log hours' : 'Create an account to start tracking'}
+            {isForgot ? 'Reset your account password' : isLogin ? 'Verify your identity to log hours' : 'Create an account to start tracking'}
           </p>
         </div>
 
@@ -143,13 +176,42 @@ export default function UserAuthGate({ onAuthSuccess, isMobileView = false }: Us
               {error}
             </motion.div>
           )}
+          {successMsg && (
+            <motion.div 
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="mb-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-3 text-xs text-emerald-400 font-medium"
+            >
+              {successMsg}
+            </motion.div>
+          )}
         </AnimatePresence>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {isLogin ? (
+        {isForgot ? (
+          <form onSubmit={handleForgotSubmit} className="space-y-4">
             <div>
               <label className="block text-[11px] font-semibold text-muted-text uppercase tracking-wider mb-1.5 font-mono">
-                Username or Full Name
+                Username
+              </label>
+              <div className="relative">
+                <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-muted-text">
+                  <UserPlus className="h-4 w-4" />
+                </span>
+                <input
+                  type="text"
+                  value={forgotUsername}
+                  onChange={(e) => setForgotUsername(e.target.value)}
+                  placeholder="e.g. derek_vriens"
+                  className="w-full rounded-xl border border-main-border bg-input-bg pl-9 pr-3 py-2 text-sm text-main-text placeholder-muted-text/60 focus:border-blue-500/50 focus:outline-none transition-colors font-mono"
+                  required
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-muted-text uppercase tracking-wider mb-1.5 font-mono">
+                Full Name (Verification)
               </label>
               <div className="relative">
                 <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-muted-text">
@@ -157,19 +219,48 @@ export default function UserAuthGate({ onAuthSuccess, isMobileView = false }: Us
                 </span>
                 <input
                   type="text"
-                  value={loginInput}
-                  onChange={(e) => setLoginInput(e.target.value)}
-                  placeholder="e.g. derek_vriens or John Doe"
+                  value={forgotFullName}
+                  onChange={(e) => setForgotFullName(e.target.value)}
+                  placeholder="e.g. Derek Vriens"
                   className="w-full rounded-xl border border-main-border bg-input-bg pl-9 pr-3 py-2 text-sm text-main-text placeholder-muted-text/60 focus:border-blue-500/50 focus:outline-none transition-colors"
                   required
                 />
               </div>
             </div>
-          ) : (
-            <div className="space-y-4">
+
+            <div>
+              <label className="block text-[11px] font-semibold text-muted-text uppercase tracking-wider mb-1.5 font-mono">
+                New Password
+              </label>
+              <div className="relative">
+                <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-muted-text">
+                  <Lock className="h-4 w-4" />
+                </span>
+                <input
+                  type="password"
+                  value={forgotNewPassword}
+                  onChange={(e) => setForgotNewPassword(e.target.value)}
+                  placeholder="Enter a secure new password"
+                  className="w-full rounded-xl border border-main-border bg-input-bg pl-10 pr-4 py-2.5 text-sm text-main-text placeholder-muted-text/60 focus:border-blue-500/50 focus:outline-none transition-colors"
+                  required
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              className="w-full flex items-center justify-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 px-4 shadow-lg shadow-blue-500/10 active:scale-[0.99] transition mt-6 cursor-pointer"
+            >
+              <span>Reset & Update Password</span>
+              <ArrowRight className="h-4 w-4" />
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {isLogin ? (
               <div>
                 <label className="block text-[11px] font-semibold text-muted-text uppercase tracking-wider mb-1.5 font-mono">
-                  Full Name
+                  Username or Full Name
                 </label>
                 <div className="relative">
                   <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-muted-text">
@@ -177,74 +268,120 @@ export default function UserAuthGate({ onAuthSuccess, isMobileView = false }: Us
                   </span>
                   <input
                     type="text"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="John Doe"
+                    value={loginInput}
+                    onChange={(e) => setLoginInput(e.target.value)}
+                    placeholder="e.g. derek_vriens or John Doe"
                     className="w-full rounded-xl border border-main-border bg-input-bg pl-9 pr-3 py-2 text-sm text-main-text placeholder-muted-text/60 focus:border-blue-500/50 focus:outline-none transition-colors"
                     required
                   />
                 </div>
               </div>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-[11px] font-semibold text-muted-text uppercase tracking-wider mb-1.5 font-mono">
+                    Full Name
+                  </label>
+                  <div className="relative">
+                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-muted-text">
+                      <User className="h-4 w-4" />
+                    </span>
+                    <input
+                      type="text"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      placeholder="John Doe"
+                      className="w-full rounded-xl border border-main-border bg-input-bg pl-9 pr-3 py-2 text-sm text-main-text placeholder-muted-text/60 focus:border-blue-500/50 focus:outline-none transition-colors"
+                      required
+                    />
+                  </div>
+                </div>
 
-              <div>
-                <label className="block text-[11px] font-semibold text-muted-text uppercase tracking-wider mb-1.5 font-mono">
-                  Username
-                </label>
-                <div className="relative">
-                  <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-muted-text">
-                    <UserPlus className="h-4 w-4" />
-                  </span>
-                  <input
-                    type="text"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    placeholder="johndoe"
-                    className="w-full rounded-xl border border-main-border bg-input-bg pl-9 pr-3 py-2 text-sm text-main-text placeholder-muted-text/60 focus:border-blue-500/50 focus:outline-none transition-colors font-mono"
-                    required
-                  />
+                <div>
+                  <label className="block text-[11px] font-semibold text-muted-text uppercase tracking-wider mb-1.5 font-mono">
+                    Username
+                  </label>
+                  <div className="relative">
+                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-muted-text">
+                      <UserPlus className="h-4 w-4" />
+                    </span>
+                    <input
+                      type="text"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      placeholder="johndoe"
+                      className="w-full rounded-xl border border-main-border bg-input-bg pl-9 pr-3 py-2 text-sm text-main-text placeholder-muted-text/60 focus:border-blue-500/50 focus:outline-none transition-colors font-mono"
+                      required
+                    />
+                  </div>
                 </div>
               </div>
+            )}
+
+            <div>
+              <label className="block text-[11px] font-semibold text-muted-text uppercase tracking-wider mb-1.5 font-mono">
+                Password
+              </label>
+              <div className="relative">
+                <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-muted-text">
+                  <Lock className="h-4 w-4" />
+                </span>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder={isLogin ? "••••••••" : "Choose a secure password"}
+                  className="w-full rounded-xl border border-main-border bg-input-bg pl-10 pr-4 py-2.5 text-sm text-main-text placeholder-muted-text/60 focus:border-blue-500/50 focus:outline-none transition-colors"
+                  required={!isLogin}
+                />
+              </div>
             </div>
+
+            <button
+              type="submit"
+              className="w-full flex items-center justify-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 px-4 shadow-lg shadow-blue-500/10 active:scale-[0.99] transition mt-6 cursor-pointer"
+            >
+              <span>{isLogin ? 'Log In Securely' : 'Create & Log In'}</span>
+              <ArrowRight className="h-4 w-4" />
+            </button>
+          </form>
+        )}
+
+        <div className="mt-6 pt-6 border-t border-main-border flex flex-col gap-3 text-center">
+          {isForgot ? (
+            <button
+              onClick={() => {
+                setIsForgot(false);
+                setError(null);
+                setSuccessMsg(null);
+              }}
+              className="text-xs text-blue-500 hover:text-blue-400 transition font-medium cursor-pointer"
+            >
+              Back to Sign In
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={() => {
+                  setIsLogin(!isLogin);
+                  setError(null);
+                }}
+                className="text-xs text-blue-500 hover:text-blue-400 transition font-medium cursor-pointer"
+              >
+                {isLogin ? "Don't have an account? Register one now" : 'Already have an account? Sign in here'}
+              </button>
+              <button
+                onClick={() => {
+                  setIsForgot(true);
+                  setError(null);
+                  setSuccessMsg(null);
+                }}
+                className="text-xs text-muted-text hover:text-main-text transition font-medium cursor-pointer"
+              >
+                Forgot your password? Reset it here
+              </button>
+            </>
           )}
-
-          <div>
-            <label className="block text-[11px] font-semibold text-muted-text uppercase tracking-wider mb-1.5 font-mono">
-              Password
-            </label>
-            <div className="relative">
-              <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-muted-text">
-                <Lock className="h-4 w-4" />
-              </span>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder={isLogin ? "••••••••" : "Choose a secure password"}
-                className="w-full rounded-xl border border-main-border bg-input-bg pl-10 pr-4 py-2.5 text-sm text-main-text placeholder-muted-text/60 focus:border-blue-500/50 focus:outline-none transition-colors"
-                required={!isLogin}
-              />
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            className="w-full flex items-center justify-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 px-4 shadow-lg shadow-blue-500/10 active:scale-[0.99] transition mt-6 cursor-pointer"
-          >
-            <span>{isLogin ? 'Log In Securely' : 'Create & Log In'}</span>
-            <ArrowRight className="h-4 w-4" />
-          </button>
-        </form>
-
-        <div className="mt-6 pt-6 border-t border-main-border text-center">
-          <button
-            onClick={() => {
-              setIsLogin(!isLogin);
-              setError(null);
-            }}
-            className="text-xs text-blue-500 hover:text-blue-400 transition font-medium cursor-pointer"
-          >
-            {isLogin ? "Don't have an account? Register one now" : 'Already have an account? Sign in here'}
-          </button>
         </div>
 
         {existingUsers.length > 0 && (

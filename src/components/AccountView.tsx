@@ -415,38 +415,6 @@ export default function AccountView({ currentUser, onUpdateUser, onLogout, isMob
               />
             </div>
 
-            {/* Job Privileges / Manager Access */}
-            <div className="bg-blue-500/5 p-4 rounded-xl border border-blue-500/10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div className="space-y-0.5 text-left">
-                <span className="text-xs font-bold text-blue-500 uppercase tracking-wider font-mono">Job Privileges Mode</span>
-                <p className="text-[11px] text-muted-text">Toggle Manager Access to enable the Live Team Monitor and Staff Ledger Audit features.</p>
-              </div>
-              <div className="flex bg-app-bg p-1 rounded-xl border border-main-border/80 w-fit shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setRole('employee')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                    role === 'employee' 
-                      ? 'bg-blue-600 text-white shadow-sm' 
-                      : 'text-muted-text hover:text-main-text'
-                  }`}
-                >
-                  Employee
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRole('manager')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                    role === 'manager' 
-                      ? 'bg-blue-600 text-white shadow-sm' 
-                      : 'text-muted-text hover:text-main-text'
-                  }`}
-                >
-                  Manager
-                </button>
-              </div>
-            </div>
-
             {/* Read-only details */}
             <div className="bg-app-bg/50 border border-main-border/60 rounded-xl p-4 flex items-center justify-between gap-4 flex-wrap sm:flex-nowrap">
               <div className="flex items-center gap-2.5">

@@ -82,5 +82,6 @@ export interface FutureShift {
   project: string;
   notes?: string;
   createdAt: string;
+  acknowledged?: boolean;
 }
 

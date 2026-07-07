@@ -14,7 +14,8 @@ import {
   logoutUser, 
   UserAccount,
   getTimeOffRequests,
-  initializeFirebaseSync
+  initializeFirebaseSync,
+  enrichEntriesWithOvertime
 } from './utils/storage';
 import { TimesheetEntry } from './types';
 
@@ -96,7 +97,9 @@ export default function App() {
 
   // Fetch active settings and datasets
   const handleLoadData = () => {
-    setTimesheets(getTimesheets());
+    const rawTimesheets = getTimesheets();
+    const enriched = enrichEntriesWithOvertime(rawTimesheets);
+    setTimesheets(enriched);
     
     const settings = getAppSettings();
     setPrivacyMode(settings.privacyMode);
@@ -171,7 +174,7 @@ export default function App() {
                   }`}
                 >
                   <Users className="h-3.5 w-3.5" />
-                  {!isMobileView && <span>Manager</span>}
+                  {!isMobileView && <span>Management</span>}
                 </button>
               )}
               <button

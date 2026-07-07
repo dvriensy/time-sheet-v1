@@ -280,7 +280,7 @@ export default function TimeOffSidebar({
                             <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" />
                             <div className="space-y-0.5">
                               <span className="text-[10px] font-bold text-amber-500 uppercase font-mono block">Unacknowledged Alert</span>
-                              <p className="text-[10px] text-muted-text leading-snug">Manager Derek Vriens has not reviewed this yet. Standard audit SLA response is pending.</p>
+                              <p className="text-[10px] text-muted-text leading-snug">Management (Derek Vriens) has not reviewed this yet. Standard audit SLA response is pending.</p>
                             </div>
                           </div>
                         )}
@@ -288,7 +288,7 @@ export default function TimeOffSidebar({
                         {/* Manager response feedback block */}
                         {(req.managerNotes || req.respondedAt) && (
                           <div className="bg-blue-500/[0.03] border border-blue-500/10 rounded-xl p-2.5 text-left space-y-1">
-                            <span className="text-[9px] text-blue-500 font-bold uppercase font-mono block">Manager Decision Note</span>
+                            <span className="text-[9px] text-blue-500 font-bold uppercase font-mono block">Management Decision Note</span>
                             <p className="text-xs text-muted-text leading-relaxed">
                               {req.managerNotes ? `"${req.managerNotes}"` : "Decision filed without comments."}
                             </p>

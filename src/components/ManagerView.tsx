@@ -38,8 +38,8 @@ interface ManagerViewProps {
 }
 
 export default function ManagerView({ currentUser, isMobileView = false, onLoginAsUser }: ManagerViewProps) {
-  // Tabs: 'live', 'history', 'timeoff', or 'schedule'
-  const [managerTab, setManagerTab] = useState<'live' | 'history' | 'timeoff' | 'schedule'>('live');
+  // Tabs: 'live', 'history', 'timeoff', 'schedule', or 'accounts'
+  const [managerTab, setManagerTab] = useState<'live' | 'history' | 'timeoff' | 'schedule' | 'accounts'>('live');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'break' | 'offline'>('all');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -62,6 +62,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
   const [editPassword, setEditPassword] = useState('');
   const [editHourlyRate, setEditHourlyRate] = useState<number>(45);
   const [editDepartment, setEditDepartment] = useState('');
+  const [editRole, setEditRole] = useState<'employee' | 'manager'>('employee');
 
   // Dynamic poll for live sessions
   const [liveSessions, setLiveSessions] = useState<Record<string, ActiveSession>>({});
@@ -503,6 +504,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
     setEditPassword(user.password || '123456');
     setEditHourlyRate(user.hourlyRate || 45);
     setEditDepartment(user.department || 'General');
+    setEditRole(user.role || 'employee');
   };
 
   const handleSaveChanges = (e: React.FormEvent) => {
@@ -513,7 +515,8 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
       lastName: editLastName.trim(),
       password: editPassword.trim(),
       hourlyRate: Number(editHourlyRate),
-      department: editDepartment.trim()
+      department: editDepartment.trim(),
+      role: editRole
     });
     
     if (updated) {
@@ -688,6 +691,17 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
           >
             <CalendarDays className="h-3.5 w-3.5" />
             <span>Shift Scheduler</span>
+          </button>
+          <button
+            onClick={() => setManagerTab('accounts')}
+            className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              managerTab === 'accounts' 
+                ? 'bg-blue-600 text-white shadow-sm' 
+                : 'text-muted-text hover:text-main-text'
+            }`}
+          >
+            <User className="h-3.5 w-3.5" />
+            <span>User Accounts ({allUsers.length})</span>
           </button>
         </div>
 
@@ -1593,6 +1607,128 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
         </div>
       )}
 
+      {managerTab === 'accounts' && (
+        <div className="space-y-6">
+          <div className="bg-card-bg border border-main-border rounded-2xl p-5 shadow-xl">
+            <div className="text-left pb-4 border-b border-main-border/40 mb-6">
+              <h2 className="text-base font-bold text-slate-100 uppercase tracking-wide font-mono">User Accounts Directory</h2>
+              <p className="text-xs text-slate-400">Manage all registered user accounts, edit their department/rate/roles, and permanently delete accounts.</p>
+            </div>
+
+            <div className="overflow-x-auto rounded-xl border border-main-border/80">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-[#09090b]/80 border-b border-main-border text-muted-text font-mono uppercase tracking-wider">
+                    <th className="p-4 font-semibold">User Details</th>
+                    <th className="p-4 font-semibold">Department</th>
+                    <th className="p-4 font-semibold">Role</th>
+                    <th className="p-4 font-semibold font-mono">Rate / Hour</th>
+                    <th className="p-4 font-semibold text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-main-border/40 text-slate-300">
+                  {allUsers.map((userItem) => {
+                    const isSelf = userItem.username === currentUser.username;
+                    return (
+                      <tr 
+                        key={userItem.username} 
+                        className="hover:bg-main-border/10 transition duration-150"
+                      >
+                        {/* User details */}
+                        <td className="p-4">
+                          <div className="flex items-center gap-3">
+                            <div className="h-9 w-9 rounded-full bg-blue-600/10 border border-blue-500/25 flex items-center justify-center text-blue-400 font-bold font-mono">
+                              {userItem.firstName ? userItem.firstName[0].toUpperCase() : userItem.username[0].toUpperCase()}
+                            </div>
+                            <div>
+                              <div className="font-semibold text-slate-100 flex items-center gap-1.5">
+                                {userItem.fullName}
+                                {isSelf && (
+                                  <span className="text-[9px] bg-blue-500/10 text-blue-400 font-bold px-1.5 py-0.5 rounded border border-blue-500/20 font-mono">YOU</span>
+                                )}
+                              </div>
+                              <div className="text-[10px] text-muted-text font-mono">@{userItem.username}</div>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Department */}
+                        <td className="p-4 font-medium text-slate-300">
+                          {userItem.department || 'General'}
+                        </td>
+
+                        {/* Role */}
+                        <td className="p-4">
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                            userItem.role === 'manager' 
+                              ? 'bg-blue-600/15 text-blue-400 border border-blue-500/20' 
+                              : 'bg-emerald-600/15 text-emerald-400 border border-emerald-500/20'
+                          }`}>
+                            {userItem.role === 'manager' ? 'Management' : 'Employee'}
+                          </span>
+                        </td>
+
+                        {/* Rate */}
+                        <td className="p-4 font-mono font-medium text-slate-200">
+                          ${userItem.hourlyRate || 45}/hr
+                        </td>
+
+                        {/* Actions */}
+                        <td className="p-4">
+                          <div className="flex items-center justify-end gap-2">
+                            {/* Edit Button */}
+                            <button
+                              onClick={() => handleStartEditing(userItem)}
+                              className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-main-border bg-app-bg hover:bg-main-border/30 text-xs font-semibold text-slate-200 transition cursor-pointer"
+                            >
+                              <Edit className="h-3.5 w-3.5" />
+                              <span>Edit</span>
+                            </button>
+
+                            {/* Delete Button */}
+                            {!isSelf ? (
+                              <div className="flex items-center">
+                                {confirmDeleteUsername === userItem.username ? (
+                                  <div className="flex items-center gap-1 bg-red-500/10 border border-red-500/25 rounded-lg p-1">
+                                    <span className="text-[10px] text-red-400 font-bold px-1 font-mono uppercase tracking-wider animate-pulse">Delete?</span>
+                                    <button
+                                      onClick={() => handleDeleteUser(userItem.username)}
+                                      className="bg-red-600 hover:bg-red-500 text-white font-bold text-[10px] px-2 py-1 rounded transition cursor-pointer"
+                                    >
+                                      Yes
+                                    </button>
+                                    <button
+                                      onClick={() => setConfirmDeleteUsername(null)}
+                                      className="bg-[#09090B]/60 hover:bg-[#09090B]/80 text-slate-300 text-[10px] px-2 py-1 rounded transition cursor-pointer"
+                                    >
+                                      No
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={() => setConfirmDeleteUsername(userItem.username)}
+                                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-red-500/20 bg-red-500/5 hover:bg-red-500 hover:text-white text-red-400 text-xs font-semibold transition cursor-pointer"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                    <span>Delete</span>
+                                  </button>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-[10px] text-muted-text italic font-mono pr-2">Protected</span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
 
 
       {/* EDIT USER ACCOUNT MODAL */}
@@ -1697,6 +1833,18 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                       className="w-full rounded-xl border border-main-border bg-input-bg p-2.5 text-xs text-main-text focus:border-blue-500/40 focus:outline-none transition-colors"
                     />
                   </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-muted-text uppercase font-mono">Job Privilege Role</label>
+                  <select
+                    value={editRole}
+                    onChange={(e) => setEditRole(e.target.value as 'employee' | 'manager')}
+                    className="w-full rounded-xl border border-main-border bg-input-bg p-2.5 text-xs text-main-text focus:border-blue-500/40 focus:outline-none transition-colors"
+                  >
+                    <option value="employee">Employee</option>
+                    <option value="manager">Management</option>
+                  </select>
                 </div>
 
                 {/* Submit / Cancel Buttons */}

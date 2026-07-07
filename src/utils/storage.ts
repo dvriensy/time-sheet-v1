@@ -913,6 +913,8 @@ export interface ActiveSession {
   lastActiveTimestamp: string;
   secondsElapsed?: number;
   breakSecondsElapsed?: number;
+  daySecondsElapsed?: number;
+  dayBreakSecondsElapsed?: number;
   isOvertime?: boolean;
 }
 
@@ -961,26 +963,32 @@ export function clearActiveSession() {
   deleteActiveSessionFromFirestore(currentUsername);
 }
 
-export function deleteUserAccount(username: string): boolean {
+export async function deleteUserAccount(username: string): Promise<boolean> {
   const usersRaw = localStorage.getItem(KEY_USERS_LIST);
   let users: UserAccount[] = usersRaw ? JSON.parse(usersRaw) : [];
   
   const exists = users.some(u => u.username === username);
   if (!exists) return false;
   
+  // 1. Delete from Firestore first
+  try {
+    await deleteUserFromFirestore(username);
+    await deleteActiveSessionFromFirestore(username);
+  } catch (e) {
+    console.error("Firestore account deletion error:", e);
+  }
+
+  // 2. Clear current session if user is deleting themselves
   const currentUsername = localStorage.getItem(KEY_CURRENT_USER);
   if (currentUsername === username) {
     localStorage.removeItem(KEY_CURRENT_USER);
   }
   
+  // 3. Filter out user and write to local storage
   users = users.filter(u => u.username !== username);
   localStorage.setItem(KEY_USERS_LIST, JSON.stringify(users));
-  window.dispatchEvent(new Event('storage-sync'));
   
-  // Sync delete user
-  deleteUserFromFirestore(username);
-  deleteActiveSessionFromFirestore(username);
-  
+  // 4. Clear local active session
   const sessionsRaw = localStorage.getItem('timesheets_tracker_active_sessions');
   if (sessionsRaw) {
     const sessions = JSON.parse(sessionsRaw);
@@ -988,17 +996,150 @@ export function deleteUserAccount(username: string): boolean {
     localStorage.setItem('timesheets_tracker_active_sessions', JSON.stringify(sessions));
   }
   
+  // 5. Clear timesheets locally and in Firestore
   const entriesRaw = localStorage.getItem(KEY_TIMESHEETS);
   if (entriesRaw) {
     const entries: TimesheetEntry[] = JSON.parse(entriesRaw);
     const userTimesheets = entries.filter(e => e.username === username);
     for (const e of userTimesheets) {
-      deleteTimesheetFromFirestore(e.id);
+      try {
+        await deleteTimesheetFromFirestore(e.id);
+      } catch (err) {
+        console.error("Failed to delete timesheet in firestore:", err);
+      }
     }
     const filteredEntries = entries.filter(e => e.username !== username);
     localStorage.setItem(KEY_TIMESHEETS, JSON.stringify(filteredEntries));
   }
+
+  // 6. Clear future shifts locally and in Firestore
+  const shiftsRaw = localStorage.getItem(KEY_FUTURE_SHIFTS);
+  if (shiftsRaw) {
+    const shifts: FutureShift[] = JSON.parse(shiftsRaw);
+    const userShifts = shifts.filter(s => s.username === username);
+    for (const s of userShifts) {
+      try {
+        await deleteFutureShiftFromFirestore(s.id);
+      } catch (err) {
+        console.error("Failed to delete future shift in firestore:", err);
+      }
+    }
+    const filteredShifts = shifts.filter(s => s.username !== username);
+    localStorage.setItem(KEY_FUTURE_SHIFTS, JSON.stringify(filteredShifts));
+  }
+
+  // 7. Clear time off requests locally and in Firestore
+  const requestsRaw = localStorage.getItem('timesheets_tracker_time_off_requests');
+  if (requestsRaw) {
+    const requests: TimeOffRequest[] = JSON.parse(requestsRaw);
+    const userRequests = requests.filter(r => r.username === username);
+    for (const r of userRequests) {
+      try {
+        await deleteDoc(doc(db, 'timeOffRequests', r.id));
+      } catch (err) {
+        console.error("Failed to delete timeoff request in firestore:", err);
+      }
+    }
+    const filteredRequests = requests.filter(r => r.username !== username);
+    localStorage.setItem('timesheets_tracker_time_off_requests', JSON.stringify(filteredRequests));
+  }
   
+  window.dispatchEvent(new Event('storage-sync'));
+  return true;
+}
+
+export function resetUserPassword(username: string, fullName: string, newPassword: string): boolean {
+  const usersRaw = localStorage.getItem(KEY_USERS_LIST);
+  const users: UserAccount[] = usersRaw ? JSON.parse(usersRaw) : [];
+  
+  const targetUsername = username.trim().toLowerCase();
+  const index = users.findIndex(u => u.username === targetUsername && u.fullName.toLowerCase() === fullName.trim().toLowerCase());
+  if (index === -1) return false;
+  
+  users[index].password = newPassword.trim();
+  localStorage.setItem(KEY_USERS_LIST, JSON.stringify(users));
+  syncUserToFirestore(users[index]);
+  window.dispatchEvent(new Event('storage-sync'));
+  return true;
+}
+
+export interface EnrichedTimesheetEntry extends TimesheetEntry {
+  regularHours: number;
+  overtimeHours: number;
+  earnings: number;
+}
+
+export function enrichEntriesWithOvertime(entries: TimesheetEntry[], usersList?: UserAccount[]): EnrichedTimesheetEntry[] {
+  // 1. Group entries by username and date
+  const groups: Record<string, TimesheetEntry[]> = {};
+  for (const entry of entries) {
+    const key = `${entry.username || 'guest'}_${entry.date}`;
+    if (!groups[key]) {
+      groups[key] = [];
+    }
+    groups[key].push(entry);
+  }
+  
+  const enriched: EnrichedTimesheetEntry[] = [];
+  const users = usersList || getAllUsers();
+  
+  // 2. Process each group
+  for (const key in groups) {
+    const groupEntries = groups[key];
+    // Sort chronologically by startTime
+    groupEntries.sort((a, b) => a.startTime.localeCompare(b.startTime));
+    
+    let runningTotalHours = 0;
+    for (const entry of groupEntries) {
+      const rate = entry.hourlyRate || users.find(u => u.username === entry.username)?.hourlyRate || 45;
+      const entryHours = entry.totalHours;
+      
+      let regularHours = 0;
+      let overtimeHours = 0;
+      
+      if (runningTotalHours >= 8) {
+        overtimeHours = entryHours;
+        regularHours = 0;
+      } else if (runningTotalHours + entryHours <= 8) {
+        regularHours = entryHours;
+        overtimeHours = 0;
+      } else {
+        regularHours = 8 - runningTotalHours;
+        overtimeHours = entryHours - regularHours;
+      }
+      
+      runningTotalHours += entryHours;
+      
+      const computedEarnings = (regularHours * rate) + (overtimeHours * rate * 1.5);
+      
+      enriched.push({
+        ...entry,
+        regularHours: Number(regularHours.toFixed(2)),
+        overtimeHours: Number(overtimeHours.toFixed(2)),
+        earnings: Number(computedEarnings.toFixed(2)),
+        isOvertime: overtimeHours > 0
+      });
+    }
+  }
+  
+  // Maintain the newest first order (by date and startTime descending)
+  return enriched.sort((a, b) => {
+    if (a.date !== b.date) {
+      return b.date.localeCompare(a.date);
+    }
+    return b.startTime.localeCompare(a.startTime);
+  });
+}
+
+export function acknowledgeFutureShift(id: string): boolean {
+  const shifts = getFutureShifts();
+  const index = shifts.findIndex(s => s.id === id);
+  if (index === -1) return false;
+  
+  shifts[index].acknowledged = true;
+  localStorage.setItem(KEY_FUTURE_SHIFTS, JSON.stringify(shifts));
+  syncFutureShiftToFirestore(shifts[index]);
+  window.dispatchEvent(new Event('storage-sync'));
   return true;
 }
 
