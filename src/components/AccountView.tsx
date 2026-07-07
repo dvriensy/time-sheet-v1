@@ -8,9 +8,9 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   User, Mail, Phone, Briefcase, DollarSign, Camera, Save, 
   Sparkles, CheckCircle2, RefreshCw, LogOut, Clock, Landmark,
-  Trash2, AlertTriangle
+  Trash2
 } from 'lucide-react';
-import { UserAccount, updateUserAccount, getTimesheets, deleteUserAccount } from '../utils/storage';
+import { UserAccount, updateUserAccount, getTimesheets } from '../utils/storage';
 
 interface AccountViewProps {
   currentUser: UserAccount;
@@ -60,36 +60,53 @@ export default function AccountView({ currentUser, onUpdateUser, onLogout, isMob
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
 
-  // Self deletion states
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [deleteUnderstand, setDeleteUnderstand] = useState(false);
-  const [confirmUsername, setConfirmUsername] = useState('');
+  // Account deletion states
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  const handleDeleteSelf = async () => {
-    if (confirmUsername.trim() !== currentUser.username) {
-      setDeleteError('Typed username does not match.');
-      return;
-    }
-    if (!deleteUnderstand) {
-      setDeleteError('You must check the acknowledgement box.');
-      return;
-    }
-
+  const handleDeleteAccount = async () => {
     setIsDeleting(true);
     setDeleteError(null);
     try {
-      const success = await deleteUserAccount(currentUser.username);
-      if (success) {
-        onLogout();
+      const response = await fetch('/api/delete-account', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ username: currentUser.username })
+      });
+
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || 'Failed to delete account on server');
+      }
+
+      const result = await response.json();
+      if (result.success) {
+        console.log('Account deleted successfully on server. Performing hard logout...');
+        
+        // 1. Clear local storage
+        localStorage.clear();
+
+        // 2. Clear document cookies if any
+        const cookies = document.cookie.split(";");
+        for (let i = 0; i < cookies.length; i++) {
+          const cookie = cookies[i];
+          const eqPos = cookie.indexOf("=");
+          const name = eqPos > -1 ? cookie.substr(0, eqPos) : cookie;
+          document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
+        }
+
+        // 3. Force hard redirect to login/home page
+        window.location.href = '/';
       } else {
-        setDeleteError('An unexpected error occurred during account deletion.');
-        setIsDeleting(false);
+        throw new Error('Server returned unsuccessful deletion response');
       }
     } catch (err: any) {
-      console.error(err);
-      setDeleteError(err?.message || 'Error occurred during deletion.');
+      console.error('Error deleting account:', err);
+      setDeleteError(err.message || 'Error occurred during deletion.');
+    } finally {
       setIsDeleting(false);
     }
   };
@@ -484,133 +501,67 @@ export default function AccountView({ currentUser, onUpdateUser, onLogout, isMob
               </button>
             </div>
           </form>
-        </div>
 
-      </div>
+          {/* DANGER ZONE FOR ACCOUNT DELETION */}
+          <div className="bg-card-bg border border-red-500/25 rounded-2xl p-6 md:p-8 shadow-xl space-y-4">
+            <div className="border-b border-red-500/15 pb-4">
+              <h3 className="text-sm font-bold text-red-500 uppercase tracking-wider font-mono">
+                Danger Zone
+              </h3>
+              <p className="text-xs text-muted-text mt-1">
+                Irreversible administrative action. Deleting your account will wipe all recorded sessions permanently.
+              </p>
+            </div>
 
-      {/* DANGER ZONE - SELF DELETION */}
-      <div className="bg-rose-500/[0.02] border border-rose-500/10 rounded-2xl p-6 md:p-8 shadow-xl space-y-6 mt-6">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-rose-500/10 pb-5">
-          <div className="text-left">
-            <h2 className="text-base font-bold text-rose-500 uppercase tracking-wide font-mono flex items-center gap-2">
-              <AlertTriangle className="h-4.5 w-4.5 animate-pulse" />
-              <span>Danger Zone: Account Deletion</span>
-            </h2>
-            <p className="text-xs text-muted-text mt-1">Permanently remove your contractor account, timesheets, and schedule records.</p>
-          </div>
-          {!showDeleteConfirm && (
-            <button
-              type="button"
-              onClick={() => {
-                setShowDeleteConfirm(true);
-                setDeleteUnderstand(false);
-                setConfirmUsername('');
-                setDeleteError(null);
-              }}
-              className="flex items-center gap-1.5 self-start md:self-auto bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white px-4 py-2.5 rounded-xl text-xs font-semibold cursor-pointer transition active:scale-95 border border-rose-500/20"
-            >
-              <Trash2 className="h-4 w-4" />
-              <span>Delete My Account</span>
-            </button>
-          )}
-        </div>
+            <div className="bg-red-500/5 border border-red-500/10 rounded-xl p-4 text-left">
+              <p className="text-xs text-red-400 font-medium leading-relaxed">
+                Warning: This will permanently delete your account (@{currentUser.username}) and automatically clear all of your associated timesheet entries, scheduled shifts, and active status logs from the secure Firestore database. This action cannot be undone.
+              </p>
+            </div>
 
-        <AnimatePresence>
-          {showDeleteConfirm && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="space-y-4 overflow-hidden"
-            >
-              <div className="bg-rose-500/5 border border-rose-500/20 rounded-xl p-4 space-y-2 text-left">
-                <h3 className="text-sm font-bold text-rose-400 flex items-center gap-1.5">
-                  <AlertTriangle className="h-4 w-4" />
-                  <span>Are you absolutely sure? This action is irreversible!</span>
-                </h3>
-                <p className="text-xs text-muted-text leading-relaxed">
-                  By deleting your account, you will permanently destroy:
-                </p>
-                <ul className="text-xs text-muted-text list-disc list-inside space-y-1 pl-1">
-                  <li>Your user account profile metadata & permissions.</li>
-                  <li>All of your logged timesheets and total hour calculations.</li>
-                  <li>Any upcoming or assigned scheduled shifts.</li>
-                  <li>All of your submitted time-off requests.</li>
-                </ul>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-2">
+              <div className="space-y-0.5 text-left font-sans">
+                <span className="text-xs font-semibold text-main-text block">Delete Profile & Timesheets</span>
+                <p className="text-[10px] text-muted-text leading-tight">Requires server verification and hard logout</p>
               </div>
 
-              {deleteError && (
-                <div className="bg-rose-500/10 border border-rose-500/20 text-rose-500 text-xs font-semibold p-3.5 rounded-xl text-left">
-                  {deleteError}
+              {confirmDelete ? (
+                <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
+                  <span className="text-xs text-red-400 font-bold animate-pulse font-mono">CONFIRM PERMANENT DELETION?</span>
+                  <button
+                    type="button"
+                    disabled={isDeleting}
+                    onClick={handleDeleteAccount}
+                    className="bg-red-600 hover:bg-red-500 text-white font-bold text-xs px-4 py-2 rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-md shadow-red-500/15 disabled:opacity-50"
+                  >
+                    {isDeleting ? 'Deleting...' : 'Yes, Delete My Account'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isDeleting}
+                    onClick={() => setConfirmDelete(false)}
+                    className="bg-app-bg hover:bg-main-border/30 border border-main-border text-slate-300 text-xs px-4 py-2 rounded-xl transition cursor-pointer"
+                  >
+                    Cancel
+                  </button>
                 </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmDelete(true)}
+                  className="w-full sm:w-auto flex items-center justify-center gap-1.5 bg-red-600/10 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/20 px-5 py-2.5 rounded-xl text-xs font-semibold cursor-pointer transition-all"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  <span>Delete My Account</span>
+                </button>
               )}
+            </div>
+            {deleteError && (
+              <p className="text-xs font-semibold text-red-400 font-mono mt-2 text-left">{deleteError}</p>
+            )}
+          </div>
+        </div>
 
-              <div className="space-y-3 pt-2 text-left">
-                {/* Checkbox */}
-                <label className="flex items-start gap-2.5 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={deleteUnderstand}
-                    onChange={(e) => setDeleteUnderstand(e.target.checked)}
-                    className="mt-0.5 rounded border-rose-500/30 text-rose-600 focus:ring-rose-500/40 bg-app-bg"
-                  />
-                  <span className="text-xs text-slate-300 font-medium select-none">
-                    I acknowledge that this action is permanent, completely irreversible, and will delete all associated timesheet data.
-                  </span>
-                </label>
-
-                {/* Confirm username input */}
-                <div className="space-y-1.5">
-                  <label className="block text-[10px] font-semibold text-muted-text uppercase tracking-wider font-mono">
-                    Type your username <span className="text-rose-400 font-bold">@{currentUser.username}</span> to confirm:
-                  </label>
-                  <input
-                    type="text"
-                    placeholder={currentUser.username}
-                    value={confirmUsername}
-                    onChange={(e) => setConfirmUsername(e.target.value)}
-                    className="w-full max-w-md rounded-xl border border-rose-500/20 bg-input-bg px-4 py-2 text-sm text-main-text font-mono placeholder-muted-text/30 focus:border-rose-500/50 focus:outline-none transition-colors"
-                  />
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex flex-col sm:flex-row items-center gap-3 pt-3 border-t border-rose-500/10">
-                <button
-                  type="button"
-                  disabled={isDeleting}
-                  onClick={() => setShowDeleteConfirm(false)}
-                  className="px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-slate-200 border border-main-border hover:bg-main-border/30 cursor-pointer transition w-full sm:w-auto text-center"
-                >
-                  Cancel
-                </button>
-
-                <button
-                  type="button"
-                  disabled={isDeleting || !deleteUnderstand || confirmUsername.trim() !== currentUser.username}
-                  onClick={handleDeleteSelf}
-                  className={`flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-xl text-xs font-bold transition w-full sm:w-auto text-center ${
-                    deleteUnderstand && confirmUsername.trim() === currentUser.username
-                      ? 'bg-rose-600 hover:bg-rose-500 text-white cursor-pointer shadow-lg shadow-rose-600/10'
-                      : 'bg-rose-500/10 text-rose-400/50 cursor-not-allowed border border-rose-500/5'
-                  }`}
-                >
-                  {isDeleting ? (
-                    <>
-                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                      <span>Deleting Account...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Trash2 className="h-3.5 w-3.5" />
-                      <span>Permanently Delete My Account</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </div>
 
     </div>

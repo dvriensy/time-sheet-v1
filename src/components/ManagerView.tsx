@@ -254,20 +254,53 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
     }
   };
 
-  const handleDeleteUser = (username: string, fullName?: string) => {
+  const handleDeleteUser = async (username: string, fullName?: string) => {
     const resolvedName = fullName || allUsers.find(u => u.username === username)?.fullName || username;
-    const success = deleteUserAccount(username);
-    if (success) {
+    
+    try {
+      // 1. Call the backend API route for account deletion
+      const response = await fetch('/api/delete-account', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ username })
+      });
+
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || 'Failed to delete account on backend');
+      }
+
+      // 2. Clear locally in state and localStorage
+      await deleteUserAccount(username);
+
       setSuccessMessage(`Successfully deleted account "${resolvedName}" and cleared all logs.`);
       setConfirmDeleteUsername(null);
       
       // Keep seen set synchronized
       knownUsernamesRef.current.delete(username);
       
+      // 3. Crucial: If deleting own account, clear and hard redirect
+      if (username === currentUser.username) {
+        console.log('Self-deletion detected. Clearing session and redirecting...');
+        localStorage.clear();
+        const cookies = document.cookie.split(";");
+        for (let i = 0; i < cookies.length; i++) {
+          const cookie = cookies[i];
+          const eqPos = cookie.indexOf("=");
+          const name = eqPos > -1 ? cookie.substr(0, eqPos) : cookie;
+          document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
+        }
+        window.location.href = '/';
+        return;
+      }
+
       setRefreshTrigger(prev => prev + 1);
       setTimeout(() => setSuccessMessage(null), 4000);
-    } else {
-      setSuccessMessage(`Error: Unable to delete account "${resolvedName}".`);
+    } catch (err: any) {
+      console.error('Error during account deletion:', err);
+      setSuccessMessage(`Error: Unable to delete account "${resolvedName}". ${err.message || ''}`);
       setConfirmDeleteUsername(null);
       setTimeout(() => setSuccessMessage(null), 4000);
     }
