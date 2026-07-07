@@ -598,7 +598,6 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                 <span>Past Archive ({pastPeriods.length})</span>
               </button>
             )}
-            <span className="text-xs text-muted-text font-mono">LOCAL PERSISTENCE ONLY</span>
           </div>
         </div>
 
@@ -1393,10 +1392,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                 )}
               </div>
 
-              {/* Sidebar Footer */}
-              <div className="p-5 border-t border-main-border bg-app-bg/30 text-center text-[10px] text-muted-text/80 uppercase font-mono tracking-wider select-none shrink-0">
-                Archived Ledger Sandbox Environment
-              </div>
+
             </motion.div>
           </>
         )}

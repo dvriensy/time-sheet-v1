@@ -333,7 +333,7 @@ export default function App() {
 
         {/* Footer info line */}
         <footer className="mt-12 border-t border-main-border pt-6 text-center text-[10px] text-muted-text font-mono tracking-wide uppercase select-none pb-4">
-          SYSTEM CLASSIFIED: SANDBOX LOCAL ISOLATION LAYER ENCRYPTED • NOT FOR PUBLIC DISTRIBUTION • GDPR-CCPA COMPLIANT
+          Timesheets Work Tracker
         </footer>
       </div>
     );

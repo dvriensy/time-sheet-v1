@@ -970,11 +970,12 @@ export function deleteUserAccount(username: string): boolean {
   
   const currentUsername = localStorage.getItem(KEY_CURRENT_USER);
   if (currentUsername === username) {
-    return false;
+    localStorage.removeItem(KEY_CURRENT_USER);
   }
   
   users = users.filter(u => u.username !== username);
   localStorage.setItem(KEY_USERS_LIST, JSON.stringify(users));
+  window.dispatchEvent(new Event('storage-sync'));
   
   // Sync delete user
   deleteUserFromFirestore(username);

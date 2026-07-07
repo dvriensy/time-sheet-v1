@@ -321,16 +321,7 @@ export default function DashboardView({ entries, privacyMode, onTogglePrivacy }:
         </div>
       </div>
 
-      {/* Compliance Verification Footer */}
-      <div className="rounded-3xl border border-blue-500/15 bg-blue-500/5 p-5 flex items-start gap-3 shadow-sm">
-        <ShieldCheck className="h-5 w-5 text-blue-400 mt-0.5 flex-shrink-0" />
-        <div>
-          <h4 className="text-xs font-semibold text-blue-400">Local Isolation Verified</h4>
-          <p className="mt-0.5 text-[11px] leading-relaxed text-slate-400">
-            This analytical dashboard executes strictly inside your browser sandbox using high-performance mathematical aggregates over cached Local Storage. Zero tracking, profiling, or analytical packet serialization occurs, fully aligning with corporate GDPR and CCPA non-disclosure protocols.
-          </p>
-        </div>
-      </div>
+
 
     </div>
   );

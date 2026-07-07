@@ -284,8 +284,8 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
 
   // Compute stats per user (only employee accounts)
   const userStats = useMemo(() => {
-    // 1. Get all registered employee accounts
-    const employees = allUsers.filter(u => u.role !== 'manager' && u.username !== 'derek_vriens' && u.username !== currentUser.username);
+    // 1. Get all registered accounts (allowing managers to manage, edit, and delete any user)
+    const employees = allUsers;
     
     // 2. Identify active sessions whose usernames are not currently in the employees list
     const employeeUsernames = new Set(employees.map(u => u.username));
@@ -1084,62 +1084,60 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                           </div>
 
                           {/* Delete account administrative block */}
-                          {currentUser.username !== user.username && (
-                            <div className="pt-4 border-t border-main-border/30 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-red-500/[0.02] p-4 rounded-xl border border-red-500/10 mt-2">
-                              <div className="space-y-0.5 text-left">
-                                <span className="text-xs font-bold text-red-500 uppercase tracking-wider font-mono">Administrative Control</span>
-                                <p className="text-[10px] text-muted-text">Modify account permissions, pay details, or permanently delete this contractor.</p>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                {confirmDeleteUsername === user.username ? (
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-[11px] font-mono text-red-400 font-medium">Are you sure?</span>
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleDeleteUser(user.username);
-                                      }}
-                                      className="bg-red-600 hover:bg-red-700 text-white font-bold text-[11px] px-3 py-1.5 rounded-lg cursor-pointer transition"
-                                    >
-                                      Yes, Delete
-                                    </button>
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setConfirmDeleteUsername(null);
-                                      }}
-                                      className="bg-app-bg hover:bg-main-border/30 border border-main-border text-muted-text font-bold text-[11px] px-3 py-1.5 rounded-lg cursor-pointer transition"
-                                    >
-                                      Cancel
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <>
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleStartEditing(user);
-                                      }}
-                                      className="flex items-center gap-1 bg-amber-500/10 hover:bg-amber-600 text-amber-500 hover:text-white border border-amber-500/20 hover:border-amber-600 px-3 py-1.5 rounded-lg text-[11px] font-bold cursor-pointer transition"
-                                    >
-                                      <Edit className="h-3.5 w-3.5" />
-                                      <span>Edit Account</span>
-                                    </button>
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setConfirmDeleteUsername(user.username);
-                                      }}
-                                      className="flex items-center gap-1 bg-red-950/40 hover:bg-red-900/30 text-red-400 hover:text-red-300 border border-red-900/20 px-3 py-1.5 rounded-lg text-[11px] font-bold cursor-pointer transition"
-                                    >
-                                      <Trash2 className="h-3.5 w-3.5" />
-                                      <span>Delete Account</span>
-                                    </button>
-                                  </>
-                                )}
-                              </div>
+                          <div className="pt-4 border-t border-main-border/30 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-red-500/[0.02] p-4 rounded-xl border border-red-500/10 mt-2">
+                            <div className="space-y-0.5 text-left">
+                              <span className="text-xs font-bold text-red-500 uppercase tracking-wider font-mono">Administrative Control</span>
+                              <p className="text-[10px] text-muted-text">Modify account permissions, pay details, or permanently delete this contractor.</p>
                             </div>
-                          )}
+                            <div className="flex items-center gap-2">
+                              {confirmDeleteUsername === user.username ? (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[11px] font-mono text-red-400 font-medium">Are you sure?</span>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteUser(user.username);
+                                    }}
+                                    className="bg-red-600 hover:bg-red-700 text-white font-bold text-[11px] px-3 py-1.5 rounded-lg cursor-pointer transition"
+                                  >
+                                    Yes, Delete
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setConfirmDeleteUsername(null);
+                                    }}
+                                    className="bg-app-bg hover:bg-main-border/30 border border-main-border text-muted-text font-bold text-[11px] px-3 py-1.5 rounded-lg cursor-pointer transition"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              ) : (
+                                <>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleStartEditing(user);
+                                    }}
+                                    className="flex items-center gap-1 bg-amber-500/10 hover:bg-amber-600 text-amber-500 hover:text-white border border-amber-500/20 hover:border-amber-600 px-3 py-1.5 rounded-lg text-[11px] font-bold cursor-pointer transition"
+                                  >
+                                    <Edit className="h-3.5 w-3.5" />
+                                    <span>Edit Account</span>
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setConfirmDeleteUsername(user.username);
+                                    }}
+                                    className="flex items-center gap-1 bg-red-950/40 hover:bg-red-900/30 text-red-400 hover:text-red-300 border border-red-900/20 px-3 py-1.5 rounded-lg text-[11px] font-bold cursor-pointer transition"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                    <span>Delete Account</span>
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </div>
 
                         </div>
                       </motion.div>
@@ -1595,18 +1593,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
         </div>
       )}
 
-      {/* FOOTER AUDIT NOTE */}
-      <div className="bg-card-bg/50 border border-main-border/40 rounded-2xl p-4 flex items-start gap-3">
-        <ShieldAlert className="h-5 w-5 text-blue-500 shrink-0 mt-0.5" />
-        <div className="space-y-1">
-          <h4 className="text-xs font-bold text-main-text leading-tight uppercase font-mono">
-            Manager Administrative Compliance Lock
-          </h4>
-          <p className="text-[11px] text-muted-text leading-relaxed">
-            You are currently authorized under the manager account: <strong className="text-muted-text/95">derek_vriens</strong>. Live team tracking feeds are localized and processed in compliance with ISO-27001 data governance and GDPR regulations. All administrative sync logs are securely mirrored to the centralized audit registry.
-          </p>
-        </div>
-      </div>
+
 
       {/* EDIT USER ACCOUNT MODAL */}
       <AnimatePresence>
