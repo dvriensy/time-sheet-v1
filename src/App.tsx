@@ -139,25 +139,25 @@ export default function App() {
     return (
       <div className="flex-grow flex flex-col w-full h-full relative">
         {/* Top bar header */}
-        <header className={`flex ${isMobileView ? 'flex-row items-center justify-between p-3 mb-4 gap-2' : 'flex-col gap-4 sm:flex-row sm:items-center sm:justify-between p-5 mb-6'} bg-card-bg rounded-2xl border border-main-border shadow-xl transition-all duration-200`}>
-          <div className="flex items-center gap-2">
-            <div className={`bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-900/20 ${isMobileView ? 'w-8 h-8' : 'w-10 h-10'}`}>
-              <Clock className={`${isMobileView ? 'w-4 h-4' : 'w-6 h-6'} text-white`} />
+        <header className={`flex ${isMobileView ? 'flex-row items-center justify-between p-3 mb-4 gap-2' : 'flex-col gap-4 sm:flex-row sm:items-center sm:justify-between px-6 py-4 mb-6'} bg-card-bg rounded-2xl border border-main-border/60 shadow-lg shadow-slate-900/5 transition-all duration-200`}>
+          <div className="flex items-center gap-3">
+            <div className={`bg-blue-600 rounded-xl flex items-center justify-center shadow-md shadow-blue-500/10 ${isMobileView ? 'w-8 h-8' : 'w-10 h-10'}`}>
+              <Clock className={`${isMobileView ? 'w-4 h-4' : 'w-5 w-5'} text-white`} />
             </div>
             <div>
-              <h1 className={`${isMobileView ? 'text-xs' : 'text-xl'} font-bold tracking-tight text-main-text uppercase`}>TIME <span className="text-blue-500">SHEETS</span></h1>
-              {!isMobileView && <p className="text-xs text-muted-text">Work Time Tracker</p>}
+              <h1 className={`${isMobileView ? 'text-xs' : 'text-lg'} font-display font-bold tracking-tight text-main-text`}>TIME<span className="text-blue-500 font-normal">LEDGER</span></h1>
+              {!isMobileView && <p className="text-[10px] font-mono tracking-wider uppercase text-muted-text/80">Enterprise Clock</p>}
             </div>
           </div>
 
           <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap">
             {/* Navigation Tabs */}
-            <div className="flex items-center bg-app-bg/50 p-1 rounded-xl border border-main-border/80 mr-1 shrink-0">
+            <div className="flex items-center bg-app-bg p-1 rounded-xl border border-main-border/50 mr-1 shrink-0">
               <button
                 onClick={() => setActiveTab('timesheets')}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 cursor-pointer ${
                   activeTab === 'timesheets' 
-                    ? 'bg-blue-600 text-white shadow-sm' 
+                    ? 'bg-blue-600 text-white shadow-sm font-semibold' 
                     : 'text-muted-text hover:text-main-text'
                 }`}
               >
@@ -167,9 +167,9 @@ export default function App() {
               {isManager && (
                 <button
                   onClick={() => setActiveTab('manager')}
-                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 cursor-pointer ${
                     activeTab === 'manager' 
-                      ? 'bg-blue-600 text-white shadow-sm' 
+                      ? 'bg-blue-600 text-white shadow-sm font-semibold' 
                       : 'text-muted-text hover:text-main-text'
                   }`}
                 >
@@ -179,9 +179,9 @@ export default function App() {
               )}
               <button
                 onClick={() => setActiveTab('account')}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 cursor-pointer ${
                   activeTab === 'account' 
-                    ? 'bg-blue-600 text-white shadow-sm' 
+                    ? 'bg-blue-600 text-white shadow-sm font-semibold' 
                     : 'text-muted-text hover:text-main-text'
                 }`}
               >
@@ -193,15 +193,15 @@ export default function App() {
             {/* Request Time Off Button */}
             <button
               onClick={() => setIsTimeOffOpen(true)}
-              className={`flex items-center gap-1.5 cursor-pointer relative border border-blue-500/10 bg-blue-500/5 hover:bg-blue-600 hover:text-white hover:border-blue-600 text-blue-500 shadow-sm transition-all duration-200 ${
-                isMobileView ? 'px-2.5 py-1.5 text-[10px] rounded-lg' : 'px-3 py-2 text-xs rounded-xl'
+              className={`flex items-center gap-1.5 cursor-pointer relative border border-blue-500/20 bg-blue-500/5 hover:bg-blue-600 hover:text-white hover:border-blue-600 text-blue-500 shadow-sm transition-all duration-200 ${
+                isMobileView ? 'px-2.5 py-1.5 text-[10px] rounded-lg' : 'px-3.5 py-1.5 text-xs rounded-xl font-medium'
               }`}
               title="Request Absence or Time Off"
             >
               <CalendarDays className="h-3.5 w-3.5" />
               <span>Time Off</span>
               {timeOffBadge > 0 && (
-                <span className="absolute -top-1 -right-1 flex h-4.5 w-4.5 items-center justify-center rounded-full bg-red-500 text-[9px] font-black text-white border border-card-bg shadow animate-bounce">
+                <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white border border-card-bg shadow animate-bounce">
                   {timeOffBadge}
                 </span>
               )}

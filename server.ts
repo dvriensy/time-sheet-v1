@@ -2,7 +2,7 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, query, where, getDocs, deleteDoc, doc } from "firebase/firestore";
+import { getFirestore, collection, query, where, getDocs, deleteDoc, doc, getDoc } from "firebase/firestore";
 
 // Initialize Firebase SDK on the backend
 const firebaseConfig = {
@@ -28,6 +28,69 @@ async function startServer() {
   serverApp.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
   });
+
+  // User list API route for manager dashboard
+  const getUsersHandler = async (req: express.Request, res: express.Response) => {
+    const requesterUsername = (req.body.requesterUsername || req.query.requesterUsername || req.headers["x-requester-username"]) as string;
+    
+    if (!requesterUsername) {
+      return res.status(401).json({ error: "Unauthorized: Requester username is required for verification." });
+    }
+
+    try {
+      // 1. Verify that the requester is a manager or admin
+      const requesterDocRef = doc(db, "users", requesterUsername);
+      const requesterSnap = await getDoc(requesterDocRef);
+      
+      let isAuthorized = false;
+      
+      // Standard hardcoded fallback for derek_vriens, or if role is manager/admin
+      if (requesterUsername === 'derek_vriens') {
+        isAuthorized = true;
+      } else if (requesterSnap.exists()) {
+        const userData = requesterSnap.data();
+        const role = userData.role || 'employee';
+        if (role === 'manager' || role === 'admin') {
+          isAuthorized = true;
+        }
+      }
+
+      if (!isAuthorized) {
+        return res.status(403).json({ error: "Access Denied: Requester does not have manager or admin privileges." });
+      }
+
+      // 2. Query pulls ALL active users from the database
+      const usersRef = collection(db, "users");
+      const usersSnap = await getDocs(usersRef);
+      
+      const usersList: any[] = [];
+      usersSnap.forEach(docSnap => {
+        const u = docSnap.data();
+        usersList.push({
+          id: docSnap.id,
+          username: u.username || docSnap.id,
+          firstName: u.firstName || '',
+          lastName: u.lastName || '',
+          fullName: u.fullName || '',
+          role: u.role || 'employee',
+          department: u.department || 'Operations',
+          hourlyRate: u.hourlyRate || 45,
+          email: u.email || '',
+          phone: u.phone || '',
+          bio: u.bio || ''
+        });
+      });
+
+      // 3. Make sure it returns an array of users to the frontend
+      return res.json(usersList);
+    } catch (error: any) {
+      console.error("[BACKEND] Error fetching users list:", error);
+      return res.status(500).json({ error: error.message || "Failed to retrieve registered users." });
+    }
+  };
+
+  serverApp.get("/api/users", getUsersHandler);
+  serverApp.post("/api/users", getUsersHandler);
 
   // Account deletion API route
   serverApp.post("/api/delete-account", async (req, res) => {

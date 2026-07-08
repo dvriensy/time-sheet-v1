@@ -105,7 +105,50 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
     setTimeOffList(getTimeOffRequests());
   };
 
-  const refreshUsersList = () => {
+  const refreshUsersList = async () => {
+    try {
+      const response = await fetch(`/api/users?requesterUsername=${encodeURIComponent(currentUser.username)}`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          "x-requester-username": currentUser.username
+        }
+      });
+      if (response.ok) {
+        const usersData = await response.json();
+        if (Array.isArray(usersData)) {
+          // Sync to localStorage
+          localStorage.setItem('timesheets_tracker_users_list', JSON.stringify(usersData));
+          
+          // Check for newly registered user accounts
+          if (knownUsernamesRef.current.size > 0) {
+            usersData.forEach(user => {
+              if (!knownUsernamesRef.current.has(user.username)) {
+                // Add system notification for the manager
+                const newNotif = {
+                  id: 'notif_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9),
+                  message: `${user.fullName} (@${user.username}) registered a new account. Added to database!`,
+                  timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                };
+                setNotifications(prev => [newNotif, ...prev]);
+                knownUsernamesRef.current.add(user.username);
+              }
+            });
+          } else {
+            // First load: populate seen set
+            usersData.forEach(user => {
+              knownUsernamesRef.current.add(user.username);
+            });
+          }
+          
+          setAllUsers(usersData);
+          return;
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch users from backend:", err);
+    }
+
     const currentUsers = getAllUsers();
     
     // Check for newly registered user accounts

@@ -154,14 +154,14 @@ export default function UserAuthGate({ onAuthSuccess, isMobileView = false }: Us
         </button>
 
         <div className={`flex flex-col items-center ${isMobileView ? 'mb-4' : 'mb-6'} text-center`}>
-          <div className={`${isMobileView ? 'h-10 w-10 mb-2 rounded-xl' : 'h-12 w-12 mb-3 rounded-2xl'} bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/20 animate-pulse`}>
-            <Clock className={`${isMobileView ? 'h-5 w-5' : 'h-6 w-6'} text-white`} />
+          <div className={`${isMobileView ? 'h-10 w-10 mb-2.5 rounded-xl' : 'h-12 w-12 mb-3.5 rounded-2xl'} bg-blue-600 flex items-center justify-center shadow-md shadow-blue-500/10`}>
+            <Clock className={`${isMobileView ? 'h-5 w-5' : 'h-5.5 w-5.5'} text-white`} />
           </div>
-          <h1 className={`${isMobileView ? 'text-lg' : 'text-xl'} font-bold text-main-text uppercase tracking-tight`}>
-            TIME <span className="text-blue-500">SHEETS</span>
+          <h1 className={`${isMobileView ? 'text-xl' : 'text-2xl'} font-display font-bold text-main-text tracking-tight`}>
+            TIME<span className="text-blue-500 font-normal">LEDGER</span>
           </h1>
-          <p className="text-xs text-muted-text mt-1">
-            {isForgot ? 'Reset your account password' : isLogin ? 'Verify your identity to log hours' : 'Create an account to start tracking'}
+          <p className="text-xs text-muted-text mt-1.5 max-w-[280px] leading-relaxed">
+            {isForgot ? 'Reset your account password' : isLogin ? 'Securely sign in to manage and log hours' : 'Create an account to start tracking'}
           </p>
         </div>
 
