@@ -2,7 +2,7 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, query, where, getDocs, deleteDoc, doc, getDoc } from "firebase/firestore";
+import { getFirestore, collection, query, where, getDocs, deleteDoc, doc, getDoc, setDoc } from "firebase/firestore";
 
 // Initialize Firebase SDK on the backend
 const firebaseConfig = {
@@ -31,6 +31,9 @@ async function startServer() {
 
   // User list API route for manager dashboard
   const getUsersHandler = async (req: express.Request, res: express.Response) => {
+    // Prevent aggressive caching / enforce revalidation
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    
     const requesterUsername = (req.body.requesterUsername || req.query.requesterUsername || req.headers["x-requester-username"]) as string;
     
     if (!requesterUsername) {
@@ -88,6 +91,63 @@ async function startServer() {
       return res.status(500).json({ error: error.message || "Failed to retrieve registered users." });
     }
   };
+
+  // User signup/registration endpoint
+  serverApp.post("/api/signup", async (req, res) => {
+    // Enforce no-cache
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+
+    const { fullName, username, password, hourlyRate } = req.body;
+
+    if (!fullName || !username) {
+      return res.status(400).json({ error: "Full Name and Username are required fields." });
+    }
+
+    const normalizedUsername = username.trim().toLowerCase().replace(/[^a-z0-9_.-]/g, '');
+    if (!normalizedUsername) {
+      return res.status(400).json({ error: "Invalid username format." });
+    }
+
+    try {
+      console.log(`[BACKEND] Attempting to register new account: @${normalizedUsername}`);
+      
+      const userDocRef = doc(db, "users", normalizedUsername);
+      const userSnap = await getDoc(userDocRef);
+
+      if (userSnap.exists()) {
+        return res.status(400).json({ error: `An account with the username "@${normalizedUsername}" already exists.` });
+      }
+
+      const trimmedName = fullName.trim();
+      const nameParts = trimmedName.split(/\s+/);
+      const firstName = nameParts[0] || trimmedName;
+      const lastName = nameParts.slice(1).join(' ') || '';
+
+      const newUser = {
+        username: normalizedUsername,
+        password: password || '123456',
+        firstName,
+        lastName,
+        fullName: trimmedName,
+        hourlyRate: hourlyRate || 45,
+        role: (normalizedUsername === 'derek_vriens' || trimmedName.toLowerCase() === 'derek vriens') ? 'manager' : 'employee',
+        department: 'Operations',
+        email: `${normalizedUsername}@ledger-demo.com`,
+        phone: `+1 (555) 01${Math.floor(Math.random() * 90) + 10}-${Math.floor(Math.random() * 9000) + 1000}`,
+        bio: 'Registered contractor account.'
+      };
+
+      // Perform the database 'create' / 'insert' command and await response
+      await setDoc(userDocRef, newUser);
+      console.log(`[BACKEND] Successfully registered @${normalizedUsername} into Firestore.`);
+
+      // Return 201 Success status
+      return res.status(201).json(newUser);
+    } catch (error: any) {
+      console.error("[BACKEND] Error during signup:", error);
+      return res.status(500).json({ error: error.message || "Failed to register account." });
+    }
+  });
 
   serverApp.get("/api/users", getUsersHandler);
   serverApp.post("/api/users", getUsersHandler);

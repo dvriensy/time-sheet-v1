@@ -79,9 +79,12 @@ export default function UserAuthGate({ onAuthSuccess, isMobileView = false }: Us
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    if (loading) return;
 
     const pwd = password.trim();
 
@@ -117,15 +120,42 @@ export default function UserAuthGate({ onAuthSuccess, isMobileView = false }: Us
         return;
       }
       
-      const success = registerUser(name, uName, pwd);
+      setLoading(true);
+      try {
+        const response = await fetch('/api/signup', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            fullName: name,
+            username: uName,
+            password: pwd,
+            hourlyRate: 45
+          })
+        });
 
-      if (success) {
-        const user = getCurrentUser();
-        if (user) {
-          onAuthSuccess(user);
+        if (response.ok) {
+          const registeredUser = await response.json();
+          // Initialize local state, shifts, activeSessions, etc.
+          const clientSuccess = registerUser(name, uName, pwd, 45, true);
+          if (clientSuccess) {
+            const user = getCurrentUser();
+            if (user) {
+              onAuthSuccess(user);
+            }
+          } else {
+            setError(`Account successfully created in cloud, but local initialization had an issue.`);
+          }
+        } else {
+          const errData = await response.json();
+          setError(errData.error || `Failed to register account on live database.`);
         }
-      } else {
-        setError(`An account with the username "@${uName}" already exists.`);
+      } catch (err: any) {
+        console.error("Signup network error:", err);
+        setError("Network error: Failed to connect to backend registration service.");
+      } finally {
+        setLoading(false);
       }
     }
   };
@@ -337,12 +367,24 @@ export default function UserAuthGate({ onAuthSuccess, isMobileView = false }: Us
               </div>
             </div>
 
-            <button
+             <button
               type="submit"
-              className="w-full flex items-center justify-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 px-4 shadow-lg shadow-blue-500/10 active:scale-[0.99] transition mt-6 cursor-pointer"
+              disabled={loading}
+              className={`w-full flex items-center justify-center gap-2 rounded-xl text-white font-semibold py-3 px-4 shadow-lg transition mt-6 cursor-pointer ${
+                loading 
+                  ? 'bg-blue-600/60 cursor-not-allowed' 
+                  : 'bg-blue-600 hover:bg-blue-500 shadow-blue-500/10 active:scale-[0.99]'
+              }`}
             >
-              <span>{isLogin ? 'Log In Securely' : 'Create & Log In'}</span>
-              <ArrowRight className="h-4 w-4" />
+              <span>
+                {loading 
+                  ? 'Saving to cloud database...' 
+                  : isLogin 
+                    ? 'Log In Securely' 
+                    : 'Create & Log In'
+                }
+              </span>
+              {!loading && <ArrowRight className="h-4 w-4" />}
             </button>
           </form>
         )}
