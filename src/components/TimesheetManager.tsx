@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Play, Coffee, Square, Plus, Trash2, FileOutput, Printer, X, MapPin, Briefcase, Calendar, CheckCircle2, Pencil, ClipboardList, Folder, FolderOpen, ChevronDown, ChevronRight, Archive } from 'lucide-react';
+import { Play, Coffee, Square, Plus, Trash2, FileOutput, Printer, X, MapPin, Briefcase, Calendar, CheckCircle2, Pencil, ClipboardList, Folder, FolderOpen, ChevronDown, ChevronRight, ChevronLeft, Archive, AlertTriangle, HelpCircle } from 'lucide-react';
 import { 
   getPayPeriodsGrouped, 
   addTimesheetEntry, 
@@ -19,7 +19,9 @@ import {
   clearActiveSession,
   getActiveSessions,
   getFutureShifts,
-  acknowledgeFutureShift
+  acknowledgeFutureShift,
+  getTimeOffRequests,
+  TimeOffRequest
 } from '../utils/storage';
 import { TimesheetEntry, FutureShift } from '../types';
 
@@ -117,29 +119,46 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
   const [expandedPastPeriods, setExpandedPastPeriods] = useState<Record<string, boolean>>({});
   const [expandedDays, setExpandedDays] = useState<Record<string, boolean>>({});
 
-  // Future Shifts State and Listener
+  // Future Shifts & Time-Off Requests State and Listener
   const [futureShifts, setFutureShifts] = useState<FutureShift[]>([]);
+  const [timeOffRequests, setTimeOffRequests] = useState<TimeOffRequest[]>([]);
+  const [currentMonthDate, setCurrentMonthDate] = useState<Date>(new Date());
+  
+  // Format today's date YYYY-MM-DD
+  const defaultSelectedDay = useMemo(() => {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }, []);
+  const [selectedDateStr, setSelectedDateStr] = useState<string>(defaultSelectedDay);
+
   const user = useMemo(() => getCurrentUser(), []);
 
   useEffect(() => {
-    const loadShifts = () => {
-      const allShifts = getFutureShifts();
+    const loadShiftsAndTimeOff = () => {
       if (user) {
-        // Filter shifts by current logged-in user
+        // Load Future Shifts
+        const allShifts = getFutureShifts();
         const userShifts = allShifts.filter(s => s.username === user.username);
-        // Sort future shifts so that upcoming dates are first
         userShifts.sort((a, b) => a.date.localeCompare(b.date));
         setFutureShifts(userShifts);
+
+        // Load Time Off Requests
+        const allRequests = getTimeOffRequests();
+        const userRequests = allRequests.filter(r => r.username === user.username);
+        setTimeOffRequests(userRequests);
       }
     };
 
-    loadShifts();
+    loadShiftsAndTimeOff();
 
-    window.addEventListener('storage-sync', loadShifts);
-    window.addEventListener('storage', loadShifts);
+    window.addEventListener('storage-sync', loadShiftsAndTimeOff);
+    window.addEventListener('storage', loadShiftsAndTimeOff);
     return () => {
-      window.removeEventListener('storage-sync', loadShifts);
-      window.removeEventListener('storage', loadShifts);
+      window.removeEventListener('storage-sync', loadShiftsAndTimeOff);
+      window.removeEventListener('storage', loadShiftsAndTimeOff);
     };
   }, [user]);
 
@@ -398,6 +417,41 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     setEditingEntry(null);
     setShowManualForm(true);
   };
+
+  const calendarDays = useMemo(() => {
+    const y = currentMonthDate.getFullYear();
+    const m = currentMonthDate.getMonth();
+    const daysInMonth = new Date(y, m + 1, 0).getDate();
+    const firstDayIndex = new Date(y, m, 1).getDay();
+    
+    const days: { dayNum: number; dateStr: string; isCurrentMonth: boolean }[] = [];
+    
+    // Prev month padding
+    const prevMonthDays = new Date(y, m, 0).getDate();
+    for (let i = firstDayIndex - 1; i >= 0; i--) {
+      const dNum = prevMonthDays - i;
+      const mNum = m === 0 ? 12 : m;
+      const yNum = m === 0 ? y - 1 : y;
+      const dateStr = `${yNum}-${String(mNum).padStart(2, '0')}-${String(dNum).padStart(2, '0')}`;
+      days.push({ dayNum: dNum, dateStr, isCurrentMonth: false });
+    }
+    
+    // Current month
+    for (let dNum = 1; dNum <= daysInMonth; dNum++) {
+      const dateStr = `${y}-${String(m + 1).padStart(2, '0')}-${String(dNum).padStart(2, '0')}`;
+      days.push({ dayNum: dNum, dateStr, isCurrentMonth: true });
+    }
+    
+    // Next month padding
+    const remainingCount = 42 - days.length;
+    for (let dNum = 1; dNum <= remainingCount; dNum++) {
+      const mNum = m === 11 ? 1 : m + 2;
+      const yNum = m === 11 ? y + 1 : y;
+      const dateStr = `${yNum}-${String(mNum).padStart(2, '0')}-${String(dNum).padStart(2, '0')}`;
+      days.push({ dayNum: dNum, dateStr, isCurrentMonth: false });
+    }
+    return days;
+  }, [currentMonthDate]);
 
   const payPeriods = useMemo(() => getPayPeriodsGrouped(), [entries]);
 
@@ -688,85 +742,253 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
       {/* RIGHT COLUMN: WEEKLY LOGS */}
       <div className="lg:col-span-2 space-y-6">
         
-        {/* FUTURE SCHEDULE SECTION */}
-        {futureShifts.length > 0 && (
-          <div className="rounded-3xl border border-blue-500/20 bg-[#1e3a8a]/5 p-6 shadow-xl space-y-4">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between pb-3 border-b border-slate-800">
-              <div className="flex items-center gap-2">
-                <div className="rounded-xl bg-blue-500/10 p-2 text-blue-400">
-                  <Calendar className="h-4.5 w-4.5" />
-                </div>
-                <div>
-                  <h2 className="text-sm font-semibold text-slate-100">Your Scheduled Shifts</h2>
-                  <p className="text-[10px] text-slate-400 font-mono">Assigned and pending shifts calendar</p>
-                </div>
+        {/* FUTURE SCHEDULE & ABSENCES CALENDAR */}
+        <div className="rounded-3xl border border-blue-500/20 bg-[#1e3a8a]/5 p-6 shadow-xl space-y-5">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between pb-3 border-b border-slate-800">
+            <div className="flex items-center gap-2.5">
+              <div className="rounded-xl bg-blue-500/10 p-2 text-blue-400">
+                <Calendar className="h-4.5 w-4.5" />
               </div>
-              <span className="inline-flex self-start items-center gap-1.5 rounded-full bg-blue-500/10 px-3 py-1 text-xs font-semibold text-blue-300 border border-blue-500/20">
-                <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse" />
-                {futureShifts.filter(s => !s.acknowledged).length} Pending Acknowledgment
-              </span>
+              <div>
+                <h2 className="text-sm font-semibold text-slate-100">Your Schedule & Absences</h2>
+                <p className="text-[10px] text-slate-400 font-mono">Unified shifts and time-off tracker</p>
+              </div>
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {futureShifts.map((shift) => (
-                <div 
-                  key={shift.id} 
-                  className={`rounded-2xl border p-4.5 transition duration-200 relative overflow-hidden flex flex-col justify-between min-h-[140px] ${
-                    shift.acknowledged 
-                      ? 'border-slate-800 bg-[#18181B]/50 text-slate-400' 
-                      : 'border-blue-500/30 bg-blue-500/5 hover:border-blue-500/50 text-slate-200'
-                  }`}
-                >
-                  {/* Background decoration */}
-                  <div className="absolute right-0 top-0 translate-x-1/4 -translate-y-1/4 h-24 w-24 rounded-full bg-blue-500/5 blur-xl pointer-events-none" />
-
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="inline-flex items-center rounded-lg bg-blue-600/10 px-2 py-0.5 text-[10px] font-bold text-blue-400 uppercase tracking-widest border border-blue-500/15 font-mono">
-                        {shift.project || 'General Shift'}
-                      </span>
-                    </div>
-                    <h4 className="text-sm font-semibold text-slate-100">
-                      {new Date(shift.date + 'T00:00:00').toLocaleDateString(undefined, {
-                        weekday: 'short',
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric'
-                      })}
-                    </h4>
-                    <p className="text-xs font-mono text-slate-300 mt-1 flex items-center gap-1">
-                      <span className="text-blue-400 font-bold">●</span> {shift.startTime} – {shift.endTime}
-                    </p>
-                    {shift.notes && (
-                      <p className="text-[11px] text-slate-400 mt-2 bg-[#09090B]/40 p-2 rounded-lg border border-slate-800/80 font-mono">
-                        {shift.notes}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="mt-4 pt-3 border-t border-slate-800/60 flex justify-end">
-                    {shift.acknowledged ? (
-                      <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20 font-mono">
-                        <CheckCircle2 className="h-3 w-3" />
-                        <span>Acknowledged</span>
-                      </span>
-                    ) : (
-                      <button
-                        onClick={() => {
-                          acknowledgeFutureShift(shift.id);
-                        }}
-                        className="flex items-center gap-1 rounded-xl bg-blue-600 hover:bg-blue-500 text-white px-3.5 py-1.5 text-xs font-semibold transition active:scale-95 cursor-pointer shadow-md shadow-blue-500/10"
-                      >
-                        <CheckCircle2 className="h-3.5 w-3.5" />
-                        <span>Acknowledge</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
+            
+            {/* Month selector controls */}
+            <div className="flex items-center gap-3">
+              <button 
+                onClick={() => setCurrentMonthDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
+                className="p-1.5 rounded-lg border border-slate-800 hover:bg-slate-800/50 text-slate-400 hover:text-slate-200 transition cursor-pointer"
+                title="Previous Month"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <span className="text-xs font-semibold font-mono text-slate-200 select-none min-w-[100px] text-center">
+                {currentMonthDate.toLocaleString(undefined, { month: 'long', year: 'numeric' })}
+              </span>
+              <button 
+                onClick={() => setCurrentMonthDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
+                className="p-1.5 rounded-lg border border-slate-800 hover:bg-slate-800/50 text-slate-400 hover:text-slate-200 transition cursor-pointer"
+                title="Next Month"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
             </div>
           </div>
-        )}
+
+          {/* Calendar Grid wrapper */}
+          <div>
+            {/* Days of week header */}
+            <div className="grid grid-cols-7 gap-1 text-center font-semibold text-[10px] sm:text-xs text-slate-400 py-1 border-b border-slate-800/40 font-mono uppercase tracking-widest">
+              <span>Sun</span>
+              <span>Mon</span>
+              <span>Tue</span>
+              <span>Wed</span>
+              <span>Thu</span>
+              <span>Fri</span>
+              <span>Sat</span>
+            </div>
+
+            {/* 42-day monthly calendar grid */}
+            <div className="grid grid-cols-7 gap-1.5 mt-2">
+              {calendarDays.map((day, idx) => {
+                const isSelected = day.dateStr === selectedDateStr;
+                const shifts = futureShifts.filter(s => s.date === day.dateStr);
+                const timeOffs = timeOffRequests.filter(r => day.dateStr >= r.startDate && day.dateStr <= r.endDate);
+                
+                const hasShift = shifts.length > 0;
+                const hasPendingTimeOff = timeOffs.some(r => r.status === 'pending');
+                const hasApprovedTimeOff = timeOffs.some(r => r.status === 'approved');
+                const hasDeniedTimeOff = timeOffs.some(r => r.status === 'denied');
+                const isToday = day.dateStr === todayStr;
+
+                // Color classes logic
+                let cellBgClass = 'bg-slate-900/10';
+                let cellBorderClass = 'border-slate-800/40';
+                let cellTextClass = day.isCurrentMonth ? 'text-slate-300' : 'text-slate-600';
+
+                if (hasShift) {
+                  const allAck = shifts.every(s => s.acknowledged);
+                  cellBgClass = allAck ? 'bg-blue-600/5' : 'bg-blue-500/10';
+                  cellBorderClass = allAck ? 'border-blue-500/30' : 'border-blue-500/50';
+                  cellTextClass = 'text-blue-100 font-medium';
+                } else if (hasApprovedTimeOff) {
+                  cellBgClass = 'bg-emerald-500/10';
+                  cellBorderClass = 'border-emerald-500/30';
+                  cellTextClass = 'text-emerald-300 font-medium';
+                } else if (hasPendingTimeOff) {
+                  cellBgClass = 'bg-amber-500/10';
+                  cellBorderClass = 'border-amber-500/30';
+                  cellTextClass = 'text-amber-300 font-medium';
+                } else if (hasDeniedTimeOff) {
+                  cellBgClass = 'bg-rose-500/10';
+                  cellBorderClass = 'border-rose-500/30';
+                  cellTextClass = 'text-rose-300 font-medium';
+                }
+
+                return (
+                  <button
+                    key={`${day.dateStr}-${idx}`}
+                    onClick={() => setSelectedDateStr(day.dateStr)}
+                    className={`aspect-square p-1.5 rounded-xl border flex flex-col justify-between items-stretch text-left transition-all relative cursor-pointer hover:border-blue-500/50 ${cellBgClass} ${cellBorderClass} ${cellTextClass} ${
+                      isSelected ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-slate-950' : ''
+                    }`}
+                  >
+                    {/* Top row: day number and small today indicator */}
+                    <div className="flex items-center justify-between w-full">
+                      <span className="text-xs font-semibold font-mono leading-none">
+                        {day.dayNum}
+                      </span>
+                      {isToday && (
+                        <span className="h-1 w-1 rounded-full bg-blue-400" title="Today" />
+                      )}
+                    </div>
+
+                    {/* Bottom row / Content indicators */}
+                    <div className="flex flex-col gap-0.5 mt-auto w-full overflow-hidden">
+                      {hasShift && (
+                        <div className="text-[8px] leading-tight px-1 py-0.5 rounded bg-blue-500/20 text-blue-300 font-mono font-bold truncate">
+                          {shifts.length > 1 ? `${shifts.length} Shifts` : 'Shift'}
+                        </div>
+                      )}
+                      {hasApprovedTimeOff && (
+                        <div className="text-[8px] leading-tight px-1 py-0.5 rounded bg-emerald-500/25 text-emerald-300 font-mono font-bold truncate">
+                          Vacation
+                        </div>
+                      )}
+                      {hasPendingTimeOff && (
+                        <div className="text-[8px] leading-tight px-1 py-0.5 rounded bg-amber-500/25 text-amber-300 font-mono font-bold truncate">
+                          Pending
+                        </div>
+                      )}
+                      {hasDeniedTimeOff && (
+                        <div className="text-[8px] leading-tight px-1 py-0.5 rounded bg-rose-500/25 text-rose-300 font-mono font-bold truncate">
+                          Denied
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Selection Detail Panel */}
+          <div className="mt-4 p-4 rounded-2xl border border-slate-800/60 bg-[#09090B]/30 space-y-3">
+            <h3 className="text-xs font-semibold font-mono text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
+              Schedule for {new Date(selectedDateStr + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}
+            </h3>
+
+            {(() => {
+              const selectedShifts = futureShifts.filter(s => s.date === selectedDateStr);
+              const selectedTimeOffs = timeOffRequests.filter(r => selectedDateStr >= r.startDate && selectedDateStr <= r.endDate);
+
+              if (selectedShifts.length === 0 && selectedTimeOffs.length === 0) {
+                return (
+                  <p className="text-xs text-slate-400 font-mono">
+                    No scheduled shifts or active time-off requests on this day.
+                  </p>
+                );
+              }
+
+              return (
+                <div className="space-y-3">
+                  {/* Shifts */}
+                  {selectedShifts.map(shift => (
+                    <div 
+                      key={shift.id}
+                      className={`p-3.5 rounded-xl border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 relative overflow-hidden transition-all duration-200 ${
+                        shift.acknowledged 
+                          ? 'border-slate-800 bg-[#18181B]/40 text-slate-400' 
+                          : 'border-blue-500/40 bg-blue-500/5 text-slate-200'
+                      }`}
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex items-center rounded bg-blue-500/10 px-1.5 py-0.5 text-[9px] font-bold text-blue-400 uppercase tracking-wider border border-blue-500/15 font-mono">
+                            {shift.project || 'General Shift'}
+                          </span>
+                          {!shift.acknowledged && (
+                            <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse" title="Requires Acknowledgment" />
+                          )}
+                        </div>
+                        <p className="text-xs font-bold font-mono text-slate-100">
+                          Time: {shift.startTime} – {shift.endTime}
+                        </p>
+                        {shift.notes && (
+                          <p className="text-[11px] text-slate-400 italic bg-[#09090B]/45 px-2 py-1.5 rounded border border-slate-800/80 max-w-lg font-mono">
+                            Note: {shift.notes}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                        {shift.acknowledged ? (
+                          <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20 font-mono">
+                            <CheckCircle2 className="h-3 w-3" />
+                            <span>Acknowledged</span>
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              acknowledgeFutureShift(shift.id);
+                            }}
+                            className="flex items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 text-xs font-semibold transition active:scale-95 cursor-pointer shadow-md shadow-blue-500/15"
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            <span>Acknowledge Shift</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Time-Off Requests */}
+                  {selectedTimeOffs.map(r => (
+                    <div 
+                      key={r.id}
+                      className={`p-3.5 rounded-xl border space-y-1.5 ${
+                        r.status === 'approved' 
+                          ? 'border-emerald-500/30 bg-emerald-500/5 text-slate-200'
+                          : r.status === 'pending'
+                            ? 'border-amber-500/30 bg-amber-500/5 text-slate-200'
+                            : 'border-rose-500/30 bg-rose-500/5 text-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className={`inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${
+                          r.status === 'approved'
+                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                            : r.status === 'pending'
+                              ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                              : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                        } font-mono`}>
+                          {r.status === 'approved' && <CheckCircle2 className="h-3 w-3" />}
+                          {r.status === 'pending' && <HelpCircle className="h-3 w-3" />}
+                          {r.status === 'denied' && <AlertTriangle className="h-3 w-3" />}
+                          <span>Time-Off Request: {r.status}</span>
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          {r.startDate} to {r.endDate}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-300">
+                        Reason: <strong className="text-slate-100 font-medium">{r.reason}</strong>
+                      </p>
+                      {r.managerNotes && (
+                        <div className="text-[11px] text-slate-400 bg-[#09090B]/40 p-2 rounded border border-slate-800/80 font-mono mt-1">
+                          <strong className="text-slate-300">Manager notes:</strong> {r.managerNotes}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
+        </div>
 
         <div className="flex items-center justify-between">
           <h2 className="text-base font-medium text-main-text">Timesheet Cycles</h2>
