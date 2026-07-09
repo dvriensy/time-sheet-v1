@@ -13,6 +13,7 @@ import { TimeOffRequest } from '../utils/storage';
 
 interface TimeOffCalendarProps {
   requests: TimeOffRequest[];
+  onSelectRequest?: (req: TimeOffRequest) => void;
 }
 
 // Timezone-safe local date parser
@@ -32,7 +33,7 @@ function isDateWithinRange(date: Date, startStr: string, endStr: string): boolea
   return checkTime >= startTime && checkTime <= endTime;
 }
 
-export default function TimeOffCalendar({ requests }: TimeOffCalendarProps) {
+export default function TimeOffCalendar({ requests, onSelectRequest }: TimeOffCalendarProps) {
   // Initialize to current month (June 2026 based on mock system context)
   const [currentMonth, setCurrentMonth] = useState<Date>(() => new Date(2026, 5, 30)); // June 2026
   const [selectedDate, setSelectedDate] = useState<Date | null>(() => new Date(2026, 5, 30));
@@ -378,6 +379,16 @@ export default function TimeOffCalendar({ requests }: TimeOffCalendarProps) {
                         <span className="text-[8px] font-mono text-blue-500 font-bold block uppercase">Admin Note</span>
                         <p className="text-[11px] text-muted-text italic">"{req.managerNotes}"</p>
                       </div>
+                    )}
+
+                    {!isApproved && !isDenied && onSelectRequest && (
+                      <button
+                        onClick={() => onSelectRequest(req)}
+                        className="w-full mt-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2 px-3 rounded-xl transition-colors cursor-pointer text-center flex items-center justify-center gap-1.5 shadow-md shadow-blue-500/10"
+                      >
+                        <Clock className="h-3.5 w-3.5" />
+                        <span>Review & Reply</span>
+                      </button>
                     )}
                   </div>
                 );

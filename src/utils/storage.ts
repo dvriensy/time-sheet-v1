@@ -641,49 +641,8 @@ export function logoutUser() {
 }
 
 function seedInitialDataForUser(username: string, hourlyRate?: number) {
-  const raw = localStorage.getItem(KEY_TIMESHEETS);
-  const all: TimesheetEntry[] = raw ? JSON.parse(raw) : [];
-  
-  const now = new Date();
-  const year = now.getFullYear();
-  const monthStr = String(now.getMonth() + 1).padStart(2, '0');
-  
-  const sampleEntries: TimesheetEntry[] = [
-    {
-      id: `ts-seed-1-${Math.random().toString(36).substr(2, 4)}`,
-      username,
-      date: `${year}-${monthStr}-02`,
-      startTime: '08:30',
-      endTime: '17:00',
-      breakMinutes: 30,
-      project: 'Main Site Framer Layout',
-      locationName: 'HQ Office',
-      notes: 'Constructed responsive grid layouts and integrated initial components.',
-      totalHours: 8.0,
-      isSynced: false
-    },
-    {
-      id: `ts-seed-2-${Math.random().toString(36).substr(2, 4)}`,
-      username,
-      date: `${year}-${monthStr}-10`,
-      startTime: '09:00',
-      endTime: '17:30',
-      breakMinutes: 45,
-      project: 'Core Express Routing',
-      locationName: 'HQ Site B',
-      notes: 'Designed controller schemas and checked security logs.',
-      totalHours: 7.75,
-      isSynced: false
-    }
-  ];
-  
-  const combined = [...sampleEntries, ...all];
-  localStorage.setItem(KEY_TIMESHEETS, JSON.stringify(combined));
-
-  // Sync seeded entries to Firestore
-  for (const entry of sampleEntries) {
-    syncTimesheetToFirestore(entry);
-  }
+  // Disable seeding so that any new account starts totally blank
+  return;
 }
 
 // Timesheets
@@ -697,7 +656,25 @@ export function getTimesheets(): TimesheetEntry[] {
   const all = getTimesheetsAllRaw();
   const currentUser = localStorage.getItem(KEY_CURRENT_USER);
   if (!currentUser) return [];
-  return all.filter(e => e.username === currentUser);
+  
+  // Filter user entries and find any sandbox/seed timesheet entries
+  const userEntries = all.filter(e => e.username === currentUser);
+  const sandboxEntries = userEntries.filter(e => e.id.startsWith('ts-seed-'));
+  
+  if (sandboxEntries.length > 0) {
+    // Auto-remove sandbox entries from local storage
+    const others = all.filter(e => e.username !== currentUser || !e.id.startsWith('ts-seed-'));
+    localStorage.setItem(KEY_TIMESHEETS, JSON.stringify(others));
+    
+    // Auto-remove sandbox entries from firestore in the background
+    sandboxEntries.forEach(entry => {
+      deleteTimesheetFromFirestore(entry.id);
+    });
+    
+    return userEntries.filter(e => !e.id.startsWith('ts-seed-'));
+  }
+  
+  return userEntries;
 }
 
 export function saveTimesheets(entries: TimesheetEntry[]) {
@@ -1325,6 +1302,26 @@ export function acknowledgeTimeOffResponse(id: string): boolean {
   requests[idx].acknowledgedByRequester = true;
   localStorage.setItem(KEY_TIME_OFF_REQUESTS, JSON.stringify(requests));
   syncTimeOffRequestToFirestore(requests[idx]);
+  return true;
+}
+
+export function deleteTimeOffRequest(id: string): boolean {
+  const requests = getTimeOffRequests();
+  const filtered = requests.filter(r => r.id !== id);
+  if (requests.length === filtered.length) return false;
+
+  localStorage.setItem(KEY_TIME_OFF_REQUESTS, JSON.stringify(filtered));
+  
+  // Async Firestore deletion
+  try {
+    deleteDoc(doc(db, 'timeOffRequests', id)).catch(err => {
+      console.error('Firestore deleteTimeOffRequest error:', err);
+    });
+  } catch (err) {
+    console.error('deleteDoc call error:', err);
+  }
+
+  window.dispatchEvent(new Event('storage-sync'));
   return true;
 }
 

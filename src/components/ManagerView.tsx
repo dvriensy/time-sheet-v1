@@ -9,7 +9,7 @@ import { db } from '../firebase';
 import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
 import { 
   Users, Radio, Clock, MapPin, Briefcase, DollarSign, Search, 
-  Activity, Coffee, ChevronDown, ChevronRight, CheckCircle2, 
+  Activity, Coffee, ChevronDown, ChevronRight, ChevronLeft, CheckCircle2, 
   PlusCircle, ShieldAlert, Landmark, HelpCircle, ArrowRight, User, Trash2,
   CalendarDays, Check, X, AlertTriangle, Bell, Lock, Edit
 } from 'lucide-react';
@@ -25,6 +25,7 @@ import {
   managerUpdateUserAccount,
   getTimeOffRequests,
   respondToTimeOffRequest,
+  deleteTimeOffRequest,
   TimeOffRequest,
   getFutureShifts,
   addFutureShift,
@@ -50,6 +51,53 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
   const [timeOffList, setTimeOffList] = useState<TimeOffRequest[]>([]);
   const [decisionNotes, setDecisionNotes] = useState<Record<string, string>>({});
   const [timeOffViewMode, setTimeOffViewMode] = useState<'calendar' | 'list'>('calendar');
+  const [activeReplyRequest, setActiveReplyRequest] = useState<TimeOffRequest | null>(null);
+  const [popupDecisionNote, setPopupDecisionNote] = useState('');
+  const [popupCalDate, setPopupCalDate] = useState<Date | null>(null);
+
+  useEffect(() => {
+    if (activeReplyRequest) {
+      setPopupCalDate(new Date(activeReplyRequest.startDate + 'T00:00:00'));
+    } else {
+      setPopupCalDate(null);
+    }
+  }, [activeReplyRequest]);
+
+  const popupCalDays = useMemo(() => {
+    if (!popupCalDate) return [];
+    const y = popupCalDate.getFullYear();
+    const m = popupCalDate.getMonth();
+    const daysInMonth = new Date(y, m + 1, 0).getDate();
+    const firstDayIndex = new Date(y, m, 1).getDay();
+    
+    const days: { dayNum: number; dateStr: string; isCurrentMonth: boolean }[] = [];
+    
+    // Prev month padding
+    const prevMonthDays = new Date(y, m, 0).getDate();
+    for (let i = firstDayIndex - 1; i >= 0; i--) {
+      const dNum = prevMonthDays - i;
+      const mNum = m === 0 ? 12 : m;
+      const yNum = m === 0 ? y - 1 : y;
+      const dateStr = `${yNum}-${String(mNum).padStart(2, '0')}-${String(dNum).padStart(2, '0')}`;
+      days.push({ dayNum: dNum, dateStr, isCurrentMonth: false });
+    }
+    
+    // Current month
+    for (let dNum = 1; dNum <= daysInMonth; dNum++) {
+      const dateStr = `${y}-${String(m + 1).padStart(2, '0')}-${String(dNum).padStart(2, '0')}`;
+      days.push({ dayNum: dNum, dateStr, isCurrentMonth: true });
+    }
+    
+    // Next month padding
+    const remainingCount = 42 - days.length;
+    for (let dNum = 1; dNum <= remainingCount; dNum++) {
+      const mNum = m === 11 ? 1 : m + 2;
+      const yNum = m === 11 ? y + 1 : y;
+      const dateStr = `${yNum}-${String(mNum).padStart(2, '0')}-${String(dNum).padStart(2, '0')}`;
+      days.push({ dayNum: dNum, dateStr, isCurrentMonth: false });
+    }
+    return days;
+  }, [popupCalDate]);
 
 
   // Expanded cards for user details
@@ -229,6 +277,28 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
       const statusText = status === 'approved' ? 'Approved' : 'Denied';
       setSuccessMessage(`Time-off request for ${fullName} was ${statusText}. They will be notified.`);
       setDecisionNotes(prev => ({ ...prev, [id]: '' }));
+      refreshTimeOffRequests();
+      setTimeout(() => setSuccessMessage(null), 4000);
+    }
+  };
+
+  const handleDeleteTimeOffRequest = (id: string) => {
+    const success = deleteTimeOffRequest(id);
+    if (success) {
+      setSuccessMessage('Time-off record successfully deleted.');
+      refreshTimeOffRequests();
+      setTimeout(() => setSuccessMessage(null), 3000);
+    }
+  };
+
+  const handlePopupDecision = (status: 'approved' | 'denied') => {
+    if (!activeReplyRequest) return;
+    const success = respondToTimeOffRequest(activeReplyRequest.id, status, popupDecisionNote);
+    if (success) {
+      const statusText = status === 'approved' ? 'Approved' : 'Denied';
+      setSuccessMessage(`Time-off request for ${activeReplyRequest.fullName} was ${statusText}. They will be notified.`);
+      setPopupDecisionNote('');
+      setActiveReplyRequest(null);
       refreshTimeOffRequests();
       setTimeout(() => setSuccessMessage(null), 4000);
     }
@@ -595,7 +665,6 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
     const updated = managerUpdateUserAccount(editingUser.username, {
       firstName: editFirstName.trim(),
       lastName: editLastName.trim(),
-      password: editPassword.trim(),
       hourlyRate: Number(editHourlyRate),
       department: editDepartment.trim(),
       role: editRole
@@ -982,9 +1051,9 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                     
                     <div className="flex items-center justify-between gap-2 mt-1.5 pt-2 border-t border-main-border/20">
                       <div className="flex items-center gap-1.5 text-[11px] font-mono bg-app-bg/60 border border-main-border/30 px-2.5 py-1 rounded-xl">
-                        <Lock className="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                        <span className="text-muted-text">Pwd:</span>
-                        <span className="font-bold text-main-text select-all">{user.password || '123456'}</span>
+                        <Lock className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                        <span className="text-muted-text">Credentials:</span>
+                        <span className="font-bold text-main-text">SECURE</span>
                       </div>
                       
                       {onLoginAsUser && (
@@ -1293,7 +1362,13 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
           </div>
 
           {timeOffViewMode === 'calendar' ? (
-            <TimeOffCalendar requests={timeOffList} />
+            <TimeOffCalendar 
+              requests={timeOffList} 
+              onSelectRequest={(req) => {
+                setActiveReplyRequest(req);
+                setPopupDecisionNote(decisionNotes[req.id] || '');
+              }}
+            />
           ) : (
             <div className="space-y-4 text-left">
               {filteredTimeOffRequests.map((req) => {
@@ -1350,6 +1425,15 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                             Pending Review
                           </span>
                         )}
+                        {!isPending && (
+                          <button
+                            onClick={() => handleDeleteTimeOffRequest(req.id)}
+                            className="p-1 rounded-lg border border-red-500/20 bg-red-500/5 hover:bg-red-600 hover:text-white text-red-400 transition cursor-pointer"
+                            title="Delete record from inbox"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -1386,46 +1470,38 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
 
                     {/* Decision action interface */}
                     {isPending ? (
-                      <div className="space-y-3 pt-2">
-                        <div className="flex flex-col gap-1 text-left">
-                          <label className="text-[10px] font-semibold text-muted-text uppercase font-mono">Review Note / Comments (Optional)</label>
-                          <input
-                            type="text"
-                            placeholder="e.g., Request granted. Standard vacation pool balance will be debited."
-                            value={decisionNotes[req.id] || ''}
-                            onChange={(e) => setDecisionNotes(prev => ({ ...prev, [req.id]: e.target.value }))}
-                            className="w-full rounded-xl border border-main-border bg-input-bg p-2.5 text-xs text-main-text focus:border-blue-500/40 focus:outline-none transition-colors"
-                          />
-                        </div>
-
-                        <div className="flex items-center justify-end gap-2.5">
-                          <button
-                            onClick={() => handleTimeOffDecision(req.id, 'denied', req.fullName)}
-                            className="bg-red-950/50 hover:bg-red-900/40 border border-red-500/20 text-red-400 hover:text-red-300 font-bold text-xs py-2 px-4 rounded-xl cursor-pointer transition flex items-center gap-1"
-                          >
-                            <X className="h-3.5 w-3.5" />
-                            <span>Deny Absence</span>
-                          </button>
-                          <button
-                            onClick={() => handleTimeOffDecision(req.id, 'approved', req.fullName)}
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-2 px-5 rounded-xl cursor-pointer transition flex items-center gap-1 shadow-md"
-                          >
-                            <Check className="h-3.5 w-3.5" />
-                            <span>Approve Absence</span>
-                          </button>
-                        </div>
+                      <div className="pt-2">
+                        <button
+                          onClick={() => {
+                            setActiveReplyRequest(req);
+                            setPopupDecisionNote(decisionNotes[req.id] || '');
+                          }}
+                          className="w-full bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs py-3 px-5 rounded-xl cursor-pointer transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-600/10 hover:shadow-blue-600/20"
+                        >
+                          <Bell className="h-4 w-4 text-blue-100 animate-bounce" />
+                          <span>REVIEW & REPLY (UNMISSABLE POPUP)</span>
+                        </button>
                       </div>
                     ) : (
-                      <div className="bg-app-bg/30 border border-main-border/40 rounded-xl p-3 text-left space-y-1">
-                        <span className="text-[9px] font-mono uppercase text-blue-500 font-bold block">Decision Filed Record</span>
-                        <p className="text-xs text-muted-text italic">
-                          {req.managerNotes ? `"${req.managerNotes}"` : "Approved without custom notes."}
-                        </p>
-                        {req.respondedAt && (
-                          <span className="text-[9px] font-mono text-muted-text block">
-                            Processed: {new Date(req.respondedAt).toLocaleDateString()} at {new Date(req.respondedAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                          </span>
-                        )}
+                      <div className="bg-app-bg/30 border border-main-border/40 rounded-xl p-3.5 text-left flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="space-y-1">
+                          <span className="text-[9px] font-mono uppercase text-blue-500 font-bold block">Decision Filed Record</span>
+                          <p className="text-xs text-muted-text italic">
+                            {req.managerNotes ? `"${req.managerNotes}"` : "Processed without custom notes."}
+                          </p>
+                          {req.respondedAt && (
+                            <span className="text-[9px] font-mono text-muted-text block">
+                              Processed: {new Date(req.respondedAt).toLocaleDateString()} at {new Date(req.respondedAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => handleDeleteTimeOffRequest(req.id)}
+                          className="flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl border border-red-500/20 bg-red-500/5 hover:bg-red-600 text-red-400 hover:text-white text-xs font-bold transition cursor-pointer shrink-0"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          <span>Delete Record</span>
+                        </button>
                       </div>
                     )}
 
@@ -1881,16 +1957,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                   />
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-muted-text uppercase font-mono">Password</label>
-                  <input
-                    type="text"
-                    required
-                    value={editPassword}
-                    onChange={(e) => setEditPassword(e.target.value)}
-                    className="w-full rounded-xl border border-main-border bg-input-bg p-2.5 text-xs text-main-text focus:border-blue-500/40 focus:outline-none transition-colors font-mono"
-                  />
-                </div>
+
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
@@ -1947,6 +2014,233 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {activeReplyRequest && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[100] flex items-center justify-center p-4 animate-fade-in"
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 20 }}
+              className="bg-card-bg border border-blue-500/40 w-full max-w-4xl rounded-3xl p-6 shadow-2xl relative grid grid-cols-1 md:grid-cols-2 gap-6 overflow-y-auto max-h-[90vh] text-left"
+            >
+              {/* Left Column: Form & Decision Details */}
+              <div className="space-y-4 flex flex-col justify-between">
+                <div>
+                  {/* Header */}
+                  <div className="flex items-center justify-between border-b border-main-border/45 pb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 bg-blue-500/10 border border-blue-500/20 text-blue-500 rounded-xl animate-pulse">
+                        <Bell className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-extrabold text-main-text uppercase tracking-tight">Time-Off Decision Portal</h3>
+                        <p className="text-[10px] text-muted-text font-mono uppercase">Immediate Action Required</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Requester Info Grid */}
+                  <div className="bg-app-bg/60 border border-main-border/30 rounded-2xl p-4 mt-4 space-y-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-blue-500/10 border-2 border-blue-500/20 flex items-center justify-center text-blue-500 text-sm font-black font-mono">
+                        {activeReplyRequest.fullName.charAt(0)}
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-black text-main-text leading-tight">{activeReplyRequest.fullName}</h4>
+                        <p className="text-[10px] text-muted-text font-mono">@{activeReplyRequest.username}</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3.5 pt-2 border-t border-main-border/30">
+                      <div className="space-y-1">
+                        <span className="text-[9px] font-mono uppercase text-muted-text font-semibold">Absence Span</span>
+                        <span className="text-xs font-bold text-main-text flex items-center gap-1">
+                          <CalendarDays className="h-3.5 w-3.5 text-blue-500" />
+                          {new Date(activeReplyRequest.startDate + 'T00:00:00').toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}
+                          {" – "}
+                          {new Date(activeReplyRequest.endDate + 'T00:00:00').toLocaleDateString(undefined, {month: 'short', day: 'numeric', year: 'numeric'})}
+                        </span>
+                      </div>
+                      <div className="space-y-1">
+                        <span className="text-[9px] font-mono uppercase text-muted-text font-semibold">Submission Date</span>
+                        <span className="text-xs font-bold text-muted-text block font-mono">
+                          {new Date(activeReplyRequest.createdAt).toLocaleDateString()}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t border-main-border/30 space-y-1">
+                      <span className="text-[9px] font-mono uppercase text-muted-text font-semibold">Employee Statement / Memo</span>
+                      <p className="text-xs text-main-text italic bg-card-bg/40 border border-main-border/20 rounded-xl p-3 leading-relaxed">
+                        "{activeReplyRequest.reason}"
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Manager Decision Input */}
+                  <div className="space-y-1.5 text-left mt-4">
+                    <label className="text-[10px] font-bold text-muted-text uppercase font-mono tracking-wider">Review Comments & Decision Note (Optional)</label>
+                    <textarea
+                      rows={2}
+                      placeholder="e.g., Request approved. Have a great vacation! Please sync with team regarding handover."
+                      value={popupDecisionNote}
+                      onChange={(e) => setPopupDecisionNote(e.target.value)}
+                      className="w-full rounded-2xl border border-main-border bg-input-bg p-3 text-xs text-main-text focus:border-blue-500/50 focus:outline-none transition-colors resize-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex flex-col sm:flex-row items-center justify-end gap-3 pt-3 border-t border-main-border/30">
+                  <button
+                    onClick={() => {
+                      setActiveReplyRequest(null);
+                      setPopupDecisionNote('');
+                    }}
+                    className="w-full sm:w-auto bg-app-bg hover:bg-main-border/30 border border-main-border text-muted-text font-bold text-xs py-2.5 px-5 rounded-xl cursor-pointer transition"
+                  >
+                    Cancel
+                  </button>
+                  <div className="flex items-center gap-2.5 w-full sm:w-auto">
+                    <button
+                      onClick={() => handlePopupDecision('denied')}
+                      className="flex-1 sm:flex-none bg-red-950/50 hover:bg-red-900/40 border border-red-500/30 text-red-400 hover:text-red-300 font-extrabold text-xs py-2.5 px-5 rounded-xl cursor-pointer transition flex items-center justify-center gap-1.5 shadow-lg shadow-red-950/20"
+                    >
+                      <X className="h-4 w-4" />
+                      <span>Deny</span>
+                    </button>
+                    <button
+                      onClick={() => handlePopupDecision('approved')}
+                      className="flex-1 sm:flex-none bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs py-2.5 px-6 rounded-xl cursor-pointer transition flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-600/15"
+                    >
+                      <Check className="h-4 w-4" />
+                      <span>Approve</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column: Dynamic Scheduler Calendar */}
+              <div className="border-t md:border-t-0 md:border-l border-main-border/30 pt-4 md:pt-0 md:pl-6 space-y-4 flex flex-col justify-between">
+                <div className="space-y-4">
+                  {/* Calendar Header with navigation */}
+                  <div className="flex items-center justify-between pb-2 border-b border-main-border/30">
+                    <div>
+                      <h4 className="text-xs font-black text-main-text uppercase tracking-tight">Schedule & Vacation Overview</h4>
+                      <p className="text-[9px] text-muted-text font-mono">Verify scheduled days off</p>
+                    </div>
+                    
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => {
+                          if (popupCalDate) {
+                            setPopupCalDate(new Date(popupCalDate.getFullYear(), popupCalDate.getMonth() - 1, 1));
+                          }
+                        }}
+                        className="p-1 border border-main-border bg-app-bg text-main-text rounded-lg hover:bg-main-border/30 transition cursor-pointer"
+                        type="button"
+                      >
+                        <ChevronLeft className="h-3.5 w-3.5" />
+                      </button>
+                      <span className="text-[10px] font-bold text-main-text font-mono min-w-[70px] text-center uppercase">
+                        {popupCalDate ? popupCalDate.toLocaleString('default', { month: 'short', year: 'numeric' }) : ''}
+                      </span>
+                      <button
+                        onClick={() => {
+                          if (popupCalDate) {
+                            setPopupCalDate(new Date(popupCalDate.getFullYear(), popupCalDate.getMonth() + 1, 1));
+                          }
+                        }}
+                        className="p-1 border border-main-border bg-app-bg text-main-text rounded-lg hover:bg-main-border/30 transition cursor-pointer"
+                        type="button"
+                      >
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Weekdays row */}
+                  <div className="grid grid-cols-7 gap-1 text-center font-bold text-[9px] text-muted-text uppercase font-mono tracking-wider">
+                    <span>Sun</span>
+                    <span>Mon</span>
+                    <span>Tue</span>
+                    <span>Wed</span>
+                    <span>Thu</span>
+                    <span>Fri</span>
+                    <span>Sat</span>
+                  </div>
+
+                  {/* 42-day Calendar grid */}
+                  <div className="grid grid-cols-7 gap-1">
+                    {popupCalDays.map((day, idx) => {
+                      const dateStr = day.dateStr;
+                      const isCurrentMonth = day.isCurrentMonth;
+                      
+                      const requestStart = activeReplyRequest.startDate;
+                      const requestEnd = activeReplyRequest.endDate;
+                      const isRequestedVacation = dateStr >= requestStart && dateStr <= requestEnd;
+                      
+                      const dayShifts = futureShiftsList.filter(s => s.username === activeReplyRequest.username && s.date === dateStr);
+                      const hasShifts = dayShifts.length > 0;
+                      
+                      return (
+                        <div
+                          key={idx}
+                          className={`min-h-[55px] border rounded-xl p-1.5 text-left flex flex-col justify-between transition-all ${
+                            isRequestedVacation
+                              ? 'bg-amber-500/10 border-amber-500/40 text-amber-200'
+                              : !isCurrentMonth
+                              ? 'bg-app-bg/10 border-main-border/10 text-muted-text/20'
+                              : 'bg-app-bg/40 border-main-border/30 text-main-text'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className={`text-[10px] font-extrabold font-mono ${isRequestedVacation ? 'text-amber-500' : ''}`}>
+                              {day.dayNum}
+                            </span>
+                            {isRequestedVacation && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" title="Vacation requested date" />
+                            )}
+                          </div>
+
+                          {/* Shifts list inside calendar cells */}
+                          <div className="mt-1 space-y-0.5 overflow-y-auto max-h-[35px]">
+                            {dayShifts.map(s => (
+                              <div
+                                key={s.id}
+                                className="text-[7.5px] leading-tight px-1 py-0.5 rounded bg-blue-500/20 border border-blue-500/30 text-blue-400 font-bold truncate"
+                                title={`${s.project} (${s.startTime}-${s.endTime})`}
+                              >
+                                {s.startTime}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Simple Legend indicator */}
+                <div className="bg-app-bg/50 border border-main-border/20 rounded-2xl p-2.5 mt-2 flex items-center justify-around text-[9px] font-mono uppercase text-muted-text gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded bg-amber-500/20 border border-amber-500/40" />
+                    <span>Requested Vacation</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded bg-blue-500/20 border border-blue-500/30" />
+                    <span>Scheduled Shift</span>
+                  </div>
+                </div>
+              </div>
             </motion.div>
           </motion.div>
         )}
