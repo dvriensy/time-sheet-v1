@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Play, Coffee, Square, Plus, Trash2, FileOutput, Printer, X, MapPin, Briefcase, Calendar, CheckCircle2, Pencil, ClipboardList, Folder, FolderOpen, ChevronDown, ChevronRight, ChevronLeft, Archive, AlertTriangle, HelpCircle } from 'lucide-react';
+import { Play, Coffee, Square, Plus, Trash2, FileOutput, Printer, X, MapPin, Briefcase, Calendar, CheckCircle2, Pencil, ClipboardList, Folder, FolderOpen, ChevronDown, ChevronRight, ChevronLeft, Archive, AlertTriangle, HelpCircle, Bell, Inbox } from 'lucide-react';
 import { 
   getPayPeriodsGrouped, 
   addTimesheetEntry, 
@@ -133,6 +133,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     return `${y}-${m}-${day}`;
   }, []);
   const [selectedDateStr, setSelectedDateStr] = useState<string>(defaultSelectedDay);
+  const [inboxFilter, setInboxFilter] = useState<'all' | 'pending'>('pending');
 
   const user = useMemo(() => getCurrentUser(), []);
 
@@ -452,6 +453,27 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     }
     return days;
   }, [currentMonthDate]);
+
+  const inboxShifts = useMemo(() => {
+    const shiftsCopy = [...futureShifts];
+    shiftsCopy.sort((a, b) => {
+      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : new Date(a.date).getTime();
+      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : new Date(b.date).getTime();
+      return timeB - timeA;
+    });
+    return shiftsCopy;
+  }, [futureShifts]);
+
+  const filteredInboxShifts = useMemo(() => {
+    if (inboxFilter === 'pending') {
+      return inboxShifts.filter(s => !s.acknowledged);
+    }
+    return inboxShifts;
+  }, [inboxShifts, inboxFilter]);
+
+  const pendingInboxCount = useMemo(() => {
+    return futureShifts.filter(s => !s.acknowledged).length;
+  }, [futureShifts]);
 
   const payPeriods = useMemo(() => getPayPeriodsGrouped(), [entries]);
 
@@ -988,6 +1010,169 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
               );
             })()}
           </div>
+        </div>
+
+        {/* INBOX LEDGER FOR SCHEDULED EVENTS */}
+        <div className="rounded-3xl border border-blue-500/15 bg-blue-950/10 p-6 shadow-xl space-y-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-3 border-b border-slate-800">
+            <div className="flex items-center gap-2.5">
+              <div className="rounded-xl bg-blue-500/10 p-2 text-blue-400 relative">
+                <Inbox className="h-4.5 w-4.5" />
+                {pendingInboxCount > 0 && (
+                  <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-blue-400 animate-ping" />
+                )}
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-slate-100 flex items-center gap-2">
+                  Inbox Ledger
+                  {pendingInboxCount > 0 && (
+                    <span className="rounded-full bg-blue-500/20 px-2 py-0.5 text-[10px] font-extrabold text-blue-300 border border-blue-500/25 animate-pulse-subtle">
+                      {pendingInboxCount} New
+                    </span>
+                  )}
+                </h2>
+                <p className="text-[10px] text-slate-400 font-mono">Ledger of newly scheduled shift assignments</p>
+              </div>
+            </div>
+
+            {/* Toggle filter */}
+            <div className="flex bg-slate-900/60 p-0.5 rounded-lg border border-slate-800 self-start">
+              <button
+                onClick={() => setInboxFilter('pending')}
+                className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md font-mono transition-all cursor-pointer ${
+                  inboxFilter === 'pending'
+                    ? 'bg-blue-600 text-white font-extrabold'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                New Shifts
+              </button>
+              <button
+                onClick={() => setInboxFilter('all')}
+                className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md font-mono transition-all cursor-pointer ${
+                  inboxFilter === 'all'
+                    ? 'bg-blue-600 text-white font-extrabold'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                All History
+              </button>
+            </div>
+          </div>
+
+          {filteredInboxShifts.length === 0 ? (
+            <div className="py-8 text-center bg-slate-900/10 rounded-2xl border border-dashed border-slate-800/40">
+              <div className="mx-auto w-10 h-10 rounded-full bg-slate-800/20 flex items-center justify-center text-slate-500 mb-2.5">
+                <CheckCircle2 className="h-5 w-5 text-emerald-500/60" />
+              </div>
+              <p className="text-xs font-semibold text-slate-300">
+                {inboxFilter === 'pending' ? "You're all caught up!" : "No shifts in your schedule."}
+              </p>
+              <p className="text-[10px] text-slate-500 font-mono mt-0.5">
+                {inboxFilter === 'pending' ? "No unacknowledged scheduled events remaining." : "Ask your manager to assign a shift."}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3.5 max-h-[360px] overflow-y-auto pr-1">
+              <AnimatePresence initial={false}>
+                {filteredInboxShifts.map((shift) => {
+                  const shiftDateObj = new Date(shift.date + 'T00:00:00');
+                  const formattedShiftDate = shiftDateObj.toLocaleDateString(undefined, {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric'
+                  });
+
+                  // Calculate "Scheduled X ago" or just a clean date format
+                  let scheduledTimeStr = '';
+                  if (shift.createdAt) {
+                    try {
+                      const createdMs = new Date(shift.createdAt).getTime();
+                      const diffMs = Date.now() - createdMs;
+                      const diffHrs = Math.floor(diffMs / (1000 * 60 * 60));
+                      const diffDays = Math.floor(diffHrs / 24);
+
+                      if (diffDays > 0) {
+                        scheduledTimeStr = `Assigned ${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+                      } else if (diffHrs > 0) {
+                        scheduledTimeStr = `Assigned ${diffHrs} hr${diffHrs > 1 ? 's' : ''} ago`;
+                      } else {
+                        const diffMins = Math.floor(diffMs / (1000 * 60));
+                        scheduledTimeStr = diffMins <= 1 ? 'Assigned just now' : `Assigned ${diffMins} min${diffMins > 1 ? 's' : ''} ago`;
+                      }
+                    } catch (e) {
+                      scheduledTimeStr = 'Assigned';
+                    }
+                  } else {
+                    scheduledTimeStr = 'Assigned';
+                  }
+
+                  return (
+                    <motion.div
+                      key={shift.id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      className={`p-4 rounded-2xl border transition duration-150 flex flex-col md:flex-row md:items-center justify-between gap-4 relative overflow-hidden ${
+                        shift.acknowledged
+                          ? 'border-slate-800 bg-[#121214]/40 text-slate-400'
+                          : 'border-blue-500/30 bg-blue-600/5 text-slate-200 shadow-sm'
+                      }`}
+                    >
+                      {/* Left Side: Shift Date, Time, and Status Indicator */}
+                      <div className="space-y-2 flex-grow">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {!shift.acknowledged && (
+                            <span className="h-2 w-2 rounded-full bg-blue-400 animate-pulse shrink-0" title="New Scheduled Event" />
+                          )}
+                          <span className="inline-flex items-center rounded bg-blue-500/10 px-1.5 py-0.5 text-[9px] font-bold text-blue-400 uppercase tracking-wider border border-blue-500/15 font-mono">
+                            {shift.project || 'General Shift'}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-mono tracking-tight">
+                            {scheduledTimeStr}
+                          </span>
+                        </div>
+
+                        <div className="space-y-0.5">
+                          <h4 className="text-xs font-bold text-slate-100 font-mono">
+                            {formattedShiftDate}
+                          </h4>
+                          <p className="text-xs text-slate-300 font-mono flex items-center gap-1">
+                            <span className="text-blue-400 font-bold font-sans">●</span> {shift.startTime} – {shift.endTime}
+                          </p>
+                        </div>
+
+                        {shift.notes && (
+                          <p className="text-[11px] text-slate-400 italic bg-[#09090B]/40 px-2.5 py-2 rounded-lg border border-slate-800/80 font-mono max-w-xl">
+                            {shift.notes}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Right Side: Acknowledge action */}
+                      <div className="shrink-0 flex items-center gap-2 self-end md:self-center">
+                        {shift.acknowledged ? (
+                          <span className="flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-widest text-emerald-400 bg-emerald-500/10 px-2.5 py-1.5 rounded-xl border border-emerald-500/20 font-mono">
+                            <CheckCircle2 className="h-3 w-3" />
+                            <span>Acknowledged</span>
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => acknowledgeFutureShift(shift.id)}
+                            className="flex items-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 text-xs font-bold transition active:scale-95 cursor-pointer shadow-md shadow-blue-500/15 font-sans"
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            <span>Acknowledge</span>
+                          </button>
+                        )}
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </AnimatePresence>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center justify-between">

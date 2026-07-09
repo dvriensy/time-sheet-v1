@@ -43,6 +43,9 @@ interface ManagerViewProps {
 export default function ManagerView({ currentUser, isMobileView = false, onLoginAsUser }: ManagerViewProps) {
   // Tabs: 'live', 'history', 'timeoff', 'schedule', or 'accounts'
   const [managerTab, setManagerTab] = useState<'live' | 'history' | 'timeoff' | 'schedule' | 'accounts'>('live');
+  const isOwner = currentUser.username === 'derek_vriens' || 
+                  currentUser.fullName.toLowerCase() === 'derek vriens' || 
+                  currentUser.email?.toLowerCase() === 'dvriensy@gmail.com';
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'break' | 'offline'>('all');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -667,7 +670,8 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
       lastName: editLastName.trim(),
       hourlyRate: Number(editHourlyRate),
       department: editDepartment.trim(),
-      role: editRole
+      role: editRole,
+      password: editPassword.trim()
     });
     
     if (updated) {
@@ -1954,6 +1958,27 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                     disabled
                     value={`@${editingUser.username}`}
                     className="w-full rounded-xl border border-main-border/50 bg-main-border/10 p-2.5 text-xs text-muted-text cursor-not-allowed font-mono"
+                  />
+                </div>
+
+                {isOwner && (
+                  <div className="bg-blue-950/20 border border-blue-500/25 rounded-xl p-3.5 space-y-1.5">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-blue-400 block font-mono">👑 Owner Access Control Enabled</span>
+                    <p className="text-[10px] text-slate-300 leading-relaxed font-sans">
+                      As <strong>Derek Vriens</strong> (Site Owner), you are authorized to change any user's credentials, including updating their password and promoting or demoting their roles from employee to manager.
+                    </p>
+                  </div>
+                )}
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-muted-text uppercase font-mono">Password / Credentials</label>
+                  <input
+                    type="text"
+                    required
+                    value={editPassword}
+                    onChange={(e) => setEditPassword(e.target.value)}
+                    className="w-full rounded-xl border border-main-border bg-input-bg p-2.5 text-xs text-main-text focus:border-blue-500/40 focus:outline-none transition-colors font-mono"
+                    placeholder="Enter account password"
                   />
                 </div>
 
