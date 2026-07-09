@@ -70,6 +70,8 @@ export interface AppSettings {
   biometricLockEnabled: boolean;
   privacyMode: boolean; // hide earnings on simple screens
   hourlyRateDefault: number;
+  defaultStartTime?: string; // HH:MM, default "07:30"
+  defaultEndTime?: string; // HH:MM, default "16:00"
 }
 
 export interface FutureShift {

@@ -139,14 +139,14 @@ export default function App() {
     return (
       <div className="flex-grow flex flex-col w-full h-full relative">
         {/* Top bar header */}
-        <header className={`flex ${isMobileView ? 'flex-row items-center justify-between p-3 mb-4 gap-2' : 'flex-col gap-4 sm:flex-row sm:items-center sm:justify-between px-6 py-4 mb-6'} bg-card-bg rounded-2xl border border-main-border/60 shadow-lg shadow-slate-900/5 transition-all duration-200`}>
+        <header className={`flex ${isMobileView ? 'flex-row items-center justify-between p-3 mb-4 gap-2' : 'flex-row items-center justify-between px-6 py-3.5 mb-6'} bg-card-bg rounded-2xl border border-main-border/60 shadow-sm transition-all duration-200`}>
           <div className="flex items-center gap-3">
-            <div className={`bg-blue-600 rounded-xl flex items-center justify-center shadow-md shadow-blue-500/10 ${isMobileView ? 'w-8 h-8' : 'w-10 h-10'}`}>
-              <Clock className={`${isMobileView ? 'w-4 h-4' : 'w-5 w-5'} text-white`} />
+            <div className="bg-blue-600 rounded-xl flex items-center justify-center shadow-md shadow-blue-500/10 w-9 h-9">
+              <Clock className="w-4.5 h-4.5 text-white" />
             </div>
             <div>
-              <h1 className={`${isMobileView ? 'text-xs' : 'text-lg'} font-display font-bold tracking-tight text-main-text`}>TIME<span className="text-blue-500 font-normal">LEDGER</span></h1>
-              {!isMobileView && <p className="text-[10px] font-mono tracking-wider uppercase text-muted-text/80">Enterprise Clock</p>}
+              <h1 className={`${isMobileView ? 'text-xs' : 'text-base'} font-display font-bold tracking-tight text-main-text`}>TIME<span className="text-blue-500 font-normal">LEDGER</span></h1>
+              {!isMobileView && <p className="text-[9px] font-mono tracking-wider uppercase text-muted-text/80">Enterprise Clock</p>}
             </div>
           </div>
 
@@ -224,7 +224,7 @@ export default function App() {
             {!isMobileView && (
               <div className="flex items-center gap-2 bg-emerald-500/10 px-3 py-1.5 rounded-full border border-emerald-500/20">
                 <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-                <span className="text-xs font-medium text-emerald-500 tracking-wide uppercase">Secured</span>
+                <span className="text-[10px] font-bold text-emerald-500 tracking-wide uppercase">Secured</span>
               </div>
             )}
 
@@ -253,7 +253,7 @@ export default function App() {
                   setCurrentUser(null);
                   setActiveTab('timesheets');
                 }}
-                className={`text-xs font-medium cursor-pointer transition shrink-0 ${isMobileView ? 'bg-transparent text-rose-400 hover:text-rose-300 p-1' : 'bg-[#271c1f] hover:bg-[#3d2429] border border-rose-500/20 px-3 py-1.5 rounded-xl ml-2 text-rose-400 hover:text-rose-300'}`}
+                className={`text-xs font-semibold cursor-pointer transition shrink-0 ${isMobileView ? 'bg-transparent text-rose-400 hover:text-rose-300 p-1' : 'bg-rose-500/10 hover:bg-rose-500 hover:text-white border border-rose-500/20 text-rose-500 px-3 py-1.5 rounded-xl ml-2'}`}
               >
                 Log Out
               </button>

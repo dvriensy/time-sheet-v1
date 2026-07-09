@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User, UserPlus, Clock, ArrowRight, ShieldCheck, Sun, Moon, Lock } from 'lucide-react';
-import { registerUser, loginUser, getCurrentUser, UserAccount, getAllUsers, resetUserPassword } from '../utils/storage';
+import { registerUser, loginUser, getCurrentUser, UserAccount, getAllUsers, resetUserPassword, registerUserClient, loginUserClient } from '../utils/storage';
 
 interface UserAuthGateProps {
   onAuthSuccess: (user: UserAccount) => void;
@@ -94,14 +94,19 @@ export default function UserAuthGate({ onAuthSuccess, isMobileView = false }: Us
         setError('Please enter your Username or Full Name.');
         return;
       }
-      const success = loginUser(targetLogin, pwd);
-      if (success) {
-        const user = getCurrentUser();
-        if (user) {
-          onAuthSuccess(user);
+      setLoading(true);
+      try {
+        const result = await loginUserClient(targetLogin, pwd);
+        if (result.success && result.user) {
+          onAuthSuccess(result.user);
+        } else {
+          setError(result.error || `Incorrect password, or no account found under "${targetLogin}".`);
         }
-      } else {
-        setError(`Incorrect password, or no account found under "${targetLogin}".`);
+      } catch (err: any) {
+        console.error("Login verification error:", err);
+        setError("Unable to log in. Please check your internet connection.");
+      } finally {
+        setLoading(false);
       }
     } else {
       const name = fullName.trim();
@@ -122,38 +127,15 @@ export default function UserAuthGate({ onAuthSuccess, isMobileView = false }: Us
       
       setLoading(true);
       try {
-        const response = await fetch('/api/signup', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            fullName: name,
-            username: uName,
-            password: pwd,
-            hourlyRate: 45
-          })
-        });
-
-        if (response.ok) {
-          const registeredUser = await response.json();
-          // Initialize local state, shifts, activeSessions, etc.
-          const clientSuccess = registerUser(name, uName, pwd, 45, true);
-          if (clientSuccess) {
-            const user = getCurrentUser();
-            if (user) {
-              onAuthSuccess(user);
-            }
-          } else {
-            setError(`Account successfully created in cloud, but local initialization had an issue.`);
-          }
+        const result = await registerUserClient(name, uName, pwd, 45, true);
+        if (result.success && result.user) {
+          onAuthSuccess(result.user);
         } else {
-          const errData = await response.json();
-          setError(errData.error || `Failed to register account on live database.`);
+          setError(result.error || "Failed to register account on live database.");
         }
       } catch (err: any) {
-        console.error("Signup network error:", err);
-        setError("Network error: Failed to connect to backend registration service.");
+        console.error("Signup client-side error:", err);
+        setError("Registration error: Failed to connect directly to the database.");
       } finally {
         setLoading(false);
       }

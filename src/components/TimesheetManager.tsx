@@ -145,8 +145,20 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
 
   // Manual Form State
   const [manualDate, setManualDate] = useState(new Date().toISOString().slice(0, 10));
-  const [manualStart, setManualStart] = useState('09:00');
-  const [manualEnd, setManualEnd] = useState('17:00');
+  const [manualStart, setManualStart] = useState(() => {
+    try {
+      return getAppSettings().defaultStartTime || '07:30';
+    } catch {
+      return '07:30';
+    }
+  });
+  const [manualEnd, setManualEnd] = useState(() => {
+    try {
+      return getAppSettings().defaultEndTime || '16:00';
+    } catch {
+      return '16:00';
+    }
+  });
   const [manualBreak, setManualBreak] = useState(30);
   const [manualProject, setManualProject] = useState('');
   const [manualLocation, setManualLocation] = useState('');
@@ -371,6 +383,20 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
   const handleDelete = (id: string) => {
     deleteTimesheetEntry(id);
     onRefreshEntries();
+  };
+
+  const handleOpenNewManualForm = () => {
+    const currentSettings = getAppSettings();
+    setManualDate(new Date().toISOString().slice(0, 10));
+    setManualProject('');
+    setManualStart(currentSettings.defaultStartTime || '07:30');
+    setManualEnd(currentSettings.defaultEndTime || '16:00');
+    setManualBreak(30);
+    setManualLocation('');
+    setManualNotes('');
+    setManualIsOvertime(false);
+    setEditingEntry(null);
+    setShowManualForm(true);
   };
 
   const payPeriods = useMemo(() => getPayPeriodsGrouped(), [entries]);
@@ -650,7 +676,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
 
         </div>        {/* Manual Timesheet Card Injector Button */}
         <button
-          onClick={() => setShowManualForm(true)}
+          onClick={handleOpenNewManualForm}
           className={`w-full flex items-center justify-center gap-2 rounded-2xl border border-main-border bg-card-bg ${isMobileView ? 'py-2.5 text-xs' : 'py-3.5 text-sm'} font-medium text-muted-text hover:bg-input-bg transition cursor-pointer`}
         >
           <Plus className="h-4 w-4 text-blue-500" />

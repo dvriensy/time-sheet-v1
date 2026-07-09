@@ -7,7 +7,7 @@ import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   BellRing, ShieldCheck, Download, Trash2, KeySquare, 
-  History, Info, ToggleLeft, Check, AlertTriangle, Eye, EyeOff
+  History, Info, ToggleLeft, Check, AlertTriangle, Eye, EyeOff, Clock
 } from 'lucide-react';
 import { 
   getReminderSettings, saveReminderSettings, 
@@ -32,6 +32,22 @@ export default function SettingsView({ onSettingsChanged, privacyMode, onToggleP
   const [appSettings, setAppSettings] = useState<AppSettings>(initialAppSettings);
   const [showWipeConfirm, setShowWipeConfirm] = useState(false);
   const [copiedNotification, setCopiedNotification] = useState<string | null>(null);
+
+  const calculateShiftDurationStr = (start: string, end: string) => {
+    if (!start || !end) return '';
+    try {
+      const [sH, sM] = start.split(':').map(Number);
+      const [eH, eM] = end.split(':').map(Number);
+      if (isNaN(sH) || isNaN(sM) || isNaN(eH) || isNaN(eM)) return '';
+      let diffMin = (eH * 60 + eM) - (sH * 60 + sM);
+      if (diffMin < 0) diffMin += 24 * 60;
+      const hrs = Math.floor(diffMin / 60);
+      const mins = diffMin % 60;
+      return `${hrs} hours ${mins > 0 ? mins + ' mins' : ''}`;
+    } catch {
+      return '';
+    }
+  };
 
   // Save Reminder configuration
   const handleSaveReminders = (updates: Partial<ReminderSettings>) => {
@@ -300,6 +316,49 @@ export default function SettingsView({ onSettingsChanged, privacyMode, onToggleP
 
         {/* RIGHT COLUMN: BIOMETRICS AND LIVE SECURITY AUDIT LOGS */}
         <div className="lg:col-span-1 space-y-6">
+
+          {/* Standard Work Shift Card */}
+          <div className="rounded-3xl border border-slate-800 bg-[#18181B] p-6 shadow-xl">
+            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider font-mono flex items-center gap-2 mb-4">
+              <Clock className="h-4 w-4 text-blue-400" />
+              <span>Standard Shift Hours</span>
+            </h3>
+
+            <p className="text-[11px] text-slate-400 mb-4 leading-relaxed">
+              Define your regular daily shift bounds. These values prepopulate the manual shift logger automatically.
+            </p>
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 block mb-1 uppercase font-mono">Start Time</label>
+                  <input
+                    type="time"
+                    value={appSettings.defaultStartTime || '07:30'}
+                    onChange={(e) => handleSaveAppSettings({ defaultStartTime: e.target.value })}
+                    className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-semibold text-slate-100 focus:outline-none focus:border-blue-500/50"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 block mb-1 uppercase font-mono">End Time</label>
+                  <input
+                    type="time"
+                    value={appSettings.defaultEndTime || '16:00'}
+                    onChange={(e) => handleSaveAppSettings({ defaultEndTime: e.target.value })}
+                    className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-semibold text-slate-100 focus:outline-none focus:border-blue-500/50"
+                  />
+                </div>
+              </div>
+
+              {appSettings.defaultStartTime && appSettings.defaultEndTime && (
+                <div className="rounded-xl bg-blue-500/5 border border-blue-500/10 p-3">
+                  <p className="text-[10px] text-blue-400 font-mono leading-relaxed">
+                    Shift bounds: <strong>{calculateShiftDurationStr(appSettings.defaultStartTime, appSettings.defaultEndTime)}</strong> gross (includes standard unpaid breaks).
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
           
           {/* Biometrics Toggle box */}
           <div className="rounded-3xl border border-slate-800 bg-[#18181B] p-6 shadow-xl">

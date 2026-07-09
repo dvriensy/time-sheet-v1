@@ -470,6 +470,109 @@ export function loginUser(usernameOrName: string, password?: string): boolean {
   return false;
 }
 
+export async function registerUserClient(fullName: string, username: string, password?: string, hourlyRate?: number, autoLogin: boolean = true): Promise<{ success: boolean; error?: string; user?: UserAccount }> {
+  const targetUsername = username.trim().toLowerCase().replace(/[^a-z0-9_.-]/g, '');
+  if (!targetUsername) {
+    return { success: false, error: "Invalid username format." };
+  }
+
+  try {
+    const userDocRef = doc(db, 'users', targetUsername);
+    const userSnap = await getDoc(userDocRef);
+    if (userSnap.exists()) {
+      return { success: false, error: `An account with the username "@${targetUsername}" already exists in the cloud database.` };
+    }
+
+    const trimmedName = fullName.trim();
+    const nameParts = trimmedName.split(/\s+/);
+    const firstName = nameParts[0] || trimmedName;
+    const lastName = nameParts.slice(1).join(' ') || '';
+
+    const newUser: UserAccount = {
+      username: targetUsername,
+      password: password || '123456',
+      firstName,
+      lastName,
+      fullName: trimmedName,
+      hourlyRate: hourlyRate || 45,
+      role: (targetUsername === 'derek_vriens' || trimmedName.toLowerCase() === 'derek vriens') ? 'manager' : 'employee',
+      department: 'Operations',
+      email: `${targetUsername}@ledger-demo.com`,
+      phone: `+1 (555) 01${Math.floor(Math.random() * 90) + 10}-${Math.floor(Math.random() * 9000) + 1000}`,
+      bio: 'Registered contractor account.'
+    };
+
+    await setDoc(userDocRef, newUser);
+
+    const usersRaw = localStorage.getItem(KEY_USERS_LIST);
+    const users: UserAccount[] = usersRaw ? JSON.parse(usersRaw) : [];
+    if (!users.some(u => u.username === targetUsername)) {
+      users.push(newUser);
+      localStorage.setItem(KEY_USERS_LIST, JSON.stringify(users));
+    }
+
+    if (autoLogin) {
+      localStorage.setItem(KEY_CURRENT_USER, targetUsername);
+    }
+
+    seedInitialDataForUser(targetUsername, hourlyRate || 45);
+    window.dispatchEvent(new Event('storage-sync'));
+
+    return { success: true, user: newUser };
+  } catch (err: any) {
+    console.error("Firestore client-side registration error:", err);
+    return { success: false, error: err.message || "Failed to register account." };
+  }
+}
+
+export async function loginUserClient(usernameOrName: string, password?: string): Promise<{ success: boolean; user?: UserAccount; error?: string }> {
+  const queryVal = usernameOrName.trim().toLowerCase();
+  
+  const usersRaw = localStorage.getItem(KEY_USERS_LIST);
+  const users: UserAccount[] = usersRaw ? JSON.parse(usersRaw) : [];
+  let found = users.find(u => 
+    u.username.toLowerCase() === queryVal || 
+    u.fullName.toLowerCase() === queryVal
+  );
+
+  if (!found) {
+    try {
+      const userDocRef = doc(db, 'users', queryVal);
+      const userSnap = await getDoc(userDocRef);
+      if (userSnap.exists()) {
+        found = userSnap.data() as UserAccount;
+      } else {
+        const usersSnap = await getDocs(collection(db, 'users'));
+        usersSnap.forEach(docSnap => {
+          const u = docSnap.data() as UserAccount;
+          if (u.fullName?.toLowerCase() === queryVal) {
+            found = u;
+          }
+        });
+      }
+
+      if (found) {
+        users.push(found);
+        localStorage.setItem(KEY_USERS_LIST, JSON.stringify(users));
+      }
+    } catch (err: any) {
+      console.error("Firestore client-side login query error:", err);
+    }
+  }
+
+  if (found) {
+    if (!found.password || !password || found.password === password) {
+      localStorage.setItem(KEY_CURRENT_USER, found.username);
+      window.dispatchEvent(new Event('storage-sync'));
+      return { success: true, user: found };
+    } else {
+      return { success: false, error: "Incorrect password." };
+    }
+  }
+
+  return { success: false, error: "Account not found." };
+}
+
 export function getCurrentUser(): UserAccount | null {
   const username = localStorage.getItem(KEY_CURRENT_USER);
   if (!username) return null;
@@ -753,18 +856,30 @@ export function saveSyncSettings(settings: SyncSettings) {
 export function getAppSettings(): AppSettings {
   initializeStorage();
   const raw = localStorage.getItem(KEY_APP_SETTINGS);
-  return raw ? JSON.parse(raw) : {
+  if (raw) {
+    const parsed = JSON.parse(raw);
+    return {
+      biometricLockEnabled: parsed.biometricLockEnabled !== undefined ? parsed.biometricLockEnabled : true,
+      privacyMode: parsed.privacyMode !== undefined ? parsed.privacyMode : false,
+      hourlyRateDefault: parsed.hourlyRateDefault !== undefined ? parsed.hourlyRateDefault : 45,
+      defaultStartTime: parsed.defaultStartTime !== undefined ? parsed.defaultStartTime : '07:30',
+      defaultEndTime: parsed.defaultEndTime !== undefined ? parsed.defaultEndTime : '16:00',
+    };
+  }
+  return {
     biometricLockEnabled: true,
     privacyMode: false,
-    hourlyRateDefault: 45
+    hourlyRateDefault: 45,
+    defaultStartTime: '07:30',
+    defaultEndTime: '16:00',
   };
 }
 
 export function saveAppSettings(settings: AppSettings) {
   localStorage.setItem(KEY_APP_SETTINGS, JSON.stringify(settings));
   addSecurityLog(
-    'Biometric lock preferences adjusted',
-    `App settings changed. Biometric lock enabled: ${settings.biometricLockEnabled}, Privacy masking: ${settings.privacyMode}`,
+    'App preferences adjusted',
+    `App settings changed. Biometric lock enabled: ${settings.biometricLockEnabled}, Privacy masking: ${settings.privacyMode}, Default Shift Hours: ${settings.defaultStartTime || '07:30'} to ${settings.defaultEndTime || '16:00'}`,
     'auth'
   );
 }

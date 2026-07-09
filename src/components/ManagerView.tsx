@@ -5,6 +5,8 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { db } from '../firebase';
+import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
 import { 
   Users, Radio, Clock, MapPin, Briefcase, DollarSign, Search, 
   Activity, Coffee, ChevronDown, ChevronRight, CheckCircle2, 
@@ -107,46 +109,61 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
 
   const refreshUsersList = async () => {
     try {
-      const response = await fetch(`/api/users?requesterUsername=${encodeURIComponent(currentUser.username)}`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          "x-requester-username": currentUser.username
-        }
+      const isAuthorized = currentUser.role === 'manager' || currentUser.username === 'derek_vriens';
+      if (!isAuthorized) {
+        console.error("Access Denied: Requester does not have manager or admin privileges.");
+        return;
+      }
+
+      // Query pulls ALL registered/active users from the database directly in real-time
+      const usersRef = collection(db, "users");
+      const usersSnap = await getDocs(usersRef);
+      const usersData: UserAccount[] = [];
+      
+      usersSnap.forEach(docSnap => {
+        const u = docSnap.data();
+        usersData.push({
+          username: u.username || docSnap.id,
+          firstName: u.firstName || '',
+          lastName: u.lastName || '',
+          fullName: u.fullName || '',
+          role: u.role || 'employee',
+          department: u.department || 'Operations',
+          hourlyRate: u.hourlyRate || 45,
+          email: u.email || '',
+          phone: u.phone || '',
+          bio: u.bio || '',
+          password: u.password || '123456'
+        });
       });
-      if (response.ok) {
-        const usersData = await response.json();
-        if (Array.isArray(usersData)) {
-          // Sync to localStorage
-          localStorage.setItem('timesheets_tracker_users_list', JSON.stringify(usersData));
-          
-          // Check for newly registered user accounts
-          if (knownUsernamesRef.current.size > 0) {
-            usersData.forEach(user => {
-              if (!knownUsernamesRef.current.has(user.username)) {
-                // Add system notification for the manager
-                const newNotif = {
-                  id: 'notif_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9),
-                  message: `${user.fullName} (@${user.username}) registered a new account. Added to database!`,
-                  timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                };
-                setNotifications(prev => [newNotif, ...prev]);
-                knownUsernamesRef.current.add(user.username);
-              }
-            });
-          } else {
-            // First load: populate seen set
-            usersData.forEach(user => {
+
+      if (usersData.length > 0) {
+        localStorage.setItem('timesheets_tracker_users_list', JSON.stringify(usersData));
+        
+        // Check for newly registered user accounts
+        if (knownUsernamesRef.current.size > 0) {
+          usersData.forEach(user => {
+            if (!knownUsernamesRef.current.has(user.username)) {
+              const newNotif = {
+                id: 'notif_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9),
+                message: `${user.fullName} (@${user.username}) registered a new account. Added to database!`,
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              };
+              setNotifications(prev => [newNotif, ...prev]);
               knownUsernamesRef.current.add(user.username);
-            });
-          }
-          
-          setAllUsers(usersData);
-          return;
+            }
+          });
+        } else {
+          usersData.forEach(user => {
+            knownUsernamesRef.current.add(user.username);
+          });
         }
+        
+        setAllUsers(usersData);
+        return;
       }
     } catch (err) {
-      console.error("Failed to fetch users from backend:", err);
+      console.error("Failed to query users directly from Firestore:", err);
     }
 
     const currentUsers = getAllUsers();
@@ -301,22 +318,11 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
     const resolvedName = fullName || allUsers.find(u => u.username === username)?.fullName || username;
     
     try {
-      // 1. Call the backend API route for account deletion
-      const response = await fetch('/api/delete-account', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ username })
-      });
-
-      if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.error || 'Failed to delete account on backend');
+      // Clear in local storage and Firestore directly from client-side Web SDK
+      const success = await deleteUserAccount(username);
+      if (!success) {
+        throw new Error("User account not found.");
       }
-
-      // 2. Clear locally in state and localStorage
-      await deleteUserAccount(username);
 
       setSuccessMessage(`Successfully deleted account "${resolvedName}" and cleared all logs.`);
       setConfirmDeleteUsername(null);
@@ -1687,14 +1693,14 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
         <div className="space-y-6">
           <div className="bg-card-bg border border-main-border rounded-2xl p-5 shadow-xl">
             <div className="text-left pb-4 border-b border-main-border/40 mb-6">
-              <h2 className="text-base font-bold text-slate-100 uppercase tracking-wide font-mono">User Accounts Directory</h2>
-              <p className="text-xs text-slate-400">Manage all registered user accounts, edit their department/rate/roles, and permanently delete accounts.</p>
+              <h2 className="text-base font-bold text-main-text uppercase tracking-wide font-mono">User Accounts Directory</h2>
+              <p className="text-xs text-muted-text">Manage all registered user accounts, edit their department/rate/roles, and permanently delete accounts.</p>
             </div>
 
             <div className="overflow-x-auto rounded-xl border border-main-border/80">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
-                  <tr className="bg-[#09090b]/80 border-b border-main-border text-muted-text font-mono uppercase tracking-wider">
+                  <tr className="bg-app-bg/80 border-b border-main-border text-muted-text font-mono uppercase tracking-wider">
                     <th className="p-4 font-semibold">User Details</th>
                     <th className="p-4 font-semibold">Department</th>
                     <th className="p-4 font-semibold">Role</th>
@@ -1702,7 +1708,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                     <th className="p-4 font-semibold text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-main-border/40 text-slate-300">
+                <tbody className="divide-y divide-main-border/40 text-main-text">
                   {allUsers.map((userItem) => {
                     const isSelf = userItem.username === currentUser.username;
                     return (
@@ -1717,7 +1723,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                               {userItem.firstName ? userItem.firstName[0].toUpperCase() : userItem.username[0].toUpperCase()}
                             </div>
                             <div>
-                              <div className="font-semibold text-slate-100 flex items-center gap-1.5">
+                              <div className="font-semibold text-main-text flex items-center gap-1.5">
                                 {userItem.fullName}
                                 {isSelf && (
                                   <span className="text-[9px] bg-blue-500/10 text-blue-400 font-bold px-1.5 py-0.5 rounded border border-blue-500/20 font-mono">YOU</span>
@@ -1729,7 +1735,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                         </td>
 
                         {/* Department */}
-                        <td className="p-4 font-medium text-slate-300">
+                        <td className="p-4 font-medium text-main-text">
                           {userItem.department || 'General'}
                         </td>
 
@@ -1745,7 +1751,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                         </td>
 
                         {/* Rate */}
-                        <td className="p-4 font-mono font-medium text-slate-200">
+                        <td className="p-4 font-mono font-medium text-main-text">
                           ${userItem.hourlyRate || 45}/hr
                         </td>
 
@@ -1755,7 +1761,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                             {/* Edit Button */}
                             <button
                               onClick={() => handleStartEditing(userItem)}
-                              className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-main-border bg-app-bg hover:bg-main-border/30 text-xs font-semibold text-slate-200 transition cursor-pointer"
+                              className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-main-border bg-app-bg hover:bg-main-border/30 text-xs font-semibold text-main-text transition cursor-pointer"
                             >
                               <Edit className="h-3.5 w-3.5" />
                               <span>Edit</span>
@@ -1775,7 +1781,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                                     </button>
                                     <button
                                       onClick={() => setConfirmDeleteUsername(null)}
-                                      className="bg-[#09090B]/60 hover:bg-[#09090B]/80 text-slate-300 text-[10px] px-2 py-1 rounded transition cursor-pointer"
+                                      className="bg-app-bg hover:bg-main-border/20 text-main-text text-[10px] px-2 py-1 rounded transition cursor-pointer"
                                     >
                                       No
                                     </button>
