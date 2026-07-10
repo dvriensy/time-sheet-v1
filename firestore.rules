@@ -12,15 +12,14 @@ service cloud.firestore {
       return id is string && id.size() >= 2 && id.size() <= 128;
     }
 
-    function incoming(req) {
-      return req.resource.data;
+    function incoming() {
+      return request.resource.data;
     }
 
     // --- Users Collection ---
     match /users/{username} {
       allow read: if true;
-      allow create: if isValidId(username) && isValidUser(incoming(request));
-      allow update: if isValidId(username) && isValidUser(incoming(request));
+      allow create, update: if isValidId(username) && isValidUser(incoming());
       allow delete: if isValidId(username);
     }
 
@@ -29,34 +28,33 @@ service cloud.firestore {
              data.firstName is string && data.firstName.size() >= 0 &&
              data.lastName is string && data.lastName.size() >= 0 &&
              data.fullName is string && data.fullName.size() > 0 &&
-             data.password is string && data.password.size() > 0 &&
+             (!('password' in data) || (data.password is string && data.password.size() >= 0)) &&
              (data.role == 'employee' || data.role == 'manager');
     }
 
     // --- Timesheets Collection ---
     match /timesheets/{timesheetId} {
       allow read: if true;
-      allow create: if isValidId(timesheetId) && isValidTimesheet(incoming(request));
-      allow update: if isValidId(timesheetId) && isValidTimesheet(incoming(request));
+      allow create, update: if isValidId(timesheetId) && isValidTimesheet(incoming());
       allow delete: if isValidId(timesheetId);
     }
 
     function isValidTimesheet(data) {
       return data.id is string && data.id.size() > 0 &&
-             data.username is string && data.username.size() > 0 &&
+             (!('username' in data) || data.username is string) &&
              data.date is string && data.date.size() == 10 &&
              data.startTime is string && data.startTime.size() == 5 &&
              data.endTime is string && data.endTime.size() == 5 &&
-             data.breakMinutes is int && data.breakMinutes >= 0 &&
-             data.project is string && data.project.size() >= 0 &&
-             data.locationName is string && data.locationName.size() >= 0 &&
-             data.totalHours is float || data.totalHours is int;
+             (!('breakMinutes' in data) || (data.breakMinutes is float || data.breakMinutes is int)) &&
+             (!('project' in data) || data.project is string) &&
+             (!('locationName' in data) || data.locationName is string) &&
+             (data.totalHours is float || data.totalHours is int);
     }
 
     // --- Active Sessions Collection ---
     match /activeSessions/{username} {
       allow read: if true;
-      allow create, update: if isValidId(username) && isValidActiveSession(incoming(request));
+      allow create, update: if isValidId(username) && isValidActiveSession(incoming());
       allow delete: if isValidId(username);
     }
 
@@ -66,17 +64,16 @@ service cloud.firestore {
              data.isClockedIn is bool &&
              data.isOnBreak is bool &&
              data.startTime is string &&
-             data.project is string &&
-             data.location is string &&
-             data.notes is string &&
+             (!('project' in data) || data.project is string) &&
+             (!('location' in data) || data.location is string) &&
+             (!('notes' in data) || data.notes is string) &&
              data.lastActiveTimestamp is string;
     }
 
     // --- Time-Off Requests Collection ---
     match /timeOffRequests/{requestId} {
       allow read: if true;
-      allow create: if isValidId(requestId) && isValidTimeOffRequest(incoming(request));
-      allow update: if isValidId(requestId) && isValidTimeOffRequest(incoming(request));
+      allow create, update: if isValidId(requestId) && isValidTimeOffRequest(incoming());
       allow delete: if isValidId(requestId);
     }
 
@@ -86,7 +83,7 @@ service cloud.firestore {
              data.fullName is string && data.fullName.size() > 0 &&
              data.startDate is string && data.startDate.size() == 10 &&
              data.endDate is string && data.endDate.size() == 10 &&
-             data.reason is string && data.reason.size() >= 0 &&
+             (!('reason' in data) || data.reason is string) &&
              (data.status == 'pending' || data.status == 'approved' || data.status == 'denied') &&
              data.createdAt is string &&
              data.acknowledgedByRequester is bool;
@@ -95,8 +92,7 @@ service cloud.firestore {
     // --- Future Shifts Collection ---
     match /futureShifts/{shiftId} {
       allow read: if true;
-      allow create: if isValidId(shiftId) && isValidFutureShift(incoming(request));
-      allow update: if isValidId(shiftId) && isValidFutureShift(incoming(request));
+      allow create, update: if isValidId(shiftId) && isValidFutureShift(incoming());
       allow delete: if isValidId(shiftId);
     }
 
@@ -107,22 +103,21 @@ service cloud.firestore {
              data.date is string && data.date.size() == 10 &&
              data.startTime is string && data.startTime.size() == 5 &&
              data.endTime is string && data.endTime.size() == 5 &&
-             data.project is string && data.project.size() > 0 &&
-             data.notes is string &&
+             (!('project' in data) || data.project is string) &&
+             (!('notes' in data) || data.notes is string) &&
              data.createdAt is string;
     }
 
     // --- Submitted Timesheets Collection ---
     match /submittedTimesheets/{submissionId} {
       allow read: if true;
-      allow create: if isValidId(submissionId) && isValidSubmittedTimesheet(incoming(request));
-      allow update: if isValidId(submissionId) && isValidSubmittedTimesheet(incoming(request));
+      allow create, update: if isValidId(submissionId) && isValidSubmittedTimesheet(incoming());
       allow delete: if isValidId(submissionId);
     }
 
     function isValidSubmittedTimesheet(data) {
       return data.id is string && data.id.size() > 0 &&
-             data.username is string && data.username.size() > 0 &&
+             (!('username' in data) || data.username is string) &&
              data.fullName is string && data.fullName.size() > 0 &&
              data.startDate is string && data.startDate.size() == 10 &&
              data.endDate is string && data.endDate.size() == 10 &&

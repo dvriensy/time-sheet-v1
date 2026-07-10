@@ -1829,8 +1829,8 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                   </thead>
                   <tbody className="divide-y divide-main-border/40 text-main-text">
                     {submittedList.map((sub) => {
-                      const employeeUser = allUsers.find(u => u.username === sub.employeeUsername);
-                      const employeeName = employeeUser ? employeeUser.fullName : `@${sub.employeeUsername}`;
+                      const employeeUser = allUsers.find(u => u.username === sub.username);
+                      const employeeName = employeeUser ? employeeUser.fullName : `@${sub.username}`;
                       
                       const statusColors = {
                         submitted: 'bg-amber-500/10 text-amber-500 border border-amber-500/20',
@@ -1845,7 +1845,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                               <User className="h-4 w-4 text-blue-400" />
                               <div>
                                 <span className="block text-main-text text-xs">{employeeName}</span>
-                                <span className="block text-muted-text text-[10px] font-mono">@{sub.employeeUsername}</span>
+                                <span className="block text-muted-text text-[10px] font-mono">@{sub.username}</span>
                               </div>
                             </div>
                           </td>
@@ -2466,11 +2466,11 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                 <div className="mt-4 md:mt-0 text-left md:text-right text-xs space-y-1">
                   <p className="text-slate-800 font-bold">Employee Name: <span className="text-slate-950 font-sans font-medium">{
                     (() => {
-                      const u = allUsers.find(userItem => userItem.username === selectedManagerPrint.employeeUsername);
-                      return u ? u.fullName : selectedManagerPrint.employeeUsername;
+                      const u = allUsers.find(userItem => userItem.username === selectedManagerPrint.username);
+                      return u ? u.fullName : selectedManagerPrint.username;
                     })()
                   }</span></p>
-                  <p className="text-slate-600 font-mono">Username: @{selectedManagerPrint.employeeUsername}</p>
+                  <p className="text-slate-600 font-mono">Username: @{selectedManagerPrint.username}</p>
                   <p className="text-slate-600">Period range: <strong className="font-mono">{selectedManagerPrint.startDate} to {selectedManagerPrint.endDate}</strong></p>
                   <p className="text-slate-600">Verification date: {new Date(selectedManagerPrint.submittedAt).toLocaleDateString()}</p>
                 </div>
@@ -2534,8 +2534,8 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">Employee Digital Signature</span>
                   <div className="h-10 border-b border-slate-300 mt-4 flex items-end pb-1 font-serif text-slate-700 italic">
                     {(() => {
-                      const u = allUsers.find(userItem => userItem.username === selectedManagerPrint.employeeUsername);
-                      return u ? u.fullName : selectedManagerPrint.employeeUsername;
+                      const u = allUsers.find(userItem => userItem.username === selectedManagerPrint.username);
+                      return u ? u.fullName : selectedManagerPrint.username;
                     })()}
                   </div>
                   <span className="text-[9px] text-slate-400 mt-1 block">Digitally verified and sealed on submission</span>
