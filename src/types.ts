@@ -87,3 +87,18 @@ export interface FutureShift {
   acknowledged?: boolean;
 }
 
+export interface SubmittedTimesheet {
+  id: string;
+  username: string;
+  fullName: string;
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
+  totalHours: number;
+  regularHours: number;
+  overtimeHours: number;
+  submittedAt: string; // ISO string
+  status: 'submitted' | 'approved' | 'rejected';
+  entries: TimesheetEntry[];
+}
+
+

@@ -97,6 +97,25 @@
         "createdAt": { "type": "string" }
       },
       "required": ["id", "username", "fullName", "date", "startTime", "endTime", "project", "createdAt"]
+    },
+    "SubmittedTimesheet": {
+      "title": "SubmittedTimesheet",
+      "description": "A completed timesheet report submitted by an employee for manager review.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "username": { "type": "string" },
+        "fullName": { "type": "string" },
+        "startDate": { "type": "string" },
+        "endDate": { "type": "string" },
+        "totalHours": { "type": "number" },
+        "regularHours": { "type": "number" },
+        "overtimeHours": { "type": "number" },
+        "submittedAt": { "type": "string" },
+        "status": { "type": "string", "enum": ["submitted", "approved", "rejected"] },
+        "entries": { "type": "array" }
+      },
+      "required": ["id", "username", "fullName", "startDate", "endDate", "totalHours", "regularHours", "overtimeHours", "submittedAt", "status", "entries"]
     }
   },
   "firestore": {
@@ -119,6 +138,10 @@
     "/futureShifts/{shiftId}": {
       "schema": "FutureShift",
       "description": "Assigned future employee shifts for the calendar view."
+    },
+    "/submittedTimesheets/{submissionId}": {
+      "schema": "SubmittedTimesheet",
+      "description": "Completed timesheet submissions sent to the manager's inbox."
     }
   }
 }

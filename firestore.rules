@@ -112,5 +112,27 @@ service cloud.firestore {
              data.createdAt is string;
     }
 
+    // --- Submitted Timesheets Collection ---
+    match /submittedTimesheets/{submissionId} {
+      allow read: if true;
+      allow create: if isValidId(submissionId) && isValidSubmittedTimesheet(incoming(request));
+      allow update: if isValidId(submissionId) && isValidSubmittedTimesheet(incoming(request));
+      allow delete: if isValidId(submissionId);
+    }
+
+    function isValidSubmittedTimesheet(data) {
+      return data.id is string && data.id.size() > 0 &&
+             data.username is string && data.username.size() > 0 &&
+             data.fullName is string && data.fullName.size() > 0 &&
+             data.startDate is string && data.startDate.size() == 10 &&
+             data.endDate is string && data.endDate.size() == 10 &&
+             (data.totalHours is float || data.totalHours is int) &&
+             (data.regularHours is float || data.regularHours is int) &&
+             (data.overtimeHours is float || data.overtimeHours is int) &&
+             data.submittedAt is string &&
+             (data.status == 'submitted' || data.status == 'approved' || data.status == 'rejected') &&
+             data.entries is list;
+    }
+
   }
 }

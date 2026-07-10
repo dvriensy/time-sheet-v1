@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Play, Coffee, Square, Plus, Trash2, FileOutput, Printer, X, MapPin, Briefcase, Calendar, CheckCircle2, Pencil, ClipboardList, Folder, FolderOpen, ChevronDown, ChevronRight, ChevronLeft, Archive, AlertTriangle, HelpCircle, Bell, Inbox } from 'lucide-react';
+import { Play, Coffee, Square, Plus, Trash2, FileOutput, Printer, X, MapPin, Briefcase, Calendar, CheckCircle2, Pencil, ClipboardList, Folder, FolderOpen, ChevronDown, ChevronRight, ChevronLeft, Archive, AlertTriangle, HelpCircle, Bell, Inbox, Send } from 'lucide-react';
 import { 
   getPayPeriodsGrouped, 
   addTimesheetEntry, 
@@ -21,9 +21,11 @@ import {
   getFutureShifts,
   acknowledgeFutureShift,
   getTimeOffRequests,
-  TimeOffRequest
+  TimeOffRequest,
+  addSubmittedTimesheet,
+  getSubmittedTimesheets
 } from '../utils/storage';
-import { TimesheetEntry, FutureShift } from '../types';
+import { TimesheetEntry, FutureShift, SubmittedTimesheet } from '../types';
 
 interface TimesheetManagerProps {
   entries: TimesheetEntry[];
@@ -114,14 +116,50 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
   const [showManualForm, setShowManualForm] = useState(false);
   const [editingEntry, setEditingEntry] = useState<TimesheetEntry | null>(null);
   const [showPdfPreview, setShowPdfPreview] = useState<PayPeriodGroup | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [expandedPastPeriods, setExpandedPastPeriods] = useState<Record<string, boolean>>({});
   const [expandedDays, setExpandedDays] = useState<Record<string, boolean>>({});
 
+  const handleSubmitTimesheet = async (period: PayPeriodGroup) => {
+    if (!user) return;
+    setIsSubmitting(true);
+    try {
+      let total = 0;
+      let regular = 0;
+      let overtime = 0;
+      period.entries.forEach(entry => {
+        total += entry.totalHours;
+        if (entry.isOvertime) {
+          overtime += entry.totalHours;
+        } else {
+          regular += entry.totalHours;
+        }
+      });
+
+      addSubmittedTimesheet(
+        period.start,
+        period.end,
+        total,
+        regular,
+        overtime,
+        period.entries
+      );
+      setSubmitSuccess("Timesheet successfully submitted to the manager's inbox!");
+      setTimeout(() => setSubmitSuccess(null), 4000);
+    } catch (err) {
+      console.error("Submission failed:", err);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   // Future Shifts & Time-Off Requests State and Listener
   const [futureShifts, setFutureShifts] = useState<FutureShift[]>([]);
   const [timeOffRequests, setTimeOffRequests] = useState<TimeOffRequest[]>([]);
+  const [submittedTimesheets, setSubmittedTimesheets] = useState<SubmittedTimesheet[]>([]);
   const [currentMonthDate, setCurrentMonthDate] = useState<Date>(new Date());
   
   // Format today's date YYYY-MM-DD
@@ -150,6 +188,11 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
         const allRequests = getTimeOffRequests();
         const userRequests = allRequests.filter(r => r.username === user.username);
         setTimeOffRequests(userRequests);
+
+        // Load Submitted Timesheets
+        const allSubmitted = getSubmittedTimesheets();
+        const userSubmitted = allSubmitted.filter(s => s.username === user.username);
+        setSubmittedTimesheets(userSubmitted);
       }
     };
 
@@ -1653,6 +1696,42 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                 <p className="text-xs text-muted-text">Review supervisor-ready vector timesheet document guidelines below.</p>
               </div>
               <div className="flex items-center gap-3">
+                {/* Submit to Manager Button / Badge */}
+                {(() => {
+                  const submissionId = `sub_${user?.username || ''}_${showPdfPreview.start}_${showPdfPreview.end}`;
+                  const activeSubmission = submittedTimesheets.find(s => s.id === submissionId);
+                  
+                  if (activeSubmission) {
+                    const statusColors = {
+                      submitted: 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20',
+                      approved: 'bg-teal-500/10 text-teal-500 border border-teal-500/20',
+                      rejected: 'bg-rose-500/10 text-rose-500 border border-rose-500/20'
+                    };
+                    const statusLabels = {
+                      submitted: 'Submitted to Manager',
+                      approved: 'Approved by Manager',
+                      rejected: 'Rejected by Manager'
+                    };
+                    return (
+                      <div className={`flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold ${statusColors[activeSubmission.status] || statusColors.submitted}`}>
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        <span>{statusLabels[activeSubmission.status] || 'Submitted'}</span>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <button
+                      onClick={() => handleSubmitTimesheet(showPdfPreview)}
+                      disabled={isSubmitting}
+                      className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50 transition cursor-pointer"
+                    >
+                      <Send className="h-4 w-4" />
+                      <span>{isSubmitting ? 'Submitting...' : 'Submit to Manager'}</span>
+                    </button>
+                  );
+                })()}
+
                 <button
                   onClick={() => window.print()}
                   className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 transition cursor-pointer"
@@ -1668,6 +1747,18 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                 </button>
               </div>
             </div>
+
+            {submitSuccess && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="w-full max-w-4xl mx-auto mb-4 bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 p-3.5 rounded-xl text-xs font-medium flex items-center gap-2 print:hidden"
+              >
+                <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                <span>{submitSuccess}</span>
+              </motion.div>
+            )}
 
             {/* Printable Document Core */}
             <div id="payperiod-printout" className="w-full max-w-4xl mx-auto bg-white text-slate-950 p-8 md:p-12 rounded-2xl shadow-2xl print:shadow-none print:p-0 print:m-0 print:bg-white print:text-black">

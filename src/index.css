@@ -69,6 +69,11 @@ body {
 
 /* Custom Print Styles for Timesheet Report Export */
 @media print {
+  @page {
+    size: letter;
+    margin: 0.5in;
+  }
+
   /* Hide the entire app UI except the printout container */
   body * {
     visibility: hidden !important;

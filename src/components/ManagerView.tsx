@@ -11,7 +11,7 @@ import {
   Users, Radio, Clock, MapPin, Briefcase, DollarSign, Search, 
   Activity, Coffee, ChevronDown, ChevronRight, ChevronLeft, CheckCircle2, 
   PlusCircle, ShieldAlert, Landmark, HelpCircle, ArrowRight, User, Trash2,
-  CalendarDays, Check, X, AlertTriangle, Bell, Lock, Edit
+  CalendarDays, Check, X, AlertTriangle, Bell, Lock, Edit, Inbox, Printer
 } from 'lucide-react';
 import { 
   getAllUsers, 
@@ -29,9 +29,12 @@ import {
   TimeOffRequest,
   getFutureShifts,
   addFutureShift,
-  deleteFutureShift
+  deleteFutureShift,
+  getSubmittedTimesheets,
+  respondToSubmittedTimesheet,
+  deleteSubmittedTimesheet
 } from '../utils/storage';
-import { TimesheetEntry, FutureShift } from '../types';
+import { TimesheetEntry, FutureShift, SubmittedTimesheet } from '../types';
 import TimeOffCalendar from './TimeOffCalendar';
 
 interface ManagerViewProps {
@@ -41,8 +44,9 @@ interface ManagerViewProps {
 }
 
 export default function ManagerView({ currentUser, isMobileView = false, onLoginAsUser }: ManagerViewProps) {
-  // Tabs: 'live', 'history', 'timeoff', 'schedule', or 'accounts'
-  const [managerTab, setManagerTab] = useState<'live' | 'history' | 'timeoff' | 'schedule' | 'accounts'>('live');
+  // Tabs: 'live', 'history', 'timeoff', 'schedule', 'accounts', or 'inbox'
+  const [managerTab, setManagerTab] = useState<'live' | 'history' | 'timeoff' | 'schedule' | 'accounts' | 'inbox'>('live');
+  const [submittedList, setSubmittedList] = useState<SubmittedTimesheet[]>([]);
   const isOwner = currentUser.username === 'derek_vriens' || 
                   currentUser.fullName.toLowerCase() === 'derek vriens' || 
                   currentUser.email?.toLowerCase() === 'dvriensy@gmail.com';
@@ -57,6 +61,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
   const [activeReplyRequest, setActiveReplyRequest] = useState<TimeOffRequest | null>(null);
   const [popupDecisionNote, setPopupDecisionNote] = useState('');
   const [popupCalDate, setPopupCalDate] = useState<Date | null>(null);
+  const [selectedManagerPrint, setSelectedManagerPrint] = useState<SubmittedTimesheet | null>(null);
 
   useEffect(() => {
     if (activeReplyRequest) {
@@ -158,6 +163,10 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
     setTimeOffList(getTimeOffRequests());
   };
 
+  const refreshSubmittedTimesheets = () => {
+    setSubmittedList(getSubmittedTimesheets());
+  };
+
   const refreshUsersList = async () => {
     try {
       const isAuthorized = currentUser.role === 'manager' || currentUser.username === 'derek_vriens';
@@ -249,6 +258,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
     refreshTimeOffRequests();
     refreshFutureShifts();
     refreshTimesheets();
+    refreshSubmittedTimesheets();
     
     const handleSync = () => {
       refreshUsersList();
@@ -256,6 +266,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
       refreshTimeOffRequests();
       refreshFutureShifts();
       refreshTimesheets();
+      refreshSubmittedTimesheets();
     };
     window.addEventListener('storage-sync', handleSync);
     
@@ -265,6 +276,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
       refreshTimeOffRequests();
       refreshFutureShifts();
       refreshTimesheets();
+      refreshSubmittedTimesheets();
     }, 5000); // refresh live status, timeoff requests, and new users every 5 seconds
     
     return () => {
@@ -857,6 +869,22 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
           >
             <User className="h-3.5 w-3.5" />
             <span>User Accounts ({allUsers.length})</span>
+          </button>
+          <button
+            onClick={() => setManagerTab('inbox')}
+            className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer relative ${
+              managerTab === 'inbox' 
+                ? 'bg-blue-600 text-white shadow-sm' 
+                : 'text-muted-text hover:text-main-text'
+            }`}
+          >
+            <Inbox className="h-3.5 w-3.5" />
+            <span>Timesheet Inbox</span>
+            {submittedList.filter(s => s.status === 'submitted').length > 0 && (
+              <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-[9px] font-extrabold text-white animate-pulse">
+                {submittedList.filter(s => s.status === 'submitted').length}
+              </span>
+            )}
           </button>
         </div>
 
@@ -1769,6 +1797,132 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
         </div>
       )}
 
+      {managerTab === 'inbox' && (
+        <div className="space-y-6">
+          <div className="bg-card-bg border border-main-border rounded-2xl p-5 shadow-xl">
+            <div className="text-left pb-4 border-b border-main-border/40 mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div>
+                <h2 className="text-base font-bold text-main-text uppercase tracking-wide font-mono">Timesheet Submission Inbox</h2>
+                <p className="text-xs text-muted-text">Review, approve, reject, and print completed employee timesheets. All reports are formatted for standard letter-sized page alignment.</p>
+              </div>
+              <span className="bg-blue-600/10 border border-blue-500/25 text-blue-400 text-xs px-3 py-1.5 rounded-full font-bold">
+                Pending Reviews: {submittedList.filter(s => s.status === 'submitted').length}
+              </span>
+            </div>
+
+            {submittedList.length === 0 ? (
+              <div className="py-12 text-center text-muted-text text-sm">
+                <Inbox className="h-10 w-10 mx-auto text-muted-text/30 mb-3" />
+                <p>No employee timesheets have been submitted yet.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-xl border border-main-border/80">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-app-bg/80 border-b border-main-border text-muted-text font-mono uppercase tracking-wider">
+                      <th className="p-4 font-semibold">Employee</th>
+                      <th className="p-4 font-semibold">Pay Period</th>
+                      <th className="p-4 font-semibold">Hours Summary</th>
+                      <th className="p-4 font-semibold">Status</th>
+                      <th className="p-4 font-semibold text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-main-border/40 text-main-text">
+                    {submittedList.map((sub) => {
+                      const employeeUser = allUsers.find(u => u.username === sub.employeeUsername);
+                      const employeeName = employeeUser ? employeeUser.fullName : `@${sub.employeeUsername}`;
+                      
+                      const statusColors = {
+                        submitted: 'bg-amber-500/10 text-amber-500 border border-amber-500/20',
+                        approved: 'bg-teal-500/10 text-teal-500 border border-teal-500/20',
+                        rejected: 'bg-rose-500/10 text-rose-500 border border-rose-500/20'
+                      };
+
+                      return (
+                        <tr key={sub.id} className="hover:bg-main-border/10 transition">
+                          <td className="p-4 font-semibold">
+                            <div className="flex items-center gap-2">
+                              <User className="h-4 w-4 text-blue-400" />
+                              <div>
+                                <span className="block text-main-text text-xs">{employeeName}</span>
+                                <span className="block text-muted-text text-[10px] font-mono">@{sub.employeeUsername}</span>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="p-4 font-semibold font-mono text-xs">
+                            {sub.startDate} to {sub.endDate}
+                          </td>
+                          <td className="p-4 font-semibold">
+                            <div className="space-y-0.5">
+                              <span className="block text-main-text">Total: <strong>{sub.totalHours.toFixed(2)} hrs</strong></span>
+                              <span className="block text-muted-text text-[10px] font-mono">
+                                Reg: {sub.regularHours.toFixed(2)} | OT: {sub.overtimeHours.toFixed(2)}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="p-4">
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wide border ${statusColors[sub.status] || statusColors.submitted}`}>
+                              {sub.status}
+                            </span>
+                          </td>
+                          <td className="p-4 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              {sub.status === 'submitted' && (
+                                <>
+                                  <button
+                                    onClick={() => {
+                                      respondToSubmittedTimesheet(sub.id, 'approved');
+                                      refreshSubmittedTimesheets();
+                                      setSuccessMessage(`Approved ${employeeName}'s timesheet for ${sub.startDate} to ${sub.endDate}`);
+                                    }}
+                                    className="bg-teal-600 hover:bg-teal-500 text-white font-bold text-[10px] uppercase py-1.5 px-3 rounded-lg transition cursor-pointer"
+                                  >
+                                    Approve
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      respondToSubmittedTimesheet(sub.id, 'rejected');
+                                      refreshSubmittedTimesheets();
+                                      setSuccessMessage(`Rejected ${employeeName}'s timesheet for ${sub.startDate} to ${sub.endDate}`);
+                                    }}
+                                    className="bg-rose-600 hover:bg-rose-500 text-white font-bold text-[10px] uppercase py-1.5 px-3 rounded-lg transition cursor-pointer"
+                                  >
+                                    Reject
+                                  </button>
+                                </>
+                              )}
+                              <button
+                                onClick={() => setSelectedManagerPrint(sub)}
+                                className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-[10px] uppercase py-1.5 px-3 rounded-lg transition flex items-center gap-1 cursor-pointer"
+                              >
+                                <Printer className="h-3 w-3" />
+                                <span>View & Print</span>
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (confirm("Are you sure you want to delete this submission ledger entry?")) {
+                                    deleteSubmittedTimesheet(sub.id);
+                                    refreshSubmittedTimesheets();
+                                  }
+                                }}
+                                className="text-muted-text hover:text-red-500 p-1.5 rounded transition cursor-pointer"
+                                title="Delete submission record"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {managerTab === 'accounts' && (
         <div className="space-y-6">
           <div className="bg-card-bg border border-main-border rounded-2xl p-5 shadow-xl">
@@ -2268,6 +2422,137 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
               </div>
             </motion.div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* MANAGER PRINT PREVIEW MODAL */}
+      <AnimatePresence>
+        {selectedManagerPrint && (
+          <div className="fixed inset-0 z-50 flex flex-col bg-app-bg/98 backdrop-blur overflow-y-auto p-4 md:p-8 transition-colors duration-200 text-left">
+            <div className="flex items-center justify-between w-full max-w-4xl mx-auto mb-4 text-main-text pb-3 border-b border-main-border print:hidden">
+              <div>
+                <h3 className="text-base font-semibold">Supervisor Timesheet Document Review</h3>
+                <p className="text-xs text-muted-text">Verified digital ledger report submitted by employee.</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs px-3 py-1.5 rounded-xl font-semibold uppercase tracking-wider font-mono">
+                  Status: {selectedManagerPrint.status}
+                </span>
+                <button
+                  onClick={() => window.print()}
+                  className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 transition cursor-pointer"
+                >
+                  <Printer className="h-4 w-4" />
+                  <span>Print / Save PDF</span>
+                </button>
+                <button
+                  onClick={() => setSelectedManagerPrint(null)}
+                  className="rounded-xl border border-main-border bg-card-bg p-2 text-muted-text hover:text-main-text transition cursor-pointer"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Printable Document Core */}
+            <div id="payperiod-printout" className="w-full max-w-4xl mx-auto bg-white text-slate-950 p-8 md:p-12 rounded-2xl shadow-2xl print:shadow-none print:p-0 print:m-0 print:bg-white print:text-black">
+              
+              {/* Report Header */}
+              <div className="flex flex-col md:flex-row justify-between items-start border-b-2 border-slate-300 pb-6 mb-6 print-border-slate-300">
+                <div>
+                  <h1 className="text-2xl font-bold uppercase tracking-tight text-slate-900">Pay Period Timesheet Report</h1>
+                  <p className="text-xs text-slate-500 uppercase tracking-widest font-mono mt-1">SUBMISSION ID: #{selectedManagerPrint.id}</p>
+                </div>
+                <div className="mt-4 md:mt-0 text-left md:text-right text-xs space-y-1">
+                  <p className="text-slate-800 font-bold">Employee Name: <span className="text-slate-950 font-sans font-medium">{
+                    (() => {
+                      const u = allUsers.find(userItem => userItem.username === selectedManagerPrint.employeeUsername);
+                      return u ? u.fullName : selectedManagerPrint.employeeUsername;
+                    })()
+                  }</span></p>
+                  <p className="text-slate-600 font-mono">Username: @{selectedManagerPrint.employeeUsername}</p>
+                  <p className="text-slate-600">Period range: <strong className="font-mono">{selectedManagerPrint.startDate} to {selectedManagerPrint.endDate}</strong></p>
+                  <p className="text-slate-600">Verification date: {new Date(selectedManagerPrint.submittedAt).toLocaleDateString()}</p>
+                </div>
+              </div>
+
+              {/* Summary Metrics cards */}
+              <div className="grid grid-cols-3 gap-4 mb-6">
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-left print-bg-slate-50 print-border-slate-200">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-mono">Total Hours</span>
+                  <span className="block text-xl font-bold text-slate-900 mt-1">{selectedManagerPrint.totalHours.toFixed(2)}</span>
+                </div>
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-left print-bg-slate-50 print-border-slate-200">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-mono">Regular Hours</span>
+                  <span className="block text-xl font-bold text-slate-900 mt-1">{selectedManagerPrint.regularHours.toFixed(2)}</span>
+                </div>
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-left print-bg-slate-50 print-border-slate-200">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-mono">Overtime Hours</span>
+                  <span className="block text-xl font-bold text-slate-900 mt-1">{selectedManagerPrint.overtimeHours.toFixed(2)}</span>
+                </div>
+              </div>
+
+              {/* Table of shifts */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b-2 border-slate-300 font-mono text-slate-500 text-[10px] uppercase tracking-wider print-border-slate-300">
+                      <th className="py-2.5 px-3 font-semibold text-left">Date</th>
+                      <th className="py-2.5 px-3 font-semibold text-left">Project / Task</th>
+                      <th className="py-2.5 px-3 font-semibold text-center">Interval</th>
+                      <th className="py-2.5 px-3 font-semibold text-right">Hours</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 text-slate-800 text-xs">
+                    {selectedManagerPrint.entries.map((entry, idx) => {
+                      const rowBg = idx % 2 === 1 ? 'bg-slate-50/50 print-bg-slate-50' : 'bg-transparent';
+                      return (
+                        <tr key={entry.id || idx} className={`${rowBg}`}>
+                          <td className="py-2.5 px-3 font-mono font-medium text-slate-950 text-left">
+                            {new Date(entry.date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+                          </td>
+                          <td className="py-2.5 px-3 text-left">
+                            <span className="font-semibold text-slate-900 block">{entry.project || 'General Operations'}</span>
+                            {entry.notes && <span className="text-[10px] text-slate-500 italic block mt-0.5">{entry.notes}</span>}
+                          </td>
+                          <td className="py-2.5 px-3 text-center font-mono text-slate-600">
+                            {entry.startTime} - {entry.endTime}
+                          </td>
+                          <td className="py-2.5 px-3 text-right font-mono font-semibold text-slate-950">
+                            {entry.totalHours.toFixed(2)} {entry.isOvertime && <span className="text-[9px] font-extrabold text-blue-600 uppercase tracking-wider">OT</span>}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Signature and Verification lines */}
+              <div className="mt-8 pt-8 border-t border-slate-300 grid grid-cols-2 gap-8 print-border-slate-200">
+                <div className="text-left">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">Employee Digital Signature</span>
+                  <div className="h-10 border-b border-slate-300 mt-4 flex items-end pb-1 font-serif text-slate-700 italic">
+                    {(() => {
+                      const u = allUsers.find(userItem => userItem.username === selectedManagerPrint.employeeUsername);
+                      return u ? u.fullName : selectedManagerPrint.employeeUsername;
+                    })()}
+                  </div>
+                  <span className="text-[9px] text-slate-400 mt-1 block">Digitally verified and sealed on submission</span>
+                </div>
+                <div className="text-left">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">Manager Approval Authorization</span>
+                  <div className="h-10 border-b border-slate-300 mt-4 flex items-end pb-1 font-serif text-slate-700 italic font-semibold">
+                    {selectedManagerPrint.status === 'approved' ? currentUser.fullName : ''}
+                  </div>
+                  <span className="text-[9px] text-slate-400 mt-1 block uppercase font-mono tracking-widest">
+                    Status: {selectedManagerPrint.status}
+                  </span>
+                </div>
+              </div>
+
+            </div>
+          </div>
         )}
       </AnimatePresence>
 

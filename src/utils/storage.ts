@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { TimesheetEntry, GeofenceSettings, ReminderSettings, SecurityAuditLog, SyncSettings, AppSettings, FutureShift } from '../types';
+import { TimesheetEntry, GeofenceSettings, ReminderSettings, SecurityAuditLog, SyncSettings, AppSettings, FutureShift, SubmittedTimesheet } from '../types';
 import { DEFAULT_GEOFENCE, MOCK_TIMESHEETS, MOCK_SECURITY_LOGS } from '../data/mockData';
 import { db } from '../lib/firebase';
 import { doc, setDoc, getDoc, getDocs, collection, deleteDoc, updateDoc, onSnapshot } from 'firebase/firestore';
@@ -65,6 +65,7 @@ const KEY_SECURITY_LOGS = 'timesheets_tracker_security_logs';
 const KEY_SYNC = 'timesheets_tracker_sync';
 const KEY_APP_SETTINGS = 'timesheets_tracker_app_settings';
 const KEY_FUTURE_SHIFTS = 'timesheets_tracker_future_shifts';
+const KEY_SUBMITTED_TIMESHEETS = 'timesheets_tracker_submitted';
 
 // Background Firestore Sync Writers
 export async function syncUserToFirestore(user: UserAccount) {
@@ -136,6 +137,24 @@ export async function syncFutureShiftToFirestore(shift: FutureShift) {
   } catch (err) {
     console.error('Firestore syncFutureShiftToFirestore error:', err);
     handleFirestoreError(err, OperationType.WRITE, `futureShifts/${shift.id}`);
+  }
+}
+
+export async function syncSubmittedTimesheetToFirestore(submission: SubmittedTimesheet) {
+  try {
+    await setDoc(doc(db, 'submittedTimesheets', submission.id), submission);
+  } catch (err) {
+    console.error('Firestore syncSubmittedTimesheetToFirestore error:', err);
+    handleFirestoreError(err, OperationType.WRITE, `submittedTimesheets/${submission.id}`);
+  }
+}
+
+export async function deleteSubmittedTimesheetFromFirestore(id: string) {
+  try {
+    await deleteDoc(doc(db, 'submittedTimesheets', id));
+  } catch (err) {
+    console.error('Firestore deleteSubmittedTimesheetFromFirestore error:', err);
+    handleFirestoreError(err, OperationType.DELETE, `submittedTimesheets/${id}`);
   }
 }
 
@@ -220,6 +239,16 @@ export async function initializeFirebaseSync(onSyncCallback?: () => void) {
       localStorage.setItem(KEY_FUTURE_SHIFTS, JSON.stringify(firestoreFutureShifts));
     }
 
+    // 4.6 Sync Submitted Timesheets
+    const submittedTimesheetsSnap = await getDocs(collection(db, 'submittedTimesheets'));
+    if (!submittedTimesheetsSnap.empty) {
+      const firestoreSubmitted: SubmittedTimesheet[] = [];
+      submittedTimesheetsSnap.forEach(docSnap => {
+        firestoreSubmitted.push(docSnap.data() as SubmittedTimesheet);
+      });
+      localStorage.setItem(KEY_SUBMITTED_TIMESHEETS, JSON.stringify(firestoreSubmitted));
+    }
+
     if (onSyncCallback) onSyncCallback();
 
     // 5. Setup Real-time Listeners
@@ -283,6 +312,18 @@ export async function initializeFirebaseSync(onSyncCallback?: () => void) {
       window.dispatchEvent(new Event('storage-sync'));
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'futureShifts');
+    });
+
+    onSnapshot(collection(db, 'submittedTimesheets'), (snap) => {
+      const updatedSubmitted: SubmittedTimesheet[] = [];
+      snap.forEach(docSnap => {
+        updatedSubmitted.push(docSnap.data() as SubmittedTimesheet);
+      });
+      localStorage.setItem(KEY_SUBMITTED_TIMESHEETS, JSON.stringify(updatedSubmitted));
+      if (onSyncCallback) onSyncCallback();
+      window.dispatchEvent(new Event('storage-sync'));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'submittedTimesheets');
     });
 
   } catch (err) {
@@ -1363,6 +1404,77 @@ export function deleteFutureShift(id: string): boolean {
   
   localStorage.setItem(KEY_FUTURE_SHIFTS, JSON.stringify(filtered));
   deleteFutureShiftFromFirestore(id);
+  
+  window.dispatchEvent(new Event('storage-sync'));
+  return true;
+}
+
+// Submitted Timesheets API helpers
+export function getSubmittedTimesheets(): SubmittedTimesheet[] {
+  const raw = localStorage.getItem(KEY_SUBMITTED_TIMESHEETS);
+  return raw ? JSON.parse(raw) : [];
+}
+
+export function addSubmittedTimesheet(
+  startDate: string,
+  endDate: string,
+  totalHours: number,
+  regularHours: number,
+  overtimeHours: number,
+  entries: TimesheetEntry[]
+): SubmittedTimesheet | null {
+  const username = localStorage.getItem(KEY_CURRENT_USER);
+  if (!username) return null;
+  
+  const users = getAllUsers();
+  const foundUser = users.find(u => u.username === username);
+  const fullName = foundUser ? foundUser.fullName : username;
+
+  const submissions = getSubmittedTimesheets();
+  const newSubmission: SubmittedTimesheet = {
+    id: `sub_${username}_${startDate}_${endDate}`,
+    username,
+    fullName,
+    startDate,
+    endDate,
+    totalHours,
+    regularHours,
+    overtimeHours,
+    submittedAt: new Date().toISOString(),
+    status: 'submitted',
+    entries
+  };
+
+  const filtered = submissions.filter(s => s.id !== newSubmission.id);
+  filtered.push(newSubmission);
+  
+  localStorage.setItem(KEY_SUBMITTED_TIMESHEETS, JSON.stringify(filtered));
+  syncSubmittedTimesheetToFirestore(newSubmission);
+  
+  window.dispatchEvent(new Event('storage-sync'));
+  return newSubmission;
+}
+
+export function respondToSubmittedTimesheet(id: string, status: 'approved' | 'rejected'): boolean {
+  const submissions = getSubmittedTimesheets();
+  const index = submissions.findIndex(s => s.id === id);
+  if (index === -1) return false;
+  
+  submissions[index].status = status;
+  localStorage.setItem(KEY_SUBMITTED_TIMESHEETS, JSON.stringify(submissions));
+  syncSubmittedTimesheetToFirestore(submissions[index]);
+  
+  window.dispatchEvent(new Event('storage-sync'));
+  return true;
+}
+
+export function deleteSubmittedTimesheet(id: string): boolean {
+  const submissions = getSubmittedTimesheets();
+  const filtered = submissions.filter(s => s.id !== id);
+  if (submissions.length === filtered.length) return false;
+  
+  localStorage.setItem(KEY_SUBMITTED_TIMESHEETS, JSON.stringify(filtered));
+  deleteSubmittedTimesheetFromFirestore(id);
   
   window.dispatchEvent(new Event('storage-sync'));
   return true;
