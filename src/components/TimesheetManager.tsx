@@ -1673,7 +1673,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
             <div id="payperiod-printout" className="w-full max-w-4xl mx-auto bg-white text-slate-950 p-8 md:p-12 rounded-2xl shadow-2xl print:shadow-none print:p-0 print:m-0 print:bg-white print:text-black">
               
               {/* Report Header */}
-              <div className="flex flex-col md:flex-row justify-between items-start border-b-2 border-slate-300 pb-6 mb-6">
+              <div className="flex flex-col md:flex-row justify-between items-start border-b-2 border-slate-300 pb-6 mb-6 print-border-slate-300">
                 <div>
                   <h1 className="text-2xl font-bold uppercase tracking-tight text-slate-900">Pay Period Timesheet Report</h1>
                   <p className="text-xs text-slate-500 uppercase tracking-widest font-mono mt-1">INDUSTRY DATA COMPLIANCE ID: #TS-{showPdfPreview.start.replace(/-/g,'')}</p>
@@ -1686,7 +1686,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
               </div>
 
               {/* Aggregates Summary */}
-              <div className="grid grid-cols-2 gap-4 border border-slate-200 rounded-xl p-4 bg-slate-50 mb-8">
+              <div className="grid grid-cols-2 gap-4 border border-slate-200 rounded-xl p-4 bg-slate-50 mb-8 print-bg-slate-50 print-border-slate-200">
                 <div>
                   <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Total Period Hours</span>
                   <span className="text-lg font-bold text-slate-950">{reportHoursSummary.total} hrs</span>
@@ -1699,37 +1699,40 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
 
               {/* Data Table */}
               <div className="overflow-x-auto mb-6">
-                <table className="w-full text-left border-collapse text-xs">
+                <table className="w-full text-left border-collapse text-xs table-fixed">
                   <thead>
-                    <tr className="border-b border-slate-300 bg-slate-100 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                      <th className="py-2 px-3">Date</th>
-                      <th className="py-2 px-3">Task / Explanation</th>
-                      <th className="py-2 px-3">Interval (Break)</th>
-                      <th className="py-2 px-3 text-right">Hours</th>
+                    <tr className="border-b border-slate-300 bg-slate-100 text-[10px] font-bold text-slate-500 uppercase tracking-wider print-bg-slate-100 print-border-slate-300">
+                      <th className="py-2.5 px-3 w-[18%]">Date</th>
+                      <th className="py-2.5 px-3 w-[45%]">Task / Explanation</th>
+                      <th className="py-2.5 px-3 w-[25%]">Interval (Break)</th>
+                      <th className="py-2.5 px-3 w-[12%] text-right">Hours</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
                     {showPdfPreview.entries.map((entry) => (
-                      <tr key={entry.id} className="align-top">
+                      <tr key={entry.id} className="align-top hover:bg-slate-50/50">
                         <td className="py-3 px-3 font-semibold text-slate-900 whitespace-nowrap">
                           {entry.date}
                         </td>
                         <td className="py-3 px-3">
-                          <p className="font-semibold text-slate-800">
+                          <p className="font-semibold text-slate-800 break-words">
                             {entry.project}
                             {entry.isOvertime && (
-                              <span className="ml-2 inline-flex items-center rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-800 ring-1 ring-inset ring-amber-600/20 uppercase tracking-wider print:bg-slate-100 print:text-black">
+                              <span className="ml-2 inline-flex items-center rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-800 ring-1 ring-inset ring-amber-600/20 uppercase tracking-wider print:bg-slate-100 print:text-black shrink-0">
                                 Overtime
                               </span>
                             )}
                           </p>
                           <p className="text-[10px] text-slate-500">Where: {entry.locationName}</p>
-                          <p className="text-[10px] text-slate-400 italic mt-1 max-w-sm">{entry.notes}</p>
+                          {entry.notes && (
+                            <p className="text-[10px] text-slate-400 italic mt-1 break-words leading-relaxed">{entry.notes}</p>
+                          )}
                         </td>
-                        <td className="py-3 px-3 whitespace-nowrap">
-                          {entry.startTime} – {entry.endTime} ({entry.breakMinutes}m)
+                        <td className="py-3 px-3 text-slate-600">
+                          <div className="font-medium">{entry.startTime} – {entry.endTime}</div>
+                          <div className="text-[10px] text-slate-400 font-mono">break: {entry.breakMinutes}m</div>
                         </td>
-                        <td className={`py-3 px-3 text-right font-mono font-medium ${entry.isOvertime ? 'text-amber-600 font-semibold' : ''}`}>
+                        <td className={`py-3 px-3 text-right font-mono font-semibold text-xs ${entry.isOvertime ? 'text-amber-600' : 'text-slate-800'}`}>
                           {entry.totalHours} hrs
                         </td>
                       </tr>
@@ -1739,14 +1742,14 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
               </div>
 
               {/* Three Specific Hourly Categories at the End of the Report */}
-              <div className="mt-6 border-t border-slate-200 pt-6 mb-8">
+              <div className="mt-6 border-t border-slate-200 pt-6 mb-8 print-border-slate-200">
                 <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-3">Pay Period Hours Breakdown</h4>
-                <div className="grid grid-cols-3 gap-4 border border-slate-200 rounded-xl p-4 bg-slate-50">
-                  <div className="border-r border-slate-200 pr-4">
+                <div className="grid grid-cols-3 gap-4 border border-slate-200 rounded-xl p-4 bg-slate-50 print-bg-slate-50 print-border-slate-200">
+                  <div className="border-r border-slate-200 pr-4 print-border-slate-200">
                     <span className="text-[9px] font-semibold text-slate-500 uppercase tracking-wider block">Regular Hours</span>
                     <span className="text-base font-bold text-slate-900 font-mono">{reportHoursSummary.regular} hrs</span>
                   </div>
-                  <div className="border-r border-slate-200 px-4">
+                  <div className="border-r border-slate-200 px-4 print-border-slate-200">
                     <span className="text-[9px] font-semibold text-amber-700 uppercase tracking-wider block">Overtime Hours</span>
                     <span className="text-base font-bold text-amber-700 font-mono">{reportHoursSummary.overtime} hrs</span>
                   </div>
@@ -1758,7 +1761,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
               </div>
 
               {/* Signature Blocks */}
-              <div className="grid grid-cols-2 gap-12 pt-12 border-t border-slate-200 mt-12 text-xs">
+              <div className="grid grid-cols-2 gap-12 pt-12 border-t border-slate-200 mt-12 text-xs print-border-slate-200">
                 <div>
                   <div className="border-b border-slate-400 h-12" />
                   <p className="mt-2 text-slate-500 font-medium">Employee Signature / Date</p>
@@ -1770,7 +1773,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
               </div>
 
               {/* System Compliance Disclaimer */}
-              <div className="mt-12 text-[10px] leading-relaxed text-slate-400 border-t border-slate-100 pt-6">
+              <div className="mt-12 text-[10px] leading-relaxed text-slate-400 border-t border-slate-100 pt-6 print-border-slate-200">
                 <strong>System Integrity Disclaimer:</strong> This timesheet report was compiled from decentralized client logs, cryptographically matched via biometrics, and verified with optional GPS positioning metrics. GDPR non-disclosure and privacy constraints prevent third-party logging without manual explicit supervisor synchronization, preserving compliance with global ISO-27001 data integrity standards.
               </div>
 
