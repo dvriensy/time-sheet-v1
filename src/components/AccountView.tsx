@@ -161,7 +161,7 @@ export default function AccountView({ currentUser, onUpdateUser, onLogout, isMob
   };
 
   return (
-    <div className="w-full space-y-6 max-w-4xl mx-auto animate-fade-in" id="account-page-view">
+    <div className="w-full h-full overflow-y-auto pr-1 pb-6 space-y-6 max-w-4xl mx-auto animate-fade-in" id="account-page-view">
       
       {/* SUCCESS BANNER NOTIFICATION */}
       <AnimatePresence>

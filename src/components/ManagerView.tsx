@@ -696,7 +696,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
 
 
   return (
-    <div className="w-full space-y-6 max-w-6xl mx-auto animate-fade-in" id="manager-dashboard-view">
+    <div className="w-full h-full flex flex-col overflow-hidden animate-fade-in gap-4 max-w-6xl mx-auto" id="manager-dashboard-view">
       
       {/* Real-time New Account Live Alerts */}
       <div className="fixed bottom-6 right-6 z-50 space-y-3 max-w-sm pointer-events-none">
@@ -916,7 +916,8 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
       </div>
 
       {/* RENDER ACTIVE TAB VIEW */}
-      {managerTab === 'live' ? (
+      <div className="flex-grow overflow-y-auto pr-1 min-h-0 h-full pb-6 space-y-4">
+        {managerTab === 'live' ? (
         
         /* TAB: LIVE TEAM MONITOR */
         <div className="space-y-4">
@@ -2044,6 +2045,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
           </div>
         </div>
       )}
+      </div>
 
 
 

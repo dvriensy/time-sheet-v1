@@ -597,10 +597,10 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
   }, [showPdfPreview]);
 
   return (
-    <div id="timesheet-manager" className={`grid ${isMobileView ? 'grid-cols-1 gap-4' : 'grid-cols-1 gap-6 lg:grid-cols-3'}`}>
+    <div id="timesheet-manager" className={`h-full w-full ${isMobileView ? 'flex flex-col gap-4 overflow-y-auto pb-4' : 'grid grid-cols-1 gap-6 lg:grid-cols-3 overflow-hidden h-full pb-1'}`}>
       
       {/* LEFT COLUMN: TIMER & CONTROLS */}
-      <div className={`lg:col-span-1 ${isMobileView ? 'space-y-4' : 'space-y-6'}`}>
+      <div className={`lg:col-span-1 ${isMobileView ? 'space-y-4' : 'space-y-6 h-full overflow-y-auto pr-1 pb-4'}`}>
         
         {/* Active Session Card */}
         <div className={`rounded-3xl ${isMobileView ? 'p-4' : 'p-6'} relative overflow-hidden shadow-2xl transition-all duration-300 ${
@@ -805,7 +805,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
       </div>
 
       {/* RIGHT COLUMN: WEEKLY LOGS */}
-      <div className="lg:col-span-2 space-y-6">
+      <div className={`lg:col-span-2 ${isMobileView ? 'space-y-6' : 'space-y-6 h-full overflow-y-auto pr-1 pb-4'}`}>
         
         {/* FUTURE SCHEDULE & ABSENCES CALENDAR */}
         <div className="rounded-3xl border border-blue-500/20 bg-[#1e3a8a]/5 p-6 shadow-xl space-y-5">
