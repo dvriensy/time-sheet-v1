@@ -32,7 +32,10 @@ import {
   deleteFutureShift,
   getSubmittedTimesheets,
   respondToSubmittedTimesheet,
-  deleteSubmittedTimesheet
+  deleteSubmittedTimesheet,
+  syncUserToFirestore,
+  syncActiveSessionToFirestore,
+  syncTimeOffRequestToFirestore
 } from '../utils/storage';
 import { TimesheetEntry, FutureShift, SubmittedTimesheet } from '../types';
 import TimeOffCalendar from './TimeOffCalendar';
@@ -169,7 +172,10 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
 
   const refreshUsersList = async () => {
     try {
-      const isAuthorized = currentUser.role === 'manager' || currentUser.username === 'derek_vriens';
+      const isAuthorized = currentUser.role === 'manager' || 
+                           currentUser.username === 'derek_vriens' || 
+                           currentUser.fullName.toLowerCase() === 'derek vriens' || 
+                           currentUser.email?.toLowerCase() === 'dvriensy@gmail.com';
       if (!isAuthorized) {
         console.error("Access Denied: Requester does not have manager or admin privileges.");
         return;
@@ -589,6 +595,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
         users[idx].email = `${username}@ledger-demo.com`;
         users[idx].phone = `+1 (555) 01${Math.floor(Math.random() * 90) + 10}-${Math.floor(Math.random() * 9000) + 1000}`;
         localStorage.setItem('timesheets_tracker_users_list', JSON.stringify(users));
+        syncUserToFirestore(users[idx]);
       }
 
       // Automatically clock them in for full real-time feel
@@ -605,6 +612,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
         lastActiveTimestamp: new Date().toISOString()
       };
       localStorage.setItem('timesheets_tracker_active_sessions', JSON.stringify(sessions));
+      syncActiveSessionToFirestore(username, sessions[username]);
 
       setSuccessMessage(`Successfully created contractor "${fName} ${lName}" and clocked them in.`);
       refreshLiveSessions();
@@ -659,6 +667,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
 
     requests.push(newRequest);
     localStorage.setItem('timesheets_tracker_time_off_requests', JSON.stringify(requests));
+    syncTimeOffRequestToFirestore(newRequest);
     refreshTimeOffRequests();
     setSuccessMessage(`Created new pending time-off request for ${randUser.fullName}.`);
     setTimeout(() => setSuccessMessage(null), 4000);
@@ -1355,7 +1364,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
           </div>
         </div>
 
-      ) : (
+      ) : managerTab === 'timeoff' ? (
 
         /* TAB: TIME-OFF REQUESTS & APPROVALS */
         <div className="space-y-4 animate-fade-in" id="time-off-requests-sub-tab">
@@ -1553,7 +1562,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
           )}
         </div>
 
-      )}
+      ) : null}
 
       {managerTab === 'schedule' && (
         <div className="space-y-6">
