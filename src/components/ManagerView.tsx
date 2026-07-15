@@ -806,10 +806,10 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
       </div>
 
       {/* SEARCH, CONTROLS, AND NAVIGATION TAB */}
-      <div className="bg-card-bg border border-main-border rounded-2xl p-4 md:p-5 shadow-xl flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 z-30 relative">
+      <div className="bg-card-bg border border-main-border rounded-2xl p-4 md:p-5 shadow-xl flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 z-40 relative">
         
         {/* Reimagined Dropdown Selector */}
-        <div className="relative w-full md:w-80 shrink-0">
+        <div className="relative w-full md:w-80 shrink-0 z-50">
           <button
             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
             className="w-full flex items-center justify-between gap-3 px-4 py-2.5 bg-app-bg border border-main-border hover:border-main-border/80 rounded-xl text-xs font-bold text-main-text shadow-sm transition-all cursor-pointer"
@@ -849,14 +849,14 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
             {isDropdownOpen && (
               <>
                 {/* Overlay to close when clicking outside */}
-                <div className="fixed inset-0 z-40 bg-transparent" onClick={() => setIsDropdownOpen(false)} />
+                <div className="fixed inset-0 z-40 bg-transparent cursor-default" onClick={() => setIsDropdownOpen(false)} />
                 
                 <motion.div
                   initial={{ opacity: 0, y: 10, scale: 0.95 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 10, scale: 0.95 }}
                   transition={{ duration: 0.15 }}
-                  className="absolute left-0 right-0 mt-2 bg-card-bg border border-main-border rounded-2xl shadow-xl z-50 overflow-hidden py-1 max-h-[380px] overflow-y-auto"
+                  className="absolute left-0 right-0 mt-2 bg-card-bg border border-main-border rounded-2xl shadow-xl z-50 py-1 max-h-[320px] overflow-y-auto"
                 >
                   {[
                     { value: 'live', label: 'Live Team Members', icon: Activity, desc: 'Monitor real-time shifts, projects, and active locations.' },
@@ -932,7 +932,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
       </div>
 
       {/* RENDER ACTIVE TAB VIEW */}
-      <div className="flex-grow overflow-y-auto pr-1 min-h-0 h-full pb-6 space-y-4">
+      <div className="flex-grow overflow-y-auto pr-1 min-h-0 h-full pb-6 space-y-4 z-10 relative">
         {managerTab === 'live' ? (
         
         /* TAB: LIVE TEAM MONITOR */
