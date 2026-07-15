@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { TimesheetEntry, GeofenceSettings, ReminderSettings, SecurityAuditLog, SyncSettings, AppSettings, FutureShift, SubmittedTimesheet } from '../types';
+import { TimesheetEntry, GeofenceSettings, ReminderSettings, SecurityAuditLog, SyncSettings, AppSettings, FutureShift, SubmittedTimesheet, WorkDispatch, DispatchReply } from '../types';
 import { DEFAULT_GEOFENCE, MOCK_TIMESHEETS, MOCK_SECURITY_LOGS } from '../data/mockData';
 import { db } from '../lib/firebase';
 import { doc, setDoc, getDoc, getDocs, collection, deleteDoc, updateDoc, onSnapshot } from 'firebase/firestore';
@@ -66,6 +66,7 @@ const KEY_SYNC = 'timesheets_tracker_sync';
 const KEY_APP_SETTINGS = 'timesheets_tracker_app_settings';
 const KEY_FUTURE_SHIFTS = 'timesheets_tracker_future_shifts';
 const KEY_SUBMITTED_TIMESHEETS = 'timesheets_tracker_submitted';
+const KEY_WORK_DISPATCHES = 'timesheets_tracker_work_dispatches';
 
 // Background Firestore Sync Writers
 export async function syncUserToFirestore(user: UserAccount) {
@@ -249,6 +250,45 @@ export async function initializeFirebaseSync(onSyncCallback?: () => void) {
       localStorage.setItem(KEY_SUBMITTED_TIMESHEETS, JSON.stringify(firestoreSubmitted));
     }
 
+    // 4.7 Sync Work Dispatches (Chat/Extra Work)
+    const workDispatchesSnap = await getDocs(collection(db, 'workDispatches'));
+    if (workDispatchesSnap.empty) {
+      const initialDispatches: WorkDispatch[] = [
+        {
+          id: 'disp-1',
+          managerUsername: 'derek_vriens',
+          managerName: 'Derek Vriens',
+          title: 'Weekend Logistics Assistant',
+          shiftDetails: 'Saturday, July 18, 9:00 AM - 5:00 PM',
+          description: 'We need help logging outgoing cargo inventory and handling immediate customer queries. Please reply here if available!',
+          rateBonus: '1.5x Overtime Multiplier',
+          createdAt: new Date(Date.now() - 3600000 * 2).toISOString(),
+          replies: [
+            {
+              id: 'rep-1',
+              username: 'bruce_wayne',
+              fullName: 'Bruce Wayne',
+              message: 'I can cover the morning slot up to 1:00 PM if needed!',
+              timestamp: new Date(Date.now() - 3600000).toISOString(),
+              isAvailableToWork: false
+            }
+          ],
+          isClosed: false
+        }
+      ];
+      for (const d of initialDispatches) {
+        await setDoc(doc(db, 'workDispatches', d.id), d);
+      }
+      localStorage.setItem(KEY_WORK_DISPATCHES, JSON.stringify(initialDispatches));
+    } else {
+      const firestoreDispatches: WorkDispatch[] = [];
+      workDispatchesSnap.forEach(docSnap => {
+        firestoreDispatches.push(docSnap.data() as WorkDispatch);
+      });
+      firestoreDispatches.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      localStorage.setItem(KEY_WORK_DISPATCHES, JSON.stringify(firestoreDispatches));
+    }
+
     if (onSyncCallback) onSyncCallback();
 
     // 5. Setup Real-time Listeners
@@ -324,6 +364,19 @@ export async function initializeFirebaseSync(onSyncCallback?: () => void) {
       window.dispatchEvent(new Event('storage-sync'));
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'submittedTimesheets');
+    });
+
+    onSnapshot(collection(db, 'workDispatches'), (snap) => {
+      const updatedDispatches: WorkDispatch[] = [];
+      snap.forEach(docSnap => {
+        updatedDispatches.push(docSnap.data() as WorkDispatch);
+      });
+      updatedDispatches.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      localStorage.setItem(KEY_WORK_DISPATCHES, JSON.stringify(updatedDispatches));
+      if (onSyncCallback) onSyncCallback();
+      window.dispatchEvent(new Event('storage-sync'));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'workDispatches');
     });
 
   } catch (err) {
@@ -1476,6 +1529,115 @@ export function deleteSubmittedTimesheet(id: string): boolean {
   localStorage.setItem(KEY_SUBMITTED_TIMESHEETS, JSON.stringify(filtered));
   deleteSubmittedTimesheetFromFirestore(id);
   
+  window.dispatchEvent(new Event('storage-sync'));
+  return true;
+}
+
+export function getWorkDispatches(): WorkDispatch[] {
+  const raw = localStorage.getItem(KEY_WORK_DISPATCHES);
+  if (!raw) return [];
+  try {
+    const list = JSON.parse(raw) as WorkDispatch[];
+    return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  } catch (err) {
+    return [];
+  }
+}
+
+export async function syncWorkDispatchToFirestore(dispatch: WorkDispatch) {
+  try {
+    await setDoc(doc(db, 'workDispatches', dispatch.id), dispatch);
+  } catch (err) {
+    console.error('Firestore syncWorkDispatchToFirestore error:', err);
+    handleFirestoreError(err, OperationType.WRITE, `workDispatches/${dispatch.id}`);
+  }
+}
+
+export function addWorkDispatch(title: string, shiftDetails: string, description: string, rateBonus?: string): WorkDispatch | null {
+  const username = localStorage.getItem(KEY_CURRENT_USER);
+  if (!username) return null;
+  
+  const users = getAllUsers();
+  const foundUser = users.find(u => u.username === username);
+  const fullName = foundUser ? foundUser.fullName : username;
+
+  const dispatches = getWorkDispatches();
+  const newDispatch: WorkDispatch = {
+    id: `disp-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+    managerUsername: username,
+    managerName: fullName,
+    title: title.trim(),
+    shiftDetails: shiftDetails.trim(),
+    description: description.trim(),
+    rateBonus: rateBonus?.trim() || undefined,
+    createdAt: new Date().toISOString(),
+    replies: [],
+    isClosed: false
+  };
+
+  dispatches.unshift(newDispatch);
+  localStorage.setItem(KEY_WORK_DISPATCHES, JSON.stringify(dispatches));
+  syncWorkDispatchToFirestore(newDispatch);
+  
+  window.dispatchEvent(new Event('storage-sync'));
+  return newDispatch;
+}
+
+export function addDispatchReply(dispatchId: string, message: string, isAvailableToWork: boolean): boolean {
+  const username = localStorage.getItem(KEY_CURRENT_USER);
+  if (!username) return false;
+  
+  const users = getAllUsers();
+  const foundUser = users.find(u => u.username === username);
+  const fullName = foundUser ? foundUser.fullName : username;
+
+  const dispatches = getWorkDispatches();
+  const index = dispatches.findIndex(d => d.id === dispatchId);
+  if (index === -1) return false;
+
+  const newReply: DispatchReply = {
+    id: `rep-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+    username,
+    fullName,
+    avatarUrl: foundUser?.avatarUrl,
+    message: message.trim(),
+    timestamp: new Date().toISOString(),
+    isAvailableToWork
+  };
+
+  dispatches[index].replies.push(newReply);
+  localStorage.setItem(KEY_WORK_DISPATCHES, JSON.stringify(dispatches));
+  syncWorkDispatchToFirestore(dispatches[index]);
+
+  window.dispatchEvent(new Event('storage-sync'));
+  return true;
+}
+
+export function toggleCloseWorkDispatch(dispatchId: string): boolean {
+  const dispatches = getWorkDispatches();
+  const index = dispatches.findIndex(d => d.id === dispatchId);
+  if (index === -1) return false;
+
+  dispatches[index].isClosed = !dispatches[index].isClosed;
+  localStorage.setItem(KEY_WORK_DISPATCHES, JSON.stringify(dispatches));
+  syncWorkDispatchToFirestore(dispatches[index]);
+
+  window.dispatchEvent(new Event('storage-sync'));
+  return true;
+}
+
+export function deleteWorkDispatch(dispatchId: string): boolean {
+  const dispatches = getWorkDispatches();
+  const filtered = dispatches.filter(d => d.id !== dispatchId);
+  if (dispatches.length === filtered.length) return false;
+
+  localStorage.setItem(KEY_WORK_DISPATCHES, JSON.stringify(filtered));
+  try {
+    deleteDoc(doc(db, 'workDispatches', dispatchId));
+  } catch (err) {
+    console.error('Firestore deleteWorkDispatch error:', err);
+  }
+
   window.dispatchEvent(new Event('storage-sync'));
   return true;
 }

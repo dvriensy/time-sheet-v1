@@ -39,6 +39,7 @@ import {
 } from '../utils/storage';
 import { TimesheetEntry, FutureShift, SubmittedTimesheet } from '../types';
 import TimeOffCalendar from './TimeOffCalendar';
+import WorkDispatchChat from './WorkDispatchChat';
 
 interface ManagerViewProps {
   currentUser: UserAccount;
@@ -47,14 +48,15 @@ interface ManagerViewProps {
 }
 
 export default function ManagerView({ currentUser, isMobileView = false, onLoginAsUser }: ManagerViewProps) {
-  // Tabs: 'live', 'history', 'timeoff', 'schedule', 'accounts', or 'inbox'
-  const [managerTab, setManagerTab] = useState<'live' | 'history' | 'timeoff' | 'schedule' | 'accounts' | 'inbox'>('live');
+  // Tabs: 'live', 'history', 'timeoff', 'schedule', 'accounts', 'inbox', or 'dispatches'
+  const [managerTab, setManagerTab] = useState<'live' | 'history' | 'timeoff' | 'schedule' | 'accounts' | 'inbox' | 'dispatches'>('live');
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [submittedList, setSubmittedList] = useState<SubmittedTimesheet[]>([]);
   const isOwner = currentUser.username === 'derek_vriens' || 
                   currentUser.fullName.toLowerCase() === 'derek vriens' || 
                   currentUser.email?.toLowerCase() === 'dvriensy@gmail.com';
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'break' | 'offline'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'offline'>('all');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Time off decision state
@@ -759,7 +761,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
       </AnimatePresence>
 
       {/* TOP AGGREGATE SUMMARY CARDS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         
         {/* Active workers */}
         <div className="bg-card-bg border border-main-border rounded-2xl p-4 shadow-xl flex items-center justify-between">
@@ -774,17 +776,6 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
           </div>
           <div className="h-10 w-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
             <Radio className="h-5 w-5" />
-          </div>
-        </div>
-
-        {/* On Break */}
-        <div className="bg-card-bg border border-main-border rounded-2xl p-4 shadow-xl flex items-center justify-between">
-          <div className="space-y-1">
-            <span className="text-[10px] font-mono text-muted-text uppercase tracking-wider block">Staff on Break</span>
-            <span className="text-2xl font-extrabold text-main-text font-mono">{aggregateStats.breakCount}</span>
-          </div>
-          <div className="h-10 w-10 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-500">
-            <Coffee className="h-5 w-5" />
           </div>
         </div>
 
@@ -815,86 +806,102 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
       </div>
 
       {/* SEARCH, CONTROLS, AND NAVIGATION TAB */}
-      <div className="bg-card-bg border border-main-border rounded-2xl p-4 md:p-5 shadow-xl flex flex-col md:flex-row items-center justify-between gap-4">
+      <div className="bg-card-bg border border-main-border rounded-2xl p-4 md:p-5 shadow-xl flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 z-30 relative">
         
-        {/* Toggle between Live Monitor and Complete Ledger */}
-        <div className="flex bg-app-bg p-1 rounded-xl border border-main-border/80 w-full md:w-auto shrink-0 gap-1 overflow-x-auto">
+        {/* Reimagined Dropdown Selector */}
+        <div className="relative w-full md:w-80 shrink-0">
           <button
-            onClick={() => setManagerTab('live')}
-            className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              managerTab === 'live' 
-                ? 'bg-blue-600 text-white shadow-sm' 
-                : 'text-muted-text hover:text-main-text'
-            }`}
+            onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+            className="w-full flex items-center justify-between gap-3 px-4 py-2.5 bg-app-bg border border-main-border hover:border-main-border/80 rounded-xl text-xs font-bold text-main-text shadow-sm transition-all cursor-pointer"
           >
-            <Activity className="h-3.5 w-3.5" />
-            <span>Live Team Monitor</span>
+            <div className="flex items-center gap-2.5 min-w-0">
+              {(() => {
+                const opt = [
+                  { value: 'live', label: 'Live Team Members', icon: Activity, badge: 0 },
+                  { value: 'history', label: 'Staff History', icon: Users, badge: 0 },
+                  { value: 'timeoff', label: 'Time-Off Requests', icon: CalendarDays, badge: timeOffList.filter(r => r.status === 'pending').length },
+                  { value: 'schedule', label: 'Shift Scheduler', icon: CalendarDays, badge: 0 },
+                  { value: 'accounts', label: 'User Accounts', icon: User, badge: 0 },
+                  { value: 'inbox', label: 'Timesheets Inbox', icon: Inbox, badge: submittedList.filter(s => s.status === 'submitted').length },
+                  { value: 'dispatches', label: 'Work Dispatch & Chat', icon: Briefcase, badge: 0 }
+                ].find(o => o.value === managerTab) || { value: 'live', label: 'Live Team Members', icon: Activity, badge: 0 };
+                const Icon = opt.icon;
+                return (
+                  <>
+                    <Icon className="h-4 w-4 text-blue-500 shrink-0" />
+                    <div className="text-left truncate min-w-0">
+                      <span className="block text-main-text leading-tight truncate">{opt.label}</span>
+                      {opt.badge > 0 && (
+                        <span className="inline-block bg-red-500 text-white font-extrabold text-[8px] px-1.5 py-0.5 rounded-full ml-1.5">
+                          {opt.badge} pending
+                        </span>
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+            <ChevronDown className={`h-4 w-4 text-muted-text/80 shrink-0 transition-transform duration-200 ${isDropdownOpen ? 'rotate-180' : ''}`} />
           </button>
-          <button
-            onClick={() => setManagerTab('history')}
-            className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              managerTab === 'history' 
-                ? 'bg-blue-600 text-white shadow-sm' 
-                : 'text-muted-text hover:text-main-text'
-            }`}
-          >
-            <Users className="h-3.5 w-3.5" />
-            <span>Staff Ledger History</span>
-          </button>
-          <button
-            onClick={() => setManagerTab('timeoff')}
-            className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer relative ${
-              managerTab === 'timeoff' 
-                ? 'bg-blue-600 text-white shadow-sm' 
-                : 'text-muted-text hover:text-main-text'
-            }`}
-          >
-            <CalendarDays className="h-3.5 w-3.5" />
-            <span>Time-Off Requests</span>
-            {timeOffList.filter(r => r.status === 'pending').length > 0 && (
-              <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-extrabold text-white animate-pulse">
-                {timeOffList.filter(r => r.status === 'pending').length}
-              </span>
+
+          {/* Floating Dropdown Card */}
+          <AnimatePresence>
+            {isDropdownOpen && (
+              <>
+                {/* Overlay to close when clicking outside */}
+                <div className="fixed inset-0 z-40 bg-transparent" onClick={() => setIsDropdownOpen(false)} />
+                
+                <motion.div
+                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                  transition={{ duration: 0.15 }}
+                  className="absolute left-0 right-0 mt-2 bg-card-bg border border-main-border rounded-2xl shadow-xl z-50 overflow-hidden py-1 max-h-[380px] overflow-y-auto"
+                >
+                  {[
+                    { value: 'live', label: 'Live Team Members', icon: Activity, desc: 'Monitor real-time shifts, projects, and active locations.' },
+                    { value: 'history', label: 'Staff History', icon: Users, desc: 'View full timesheet records, earnings ledger, and logs.' },
+                    { value: 'timeoff', label: 'Time-Off Requests', icon: CalendarDays, desc: 'Review and approve/deny employee leave proposals.', badge: timeOffList.filter(r => r.status === 'pending').length },
+                    { value: 'schedule', label: 'Shift Scheduler', icon: CalendarDays, desc: 'Design and assign future shifts and schedules.' },
+                    { value: 'accounts', label: 'User Accounts', icon: User, desc: 'Manage login credentials, hourly rates, and user profiles.' },
+                    { value: 'inbox', label: 'Timesheets Inbox', icon: Inbox, desc: 'Review, approve, or reject formal timesheet submissions.', badge: submittedList.filter(s => s.status === 'submitted').length },
+                    { value: 'dispatches', label: 'Work Dispatch & Chat', icon: Briefcase, desc: 'Post extra shifts and chat with available responders.' }
+                  ].map((opt) => {
+                    const Icon = opt.icon;
+                    const isSelected = opt.value === managerTab;
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => {
+                          setManagerTab(opt.value as any);
+                          setIsDropdownOpen(false);
+                        }}
+                        className={`w-full text-left px-4 py-3 flex items-start gap-3 transition-colors cursor-pointer border-b border-main-border/10 last:border-0 ${
+                          isSelected 
+                            ? 'bg-blue-600/10 text-main-text' 
+                            : 'hover:bg-main-border/15 text-muted-text hover:text-main-text'
+                        }`}
+                      >
+                        <Icon className={`h-4 w-4 mt-0.5 shrink-0 ${isSelected ? 'text-blue-500' : 'text-muted-text/70'}`} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold block truncate">{opt.label}</span>
+                            {opt.badge !== undefined && opt.badge > 0 && (
+                              <span className="bg-red-500 text-white font-extrabold text-[8px] px-1.5 py-0.5 rounded-full shrink-0">
+                                {opt.badge} pending
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-muted-text/75 leading-tight truncate">{opt.desc}</p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </motion.div>
+              </>
             )}
-          </button>
-          <button
-            onClick={() => setManagerTab('schedule')}
-            className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              managerTab === 'schedule' 
-                ? 'bg-blue-600 text-white shadow-sm' 
-                : 'text-muted-text hover:text-main-text'
-            }`}
-          >
-            <CalendarDays className="h-3.5 w-3.5" />
-            <span>Shift Scheduler</span>
-          </button>
-          <button
-            onClick={() => setManagerTab('accounts')}
-            className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              managerTab === 'accounts' 
-                ? 'bg-blue-600 text-white shadow-sm' 
-                : 'text-muted-text hover:text-main-text'
-            }`}
-          >
-            <User className="h-3.5 w-3.5" />
-            <span>User Accounts ({allUsers.length})</span>
-          </button>
-          <button
-            onClick={() => setManagerTab('inbox')}
-            className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer relative ${
-              managerTab === 'inbox' 
-                ? 'bg-blue-600 text-white shadow-sm' 
-                : 'text-muted-text hover:text-main-text'
-            }`}
-          >
-            <Inbox className="h-3.5 w-3.5" />
-            <span>Timesheet Inbox</span>
-            {submittedList.filter(s => s.status === 'submitted').length > 0 && (
-              <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-[9px] font-extrabold text-white animate-pulse">
-                {submittedList.filter(s => s.status === 'submitted').length}
-              </span>
-            )}
-          </button>
+          </AnimatePresence>
         </div>
 
         {/* Search input field */}
@@ -962,17 +969,6 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
             >
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
               Clocked In ({userStats.filter(u => u.isLive && !u.activeSession?.isOnBreak).length})
-            </button>
-            <button
-              onClick={() => setStatusFilter('break')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-all duration-150 flex items-center gap-1.5 ${
-                statusFilter === 'break'
-                  ? 'bg-amber-600 text-white shadow-md'
-                  : 'bg-app-bg text-amber-500 hover:text-amber-400 border border-amber-500/20 hover:bg-amber-500/5'
-              }`}
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
-              On Break ({userStats.filter(u => u.isLive && u.activeSession?.isOnBreak).length})
             </button>
             <button
               onClick={() => setStatusFilter('offline')}
@@ -2053,6 +2049,10 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
             </div>
           </div>
         </div>
+      )}
+
+      {managerTab === 'dispatches' && (
+        <WorkDispatchChat currentUser={currentUser} />
       )}
       </div>
 

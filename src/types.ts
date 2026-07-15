@@ -101,4 +101,27 @@ export interface SubmittedTimesheet {
   entries: TimesheetEntry[];
 }
 
+export interface DispatchReply {
+  id: string;
+  username: string;
+  fullName: string;
+  avatarUrl?: string;
+  message: string;
+  timestamp: string; // ISO string
+  isAvailableToWork: boolean; // special toggle
+}
+
+export interface WorkDispatch {
+  id: string;
+  managerUsername: string;
+  managerName: string;
+  title: string;
+  shiftDetails: string;
+  description: string;
+  rateBonus?: string;
+  createdAt: string; // ISO string
+  replies: DispatchReply[];
+  isClosed?: boolean;
+}
+
 

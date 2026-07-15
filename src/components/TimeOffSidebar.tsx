@@ -37,7 +37,7 @@ export default function TimeOffSidebar({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  const isManager = currentUser.username === 'derek_vriens' || currentUser.fullName.toLowerCase() === 'derek vriens';
+  const isManager = currentUser.role === 'manager' || currentUser.username === 'derek_vriens' || currentUser.fullName.toLowerCase() === 'derek vriens' || currentUser.email?.toLowerCase() === 'dvriensy@gmail.com';
 
   // Load requests for current user
   const loadRequests = () => {
@@ -135,71 +135,69 @@ export default function TimeOffSidebar({
             {/* Scrollable body content */}
             <div className="flex-1 overflow-y-auto p-5 space-y-6">
               
-              {/* Request Form (only for non-managers or anyone submitting) */}
-              {!isManager && (
-                <div className="bg-app-bg/40 border border-main-border/60 rounded-2xl p-4.5 space-y-4">
-                  <h4 className="text-xs font-bold text-main-text uppercase tracking-wider font-mono flex items-center gap-1.5">
-                    <Send className="h-3.5 w-3.5 text-blue-500" />
-                    New Absence Proposal
-                  </h4>
+              {/* Request Form (for anyone submitting) */}
+              <div className="bg-app-bg/40 border border-main-border/60 rounded-2xl p-4.5 space-y-4">
+                <h4 className="text-xs font-bold text-main-text uppercase tracking-wider font-mono flex items-center gap-1.5">
+                  <Send className="h-3.5 w-3.5 text-blue-500" />
+                  New Absence Proposal
+                </h4>
 
-                  <form onSubmit={handleSubmit} className="space-y-3.5">
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-[10px] font-semibold uppercase font-mono block mb-1 text-muted-text">Start Date</label>
-                        <input
-                          type="date"
-                          value={startDate}
-                          onChange={(e) => setStartDate(e.target.value)}
-                          className="w-full rounded-xl border border-main-border bg-input-bg p-2.5 text-xs text-main-text focus:border-blue-500/40 focus:outline-none transition-colors"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-semibold uppercase font-mono block mb-1 text-muted-text">End Date</label>
-                        <input
-                          type="date"
-                          value={endDate}
-                          onChange={(e) => setEndDate(e.target.value)}
-                          className="w-full rounded-xl border border-main-border bg-input-bg p-2.5 text-xs text-main-text focus:border-blue-500/40 focus:outline-none transition-colors"
-                        />
-                      </div>
-                    </div>
-
+                <form onSubmit={handleSubmit} className="space-y-3.5">
+                  <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-[10px] font-semibold uppercase font-mono block mb-1 text-muted-text">Reason / Comments</label>
-                      <textarea
-                        rows={2}
-                        placeholder="Specify reason for medical leave, vacation, or custom hours adjustment..."
-                        value={reason}
-                        onChange={(e) => setReason(e.target.value)}
-                        className="w-full rounded-xl border border-main-border bg-input-bg p-2.5 text-xs text-main-text placeholder-muted-text/30 focus:border-blue-500/40 focus:outline-none transition-colors resize-none"
+                      <label className="text-[10px] font-semibold uppercase font-mono block mb-1 text-muted-text">Start Date</label>
+                      <input
+                        type="date"
+                        value={startDate}
+                        onChange={(e) => setStartDate(e.target.value)}
+                        className="w-full rounded-xl border border-main-border bg-input-bg p-2.5 text-xs text-main-text focus:border-blue-500/40 focus:outline-none transition-colors"
                       />
                     </div>
+                    <div>
+                      <label className="text-[10px] font-semibold uppercase font-mono block mb-1 text-muted-text">End Date</label>
+                      <input
+                        type="date"
+                        value={endDate}
+                        onChange={(e) => setEndDate(e.target.value)}
+                        className="w-full rounded-xl border border-main-border bg-input-bg p-2.5 text-xs text-main-text focus:border-blue-500/40 focus:outline-none transition-colors"
+                      />
+                    </div>
+                  </div>
 
-                    {errorMessage && (
-                      <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-2.5 rounded-xl text-xs flex items-center gap-2">
-                        <AlertTriangle className="h-4 w-4 shrink-0 text-red-500" />
-                        <span className="font-semibold">{errorMessage}</span>
-                      </div>
-                    )}
+                  <div>
+                    <label className="text-[10px] font-semibold uppercase font-mono block mb-1 text-muted-text">Reason / Comments</label>
+                    <textarea
+                      rows={2}
+                      placeholder="Specify reason for medical leave, vacation, or custom hours adjustment..."
+                      value={reason}
+                      onChange={(e) => setReason(e.target.value)}
+                      className="w-full rounded-xl border border-main-border bg-input-bg p-2.5 text-xs text-main-text placeholder-muted-text/30 focus:border-blue-500/40 focus:outline-none transition-colors resize-none"
+                    />
+                  </div>
 
-                    {successMessage && (
-                      <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 p-2.5 rounded-xl text-xs flex items-center gap-2">
-                        <CheckCircle className="h-4 w-4 shrink-0 text-emerald-500" />
-                        <span className="font-semibold">{successMessage}</span>
-                      </div>
-                    )}
+                  {errorMessage && (
+                    <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-2.5 rounded-xl text-xs flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4 shrink-0 text-red-500" />
+                      <span className="font-semibold">{errorMessage}</span>
+                    </div>
+                  )}
 
-                    <button
-                      type="submit"
-                      className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2.5 px-4 rounded-xl cursor-pointer transition flex items-center justify-center gap-1.5 shadow-md"
-                    >
-                      <Send className="h-3.5 w-3.5" />
-                      <span>Submit Request</span>
-                    </button>
-                  </form>
-                </div>
-              )}
+                  {successMessage && (
+                    <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 p-2.5 rounded-xl text-xs flex items-center gap-2">
+                      <CheckCircle className="h-4 w-4 shrink-0 text-emerald-500" />
+                      <span className="font-semibold">{successMessage}</span>
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2.5 px-4 rounded-xl cursor-pointer transition flex items-center justify-center gap-1.5 shadow-md"
+                  >
+                    <Send className="h-3.5 w-3.5" />
+                    <span>Submit Request</span>
+                  </button>
+                </form>
+              </div>
 
               {/* Request List and status reports */}
               <div className="space-y-4">
