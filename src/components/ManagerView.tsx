@@ -38,6 +38,7 @@ import {
   syncTimeOffRequestToFirestore
 } from '../utils/storage';
 import { TimesheetEntry, FutureShift, SubmittedTimesheet } from '../types';
+import { getAlbertaHoliday } from '../utils/albertaHolidays';
 import TimeOffCalendar from './TimeOffCalendar';
 import WorkDispatchChat from './WorkDispatchChat';
 
@@ -2516,11 +2517,18 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                   </thead>
                   <tbody className="divide-y divide-slate-200 text-slate-800 text-xs">
                     {selectedManagerPrint.entries.map((entry, idx) => {
-                      const rowBg = idx % 2 === 1 ? 'bg-slate-50/50 print-bg-slate-50' : 'bg-transparent';
+                      const isHoliday = getAlbertaHoliday(entry.date);
+                      const baseBg = idx % 2 === 1 ? 'bg-slate-50/50 print-bg-slate-50' : 'bg-transparent';
+                      const rowBg = isHoliday ? 'bg-rose-50/40 print-bg-rose-50' : baseBg;
                       return (
                         <tr key={entry.id || idx} className={`${rowBg}`}>
                           <td className="py-2.5 px-3 font-mono font-medium text-slate-950 text-left">
-                            {new Date(entry.date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+                            <span className="block">{new Date(entry.date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</span>
+                            {isHoliday && (
+                              <span className="inline-block mt-0.5 rounded bg-rose-100 print-bg-rose-100 text-[8px] font-extrabold text-rose-700 px-1.5 py-0.5 uppercase tracking-tight border border-rose-200">
+                                Stat Holiday: {isHoliday}
+                              </span>
+                            )}
                           </td>
                           <td className="py-2.5 px-3 text-left">
                             <span className="font-semibold text-slate-900 block">{entry.project || 'General Operations'}</span>

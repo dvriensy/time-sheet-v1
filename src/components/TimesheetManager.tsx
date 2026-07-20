@@ -27,6 +27,7 @@ import {
   getSubmittedTimesheets
 } from '../utils/storage';
 import { TimesheetEntry, FutureShift, SubmittedTimesheet } from '../types';
+import { getAlbertaHoliday } from '../utils/albertaHolidays';
 
 interface TimesheetManagerProps {
   entries: TimesheetEntry[];
@@ -107,6 +108,31 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
   const [timerStart, setTimerStart] = useState<string>(initialTimerStart);
   const [isOvertime, setIsOvertime] = useState<boolean>(initialIsOvertime);
   
+  // Alberta Holiday States
+  const [todayHoliday, setTodayHoliday] = useState<string | null>(null);
+  const [timerOverride, setTimerOverride] = useState<boolean>(false);
+  const [manualOverride, setManualOverride] = useState<boolean>(false);
+
+  // Check if today is a holiday
+  useEffect(() => {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const holiday = getAlbertaHoliday(todayStr);
+    setTodayHoliday(holiday);
+    if (holiday) {
+      // Auto-populate activeNotes for the timer if empty or not already set
+      setActiveNotes(prev => {
+        const holidayText = `Holiday: ${holiday}`;
+        if (!prev || prev.trim() === '') {
+          return holidayText;
+        }
+        if (!prev.includes(holidayText)) {
+          return `${prev} (${holidayText})`;
+        }
+        return prev;
+      });
+    }
+  }, []);
+
   // New entry details (configured before clock-in or finalized on clock-out)
   const [activeProject, setActiveProject] = useState(initialProject);
   const [activeLocation, setActiveLocation] = useState(initialLocation);
@@ -235,6 +261,27 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
   const [manualLocation, setManualLocation] = useState('');
   const [manualNotes, setManualNotes] = useState('');
   const [manualIsOvertime, setManualIsOvertime] = useState(false);
+
+  const manualHoliday = useMemo(() => getAlbertaHoliday(manualDate), [manualDate]);
+
+  // When manual holiday changes, auto-populate manualNotes and reset manualOverride
+  useEffect(() => {
+    if (manualHoliday) {
+      setManualNotes(prev => {
+        const holidayText = `Holiday: ${manualHoliday}`;
+        if (!prev || prev.trim() === '' || prev === 'Manual shift entry.') {
+          return holidayText;
+        }
+        if (!prev.includes(holidayText)) {
+          return `${prev} (${holidayText})`;
+        }
+        return prev;
+      });
+      setManualOverride(false);
+    } else {
+      setManualOverride(false);
+    }
+  }, [manualHoliday]);
 
   // Synchronize active session changes in real-time from other devices (via firestore / storage-sync)
   useEffect(() => {
@@ -409,10 +456,15 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
   // Automated geofence entry effects
   useEffect(() => {
     if (simulatedGeoTrigger && !isClockedIn) {
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const isHoliday = getAlbertaHoliday(todayStr);
+      if (isHoliday && !timerOverride) {
+        return; // Block automatic geofenced clock-in on holidays without override
+      }
       // Auto clock-in transition
       handleClockIn(true);
     }
-  }, [simulatedGeoTrigger]);
+  }, [simulatedGeoTrigger, timerOverride, isClockedIn]);
 
   const formatTimer = (totalSeconds: number) => {
     const hrs = Math.floor(totalSeconds / 3600);
@@ -426,6 +478,11 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
   };
 
   const handleClockIn = (geofenced = false) => {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const isHoliday = getAlbertaHoliday(todayStr);
+    if (isHoliday && !timerOverride) {
+      return; // Locked on holidays without override
+    }
     const now = new Date();
     setTimerStart(now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }));
     setIsClockedIn(true);
@@ -434,7 +491,13 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     setBreakSecondsElapsed(0);
     setDaySecondsElapsed(0);
     setDayBreakSecondsElapsed(0);
-    setActiveNotes('');
+    
+    // Auto-populate activeNotes with Holiday text on holiday
+    if (isHoliday) {
+      setActiveNotes(`Holiday: ${isHoliday}`);
+    } else {
+      setActiveNotes('');
+    }
     setIsOvertime(false);
     
     if (geofenced && geofenceStatus) {
@@ -563,6 +626,11 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     setManualLocation(entry.locationName);
     setManualNotes(entry.notes);
     setManualIsOvertime(!!entry.isOvertime);
+    
+    // Auto-override for pre-saved entries on holidays
+    const isHoliday = getAlbertaHoliday(entry.date);
+    setManualOverride(!!isHoliday);
+    
     setShowManualForm(true);
   };
 
@@ -581,6 +649,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     setManualLocation('');
     setManualNotes('');
     setManualIsOvertime(false);
+    setManualOverride(false);
     setEditingEntry(null);
     setShowManualForm(true);
   };
@@ -793,6 +862,28 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
             )}
           </AnimatePresence>
 
+          {/* Holiday Alert Banner */}
+          {todayHoliday && !isClockedIn && (
+            <div className="mt-4 bg-rose-500/10 border border-rose-500/20 text-rose-200 rounded-2xl p-3.5 text-xs space-y-2">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold text-rose-300">Today is {todayHoliday} (Alberta Stat Holiday)</p>
+                  <p className="mt-0.5 text-slate-300">Timer interaction is disabled today to prevent accidental logging on statutory holidays.</p>
+                </div>
+              </div>
+              <label className="flex items-center gap-2 mt-2 cursor-pointer font-semibold text-white select-none">
+                <input 
+                  type="checkbox" 
+                  checked={timerOverride} 
+                  onChange={(e) => setTimerOverride(e.target.checked)} 
+                  className="rounded border-rose-500/50 text-blue-600 focus:ring-rose-400 bg-[#09090B]/50 h-4 w-4 cursor-pointer" 
+                />
+                Allow override to start timer anyway
+              </label>
+            </div>
+          )}
+
           {/* Setup / Notes fields before clocking out */}
           <div className={`${isMobileView ? 'mt-3 space-y-2.5 border-t pt-3' : 'mt-4 space-y-3.5 border-t pt-5'} ${isClockedIn ? 'border-white/10' : 'border-main-border'}`}>
             <div>
@@ -873,9 +964,14 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
             {!isClockedIn ? (
               <button
                 onClick={() => handleClockIn(false)}
-                className={`w-full flex items-center justify-center gap-2 rounded-2xl bg-blue-600 ${isMobileView ? 'py-2.5' : 'py-3'} font-semibold text-white shadow-lg shadow-blue-500/10 transition hover:bg-blue-500 active:scale-[0.98] cursor-pointer`}
+                disabled={!!todayHoliday && !timerOverride}
+                className={`w-full flex items-center justify-center gap-2 rounded-2xl ${
+                  !!todayHoliday && !timerOverride
+                    ? 'bg-slate-700/50 text-slate-400 border border-slate-600/30 cursor-not-allowed opacity-50'
+                    : 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/10 active:scale-[0.98] cursor-pointer'
+                } ${isMobileView ? 'py-2.5' : 'py-3'} font-semibold transition`}
               >
-                <Play className="h-4 w-4 fill-white stroke-none" />
+                <Play className={`h-4 w-4 stroke-none ${!!todayHoliday && !timerOverride ? 'fill-slate-400' : 'fill-white'}`} />
                 <span>Start Day</span>
               </button>
             ) : (
@@ -1488,8 +1584,10 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                         const isExpanded = !!expandedDays[dateStr];
                         const singleEntry = dayEntries[0];
                         
+                        const isHoliday = getAlbertaHoliday(dateStr);
+                        
                         return (
-                          <div key={dateStr} className="flex flex-col">
+                          <div key={dateStr} className={`flex flex-col ${isHoliday ? 'bg-rose-500/[0.02]' : ''}`}>
                             {/* Day Header / Main Row */}
                             <div 
                               onClick={() => {
@@ -1497,12 +1595,21 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                                   toggleDayExpanded(dateStr);
                                 }
                               }}
-                              className={`flex items-center justify-between ${isMobileView ? 'p-4' : 'p-5'} ${hasMultipleTasks ? 'cursor-pointer hover:bg-app-bg/30' : ''} transition-colors duration-150`}
+                              className={`flex items-center justify-between ${isMobileView ? 'p-4' : 'p-5'} ${
+                                isHoliday 
+                                  ? 'border-l-4 border-rose-500/60 cursor-pointer hover:bg-rose-500/[0.05]' 
+                                  : hasMultipleTasks ? 'cursor-pointer hover:bg-app-bg/30' : ''
+                              } transition-colors duration-150`}
                             >
                               <div className="flex items-center gap-3">
                                 <span className="text-xs font-semibold text-main-text">
                                   {new Date(dateStr + 'T00:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'})}
                                 </span>
+                                {isHoliday && (
+                                  <span className="inline-flex items-center gap-1 rounded bg-rose-500/10 px-2 py-0.5 text-[9px] font-bold text-rose-400 border border-rose-500/20 uppercase tracking-wider">
+                                    🍁 Stat Holiday: {isHoliday}
+                                  </span>
+                                )}
                                 {hasMultipleTasks && (
                                   <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-2.5 py-0.5 text-[9px] font-semibold text-blue-500 uppercase tracking-wider border border-blue-500/20">
                                     {dayEntries.length} Tasks
@@ -1796,9 +1903,35 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                   />
                 </div>
 
+                {manualHoliday && (
+                  <div className="bg-rose-500/10 border border-rose-500/20 text-rose-200 rounded-xl p-3 text-xs space-y-2">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-semibold text-rose-300">{manualDate} is {manualHoliday} (Alberta Stat Holiday)</p>
+                        <p className="mt-0.5 text-slate-300">Logging shifts on official holidays is restricted to prevent accidental duplication.</p>
+                      </div>
+                    </div>
+                    <label className="flex items-center gap-2 cursor-pointer font-semibold text-white select-none mt-1">
+                      <input 
+                        type="checkbox" 
+                        checked={manualOverride} 
+                        onChange={(e) => setManualOverride(e.target.checked)} 
+                        className="rounded border-rose-500/50 text-blue-600 focus:ring-rose-400 bg-[#09090B]/50 h-4 w-4 cursor-pointer" 
+                      />
+                      Allow override to save this entry anyway
+                    </label>
+                  </div>
+                )}
+
                 <button
                   type="submit"
-                  className="w-full rounded-xl bg-blue-600 py-3 font-semibold text-white hover:bg-blue-500 transition cursor-pointer"
+                  disabled={!!manualHoliday && !manualOverride}
+                  className={`w-full rounded-xl py-3 font-semibold transition ${
+                    !!manualHoliday && !manualOverride
+                      ? 'bg-slate-700/50 text-slate-400 border border-slate-600/30 cursor-not-allowed opacity-50'
+                      : 'bg-blue-600 hover:bg-blue-500 text-white cursor-pointer'
+                  }`}
                 >
                   {editingEntry ? 'Update Ledger Entry' : 'Save Shift Entry'}
                 </button>
