@@ -935,6 +935,7 @@ export function getAppSettings(): AppSettings {
       hourlyRateDefault: parsed.hourlyRateDefault !== undefined ? parsed.hourlyRateDefault : 45,
       defaultStartTime: parsed.defaultStartTime !== undefined ? parsed.defaultStartTime : '07:30',
       defaultEndTime: parsed.defaultEndTime !== undefined ? parsed.defaultEndTime : '16:00',
+      defaultBreakMinutes: parsed.defaultBreakMinutes !== undefined ? parsed.defaultBreakMinutes : 30,
     };
   }
   return {
@@ -943,6 +944,7 @@ export function getAppSettings(): AppSettings {
     hourlyRateDefault: 45,
     defaultStartTime: '07:30',
     defaultEndTime: '16:00',
+    defaultBreakMinutes: 30,
   };
 }
 
@@ -950,7 +952,7 @@ export function saveAppSettings(settings: AppSettings) {
   localStorage.setItem(KEY_APP_SETTINGS, JSON.stringify(settings));
   addSecurityLog(
     'App preferences adjusted',
-    `App settings changed. Biometric lock enabled: ${settings.biometricLockEnabled}, Privacy masking: ${settings.privacyMode}, Default Shift Hours: ${settings.defaultStartTime || '07:30'} to ${settings.defaultEndTime || '16:00'}`,
+    `App settings changed. Biometric lock enabled: ${settings.biometricLockEnabled}, Privacy masking: ${settings.privacyMode}, Default Shift Hours: ${settings.defaultStartTime || '07:30'} to ${settings.defaultEndTime || '16:00'}, Default Break: ${settings.defaultBreakMinutes || 30} mins`,
     'auth'
   );
 }

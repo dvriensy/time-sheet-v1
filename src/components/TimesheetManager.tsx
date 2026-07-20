@@ -18,6 +18,7 @@ import {
   updateActiveSession,
   clearActiveSession,
   getActiveSessions,
+  syncActiveSessionToFirestore,
   getFutureShifts,
   acknowledgeFutureShift,
   getTimeOffRequests,
@@ -222,13 +223,110 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
       return '16:00';
     }
   });
-  const [manualBreak, setManualBreak] = useState(30);
+  const [manualBreak, setManualBreak] = useState<number>(() => {
+    try {
+      const breakMins = getAppSettings().defaultBreakMinutes;
+      return breakMins !== undefined ? breakMins : 30;
+    } catch {
+      return 30;
+    }
+  });
   const [manualProject, setManualProject] = useState('');
   const [manualLocation, setManualLocation] = useState('');
   const [manualNotes, setManualNotes] = useState('');
   const [manualIsOvertime, setManualIsOvertime] = useState(false);
 
-  // Active Timer Intervals & LocalStorage Sync
+  // Synchronize active session changes in real-time from other devices (via firestore / storage-sync)
+  useEffect(() => {
+    const handleActiveSessionSync = () => {
+      const user = getCurrentUser();
+      if (!user) return;
+
+      const allSessions = getActiveSessions();
+      const session = allSessions[user.username];
+
+      if (session && session.isClockedIn) {
+        // Compute current seconds elapsed taking background time into account
+        const lastActive = new Date(session.lastActiveTimestamp).getTime();
+        const now = Date.now();
+        const elapsedBg = Math.max(0, Math.floor((now - lastActive) / 1000));
+        const storedWork = session.secondsElapsed || 0;
+        const storedBreak = session.breakSecondsElapsed || 0;
+        const storedDayWork = session.daySecondsElapsed || storedWork;
+        const storedDayBreak = session.dayBreakSecondsElapsed || storedBreak;
+
+        const incomingSecondsElapsed = session.isOnBreak ? storedWork : storedWork + elapsedBg;
+        const incomingBreakSecondsElapsed = session.isOnBreak ? storedBreak + elapsedBg : storedBreak;
+        const incomingDaySecondsElapsed = session.isOnBreak ? storedDayWork : storedDayWork + elapsedBg;
+        const incomingDayBreakSecondsElapsed = session.isOnBreak ? storedDayBreak + elapsedBg : storedDayBreak;
+
+        // Check if there is a real difference
+        const statusChanged = !isClockedIn;
+        const breakChanged = isOnBreak !== session.isOnBreak;
+        const startChanged = timerStart !== session.startTime;
+        const projectChanged = activeProject !== (session.project || '');
+        const locationChanged = activeLocation !== (session.location || '');
+        const notesChanged = activeNotes !== (session.notes || '');
+        // Sync seconds only if they differ significantly (e.g., by more than 5 seconds) to avoid jitter
+        const workSecsDiff = Math.abs(secondsElapsed - incomingSecondsElapsed) > 5;
+        const breakSecsDiff = Math.abs(breakSecondsElapsed - incomingBreakSecondsElapsed) > 5;
+
+        if (
+          statusChanged ||
+          breakChanged ||
+          startChanged ||
+          projectChanged ||
+          locationChanged ||
+          notesChanged ||
+          workSecsDiff ||
+          breakSecsDiff
+        ) {
+          setIsClockedIn(true);
+          setIsOnBreak(session.isOnBreak);
+          setTimerStart(session.startTime);
+          setActiveProject(session.project || '');
+          setActiveLocation(session.location || '');
+          setActiveNotes(session.notes || '');
+          setIsOvertime(!!session.isOvertime);
+          
+          setSecondsElapsed(incomingSecondsElapsed);
+          setBreakSecondsElapsed(incomingBreakSecondsElapsed);
+          setDaySecondsElapsed(incomingDaySecondsElapsed);
+          setDayBreakSecondsElapsed(incomingDayBreakSecondsElapsed);
+        }
+      } else {
+        // If the database says we are clocked out, but locally we are clocked in, sync that!
+        if (isClockedIn) {
+          setIsClockedIn(false);
+          setIsOnBreak(false);
+          setSecondsElapsed(0);
+          setBreakSecondsElapsed(0);
+          setDaySecondsElapsed(0);
+          setDayBreakSecondsElapsed(0);
+          setIsOvertime(false);
+        }
+      }
+    };
+
+    window.addEventListener('storage-sync', handleActiveSessionSync);
+    window.addEventListener('storage', handleActiveSessionSync);
+    return () => {
+      window.removeEventListener('storage-sync', handleActiveSessionSync);
+      window.removeEventListener('storage', handleActiveSessionSync);
+    };
+  }, [
+    user,
+    isClockedIn,
+    isOnBreak,
+    timerStart,
+    activeProject,
+    activeLocation,
+    activeNotes,
+    secondsElapsed,
+    breakSecondsElapsed,
+  ]);
+
+  // Synchronize active session status changes (excluding seconds) to Firestore/localStorage instantly
   useEffect(() => {
     const user = getCurrentUser();
     if (!user) return;
@@ -241,16 +339,41 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
         project: activeProject || 'General Task',
         location: activeLocation || 'Office',
         notes: activeNotes || 'Working...',
+        isOvertime,
         secondsElapsed,
         breakSecondsElapsed,
         daySecondsElapsed,
         dayBreakSecondsElapsed,
-        isOvertime,
       });
     } else {
       clearActiveSession();
     }
-  }, [isClockedIn, isOnBreak, timerStart, activeProject, activeLocation, activeNotes, secondsElapsed, breakSecondsElapsed, daySecondsElapsed, dayBreakSecondsElapsed, isOvertime]);
+  }, [isClockedIn, isOnBreak, timerStart, activeProject, activeLocation, activeNotes, isOvertime]);
+
+  // Periodically sync seconds elapsed to Firestore (every 10 seconds) to avoid quota issues, but keep localStorage updated every second
+  useEffect(() => {
+    const user = getCurrentUser();
+    if (!user || !isClockedIn) return;
+
+    // Update localStorage immediately so local UI/refresh is always perfectly in sync
+    const all = getActiveSessions();
+    if (all[user.username]) {
+      all[user.username] = {
+        ...all[user.username],
+        secondsElapsed,
+        breakSecondsElapsed,
+        daySecondsElapsed,
+        dayBreakSecondsElapsed,
+        lastActiveTimestamp: new Date().toISOString()
+      };
+      localStorage.setItem('timesheets_tracker_active_sessions', JSON.stringify(all));
+
+      // Sync to Firestore only every 10 seconds to throttle writes
+      if (secondsElapsed % 10 === 0 || breakSecondsElapsed % 10 === 0) {
+        syncActiveSessionToFirestore(user.username, all[user.username]);
+      }
+    }
+  }, [secondsElapsed, breakSecondsElapsed, daySecondsElapsed, dayBreakSecondsElapsed, isClockedIn]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -454,7 +577,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     setManualProject('');
     setManualStart(currentSettings.defaultStartTime || '07:30');
     setManualEnd(currentSettings.defaultEndTime || '16:00');
-    setManualBreak(30);
+    setManualBreak(currentSettings.defaultBreakMinutes !== undefined ? currentSettings.defaultBreakMinutes : 30);
     setManualLocation('');
     setManualNotes('');
     setManualIsOvertime(false);

@@ -49,6 +49,23 @@ export default function SettingsView({ onSettingsChanged, privacyMode, onToggleP
     }
   };
 
+  const calculateNetDurationStr = (start: string, end: string, breakMinutes: number) => {
+    if (!start || !end) return '';
+    try {
+      const [sH, sM] = start.split(':').map(Number);
+      const [eH, eM] = end.split(':').map(Number);
+      if (isNaN(sH) || isNaN(sM) || isNaN(eH) || isNaN(eM)) return '';
+      let diffMin = (eH * 60 + eM) - (sH * 60 + sM);
+      if (diffMin < 0) diffMin += 24 * 60;
+      let netMin = Math.max(0, diffMin - breakMinutes);
+      const hrs = Math.floor(netMin / 60);
+      const mins = netMin % 60;
+      return `${hrs} hours ${mins > 0 ? mins + ' mins' : ''}`;
+    } catch {
+      return '';
+    }
+  };
+
   // Save Reminder configuration
   const handleSaveReminders = (updates: Partial<ReminderSettings>) => {
     const updated = { ...reminders, ...updates };
@@ -350,10 +367,25 @@ export default function SettingsView({ onSettingsChanged, privacyMode, onToggleP
                 </div>
               </div>
 
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 block mb-1 uppercase font-mono">Standard Unpaid Break (Minutes)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="240"
+                  value={appSettings.defaultBreakMinutes !== undefined ? appSettings.defaultBreakMinutes : 30}
+                  onChange={(e) => handleSaveAppSettings({ defaultBreakMinutes: Number(e.target.value) })}
+                  className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-semibold text-slate-100 focus:outline-none focus:border-blue-500/50 font-mono"
+                />
+              </div>
+
               {appSettings.defaultStartTime && appSettings.defaultEndTime && (
-                <div className="rounded-xl bg-blue-500/5 border border-blue-500/10 p-3">
+                <div className="rounded-xl bg-blue-500/5 border border-blue-500/10 p-3 space-y-1">
                   <p className="text-[10px] text-blue-400 font-mono leading-relaxed">
-                    Shift bounds: <strong>{calculateShiftDurationStr(appSettings.defaultStartTime, appSettings.defaultEndTime)}</strong> gross (includes standard unpaid breaks).
+                    Gross Shift Bounds: <strong>{calculateShiftDurationStr(appSettings.defaultStartTime, appSettings.defaultEndTime)}</strong>
+                  </p>
+                  <p className="text-[10px] text-emerald-400 font-mono leading-relaxed">
+                    Net Work Duration: <strong>{calculateNetDurationStr(appSettings.defaultStartTime, appSettings.defaultEndTime, appSettings.defaultBreakMinutes ?? 30)}</strong> (excluding {appSettings.defaultBreakMinutes ?? 30}-min break)
                   </p>
                 </div>
               )}

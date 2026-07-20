@@ -72,6 +72,7 @@ export interface AppSettings {
   hourlyRateDefault: number;
   defaultStartTime?: string; // HH:MM, default "07:30"
   defaultEndTime?: string; // HH:MM, default "16:00"
+  defaultBreakMinutes?: number; // default 30
 }
 
 export interface FutureShift {
