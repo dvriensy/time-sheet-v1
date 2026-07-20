@@ -1956,7 +1956,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
               </div>
 
               {/* Three Specific Hourly Categories at the End of the Report */}
-              <div className="mt-6 border-t border-slate-200 pt-6 mb-8 print-border-slate-200">
+              <div className="mt-6 border-t border-slate-200 pt-6 mb-8 print-border-slate-200 print-avoid-break">
                 <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-3">Pay Period Hours Breakdown</h4>
                 <div className="grid grid-cols-3 gap-4 border border-slate-200 rounded-xl p-4 bg-slate-50 print-bg-slate-50 print-border-slate-200">
                   <div className="border-r border-slate-200 pr-4 print-border-slate-200">
@@ -1975,7 +1975,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
               </div>
 
               {/* Signature Blocks */}
-              <div className="grid grid-cols-2 gap-12 pt-12 border-t border-slate-200 mt-12 text-xs print-border-slate-200">
+              <div className="grid grid-cols-2 gap-12 pt-12 border-t border-slate-200 mt-12 text-xs print-border-slate-200 print-avoid-break">
                 <div>
                   <div className="border-b border-slate-400 h-12" />
                   <p className="mt-2 text-slate-500 font-medium">Employee Signature / Date</p>
@@ -1987,7 +1987,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
               </div>
 
               {/* System Compliance Disclaimer */}
-              <div className="mt-12 text-[10px] leading-relaxed text-slate-400 border-t border-slate-100 pt-6 print-border-slate-200">
+              <div className="mt-12 text-[10px] leading-relaxed text-slate-400 border-t border-slate-100 pt-6 print-border-slate-200 print-avoid-break">
                 <strong>System Integrity Disclaimer:</strong> This timesheet report was compiled from decentralized client logs, cryptographically matched via biometrics, and verified with optional GPS positioning metrics. GDPR non-disclosure and privacy constraints prevent third-party logging without manual explicit supervisor synchronization, preserving compliance with global ISO-27001 data integrity standards.
               </div>
 

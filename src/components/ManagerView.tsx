@@ -2540,7 +2540,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
               </div>
 
               {/* Signature and Verification lines */}
-              <div className="mt-8 pt-8 border-t border-slate-300 grid grid-cols-2 gap-8 print-border-slate-200">
+              <div className="mt-8 pt-8 border-t border-slate-300 grid grid-cols-2 gap-8 print-border-slate-200 print-avoid-break">
                 <div className="text-left">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">Employee Digital Signature</span>
                   <div className="h-10 border-b border-slate-300 mt-4 flex items-end pb-1 font-serif text-slate-700 italic">
