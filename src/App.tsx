@@ -15,6 +15,7 @@ import {
   UserAccount,
   getTimeOffRequests,
   initializeFirebaseSync,
+  refetchFromFirestore,
   enrichEntriesWithOvertime
 } from './utils/storage';
 import { TimesheetEntry } from './types';
@@ -44,8 +45,38 @@ export default function App() {
       updateTimeOffBadgeCount();
     };
     window.addEventListener('storage-sync', handleSync);
+
+    // Refetch helper
+    const triggerRefetch = () => {
+      refetchFromFirestore(() => {
+        setCurrentUser(getCurrentUser());
+        handleLoadData();
+        updateTimeOffBadgeCount();
+      });
+    };
+
+    // Window Focus / Tab Visibility Refetch
+    const handleFocusOrVisibility = () => {
+      if (document.visibilityState === 'visible' || document.hasFocus()) {
+        triggerRefetch();
+      }
+    };
+
+    window.addEventListener('focus', handleFocusOrVisibility);
+    document.addEventListener('visibilitychange', handleFocusOrVisibility);
+
+    // Periodic Background Polling (Every 30 Seconds)
+    const pollInterval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        triggerRefetch();
+      }
+    }, 30000);
+
     return () => {
       window.removeEventListener('storage-sync', handleSync);
+      window.removeEventListener('focus', handleFocusOrVisibility);
+      document.removeEventListener('visibilitychange', handleFocusOrVisibility);
+      clearInterval(pollInterval);
     };
   }, []);
 

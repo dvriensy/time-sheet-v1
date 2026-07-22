@@ -168,6 +168,84 @@ export async function deleteFutureShiftFromFirestore(id: string) {
   }
 }
 
+export async function refetchFromFirestore(onSyncCallback?: () => void) {
+  try {
+    // 1. Sync Users
+    const usersSnap = await getDocs(collection(db, 'users'));
+    if (!usersSnap.empty) {
+      const firestoreUsers: UserAccount[] = [];
+      usersSnap.forEach(docSnap => {
+        firestoreUsers.push(docSnap.data() as UserAccount);
+      });
+      localStorage.setItem(KEY_USERS_LIST, JSON.stringify(firestoreUsers));
+    }
+
+    // 2. Sync Timesheets
+    const timesheetsSnap = await getDocs(collection(db, 'timesheets'));
+    if (!timesheetsSnap.empty) {
+      const firestoreTimesheets: TimesheetEntry[] = [];
+      timesheetsSnap.forEach(docSnap => {
+        firestoreTimesheets.push(docSnap.data() as TimesheetEntry);
+      });
+      localStorage.setItem(KEY_TIMESHEETS, JSON.stringify(firestoreTimesheets));
+    }
+
+    // 3. Sync Active Sessions
+    const sessionsSnap = await getDocs(collection(db, 'activeSessions'));
+    const firestoreSessions: Record<string, ActiveSession> = {};
+    sessionsSnap.forEach(docSnap => {
+      firestoreSessions[docSnap.id] = docSnap.data() as ActiveSession;
+    });
+    localStorage.setItem('timesheets_tracker_active_sessions', JSON.stringify(firestoreSessions));
+
+    // 4. Sync Time-Off Requests
+    const timeOffSnap = await getDocs(collection(db, 'timeOffRequests'));
+    if (!timeOffSnap.empty) {
+      const firestoreTimeOff: TimeOffRequest[] = [];
+      timeOffSnap.forEach(docSnap => {
+        firestoreTimeOff.push(docSnap.data() as TimeOffRequest);
+      });
+      localStorage.setItem(KEY_TIME_OFF_REQUESTS, JSON.stringify(firestoreTimeOff));
+    }
+
+    // 5. Sync Future Shifts
+    const futureShiftsSnap = await getDocs(collection(db, 'futureShifts'));
+    if (!futureShiftsSnap.empty) {
+      const firestoreFutureShifts: FutureShift[] = [];
+      futureShiftsSnap.forEach(docSnap => {
+        firestoreFutureShifts.push(docSnap.data() as FutureShift);
+      });
+      localStorage.setItem(KEY_FUTURE_SHIFTS, JSON.stringify(firestoreFutureShifts));
+    }
+
+    // 6. Sync Submitted Timesheets
+    const submittedTimesheetsSnap = await getDocs(collection(db, 'submittedTimesheets'));
+    if (!submittedTimesheetsSnap.empty) {
+      const firestoreSubmitted: SubmittedTimesheet[] = [];
+      submittedTimesheetsSnap.forEach(docSnap => {
+        firestoreSubmitted.push(docSnap.data() as SubmittedTimesheet);
+      });
+      localStorage.setItem(KEY_SUBMITTED_TIMESHEETS, JSON.stringify(firestoreSubmitted));
+    }
+
+    // 7. Sync Work Dispatches
+    const workDispatchesSnap = await getDocs(collection(db, 'workDispatches'));
+    if (!workDispatchesSnap.empty) {
+      const firestoreDispatches: WorkDispatch[] = [];
+      workDispatchesSnap.forEach(docSnap => {
+        firestoreDispatches.push(docSnap.data() as WorkDispatch);
+      });
+      firestoreDispatches.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      localStorage.setItem(KEY_WORK_DISPATCHES, JSON.stringify(firestoreDispatches));
+    }
+
+    if (onSyncCallback) onSyncCallback();
+    window.dispatchEvent(new Event('storage-sync'));
+  } catch (err) {
+    console.warn('Refetch from Firestore encountered an issue:', err);
+  }
+}
+
 export async function initializeFirebaseSync(onSyncCallback?: () => void) {
   try {
     // 1. Sync Users

@@ -336,10 +336,14 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
           setActiveNotes(session.notes || '');
           setIsOvertime(!!session.isOvertime);
           
-          setSecondsElapsed(incomingSecondsElapsed);
-          setBreakSecondsElapsed(incomingBreakSecondsElapsed);
-          setDaySecondsElapsed(incomingDaySecondsElapsed);
-          setDayBreakSecondsElapsed(incomingDayBreakSecondsElapsed);
+          if (statusChanged || workSecsDiff) {
+            setSecondsElapsed(incomingSecondsElapsed);
+            setDaySecondsElapsed(incomingDaySecondsElapsed);
+          }
+          if (statusChanged || breakSecsDiff) {
+            setBreakSecondsElapsed(incomingBreakSecondsElapsed);
+            setDayBreakSecondsElapsed(incomingDayBreakSecondsElapsed);
+          }
         }
       } else {
         // If the database says we are clocked out, but locally we are clocked in, sync that!
