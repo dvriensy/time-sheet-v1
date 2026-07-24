@@ -872,8 +872,15 @@ export function calculateHoursAndEarnings(startTime: string, endTime: string, br
     endVal += 24 * 60;
   }
   
-  const totalMinutes = Math.max(0, endVal - startVal - breakMinutes);
-  const totalHours = Number((totalMinutes / 60).toFixed(2));
+  const grossMinutes = Math.max(0, endVal - startVal);
+  // Round gross duration up to the nearest half hour:
+  // e.g. 7h 01m -> 7.5h gross, 7h 31m -> 8.0h gross
+  const grossHalfHours = Math.ceil(grossMinutes / 30);
+  const grossHours = grossHalfHours * 0.5;
+  
+  // Subtract lunch duration after rounding has been made
+  const breakHours = (breakMinutes || 0) / 60;
+  const totalHours = Number(Math.max(0, grossHours - breakHours).toFixed(2));
   
   return { totalHours, earnings: 0 };
 }
@@ -1182,6 +1189,8 @@ export interface ActiveSession {
   daySecondsElapsed?: number;
   dayBreakSecondsElapsed?: number;
   isOvertime?: boolean;
+  taskStartTimestamp?: number;
+  clockInTimestamp?: number;
 }
 
 export function getActiveSessions(): Record<string, ActiveSession> {

@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Play, Coffee, Square, Plus, Trash2, FileOutput, Printer, X, MapPin, Briefcase, Calendar, CheckCircle2, Pencil, ClipboardList, Folder, FolderOpen, ChevronDown, ChevronRight, ChevronLeft, Archive, AlertTriangle, HelpCircle, Bell, Inbox, Send } from 'lucide-react';
+import { Play, Square, Plus, Trash2, FileOutput, Printer, X, MapPin, Briefcase, Calendar, CheckCircle2, Pencil, ClipboardList, Folder, FolderOpen, ChevronDown, ChevronRight, ChevronLeft, Archive, AlertTriangle, HelpCircle, Bell, Inbox, Send, Utensils, UtensilsCrossed } from 'lucide-react';
 import { 
   getPayPeriodsGrouped, 
   addTimesheetEntry, 
@@ -19,6 +19,7 @@ import {
   clearActiveSession,
   getActiveSessions,
   syncActiveSessionToFirestore,
+  refetchFromFirestore,
   getFutureShifts,
   acknowledgeFutureShift,
   getTimeOffRequests,
@@ -53,6 +54,8 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     initialBreakSecondsElapsed,
     initialDaySecondsElapsed,
     initialDayBreakSecondsElapsed,
+    initialTaskStartTimestamp,
+    initialClockInTimestamp,
     initialIsOvertime
   } = useMemo(() => {
     const user = getCurrentUser();
@@ -60,53 +63,55 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
       const allSessions = getActiveSessions();
       const session = allSessions[user.username];
       if (session && session.isClockedIn) {
-        const lastActive = new Date(session.lastActiveTimestamp).getTime();
         const now = Date.now();
-        const elapsedBg = Math.max(0, Math.floor((now - lastActive) / 1000));
+        const lastActive = session.lastActiveTimestamp ? new Date(session.lastActiveTimestamp).getTime() : now;
         const storedWork = session.secondsElapsed || 0;
-        const storedBreak = session.breakSecondsElapsed || 0;
         const storedDayWork = session.daySecondsElapsed || storedWork;
-        const storedDayBreak = session.dayBreakSecondsElapsed || storedBreak;
+        const elapsedBg = Math.max(0, Math.floor((now - lastActive) / 1000));
+
+        const taskStart = session.taskStartTimestamp || (now - (storedWork + elapsedBg) * 1000);
+        const clockInStart = session.clockInTimestamp || (now - (storedDayWork + elapsedBg) * 1000);
+
+        const currentTaskSecs = Math.max(0, Math.floor((now - taskStart) / 1000));
+        const currentDaySecs = Math.max(0, Math.floor((now - clockInStart) / 1000));
 
         return {
           initialIsClockedIn: true,
-          initialIsOnBreak: session.isOnBreak,
           initialTimerStart: session.startTime,
           initialProject: session.project || '',
           initialLocation: session.location || '',
           initialNotes: session.notes || '',
-          initialSecondsElapsed: session.isOnBreak ? storedWork : storedWork + elapsedBg,
-          initialBreakSecondsElapsed: session.isOnBreak ? storedBreak + elapsedBg : storedBreak,
-          initialDaySecondsElapsed: session.isOnBreak ? storedDayWork : storedDayWork + elapsedBg,
-          initialDayBreakSecondsElapsed: session.isOnBreak ? storedDayBreak + elapsedBg : storedDayBreak,
+          initialSecondsElapsed: currentTaskSecs,
+          initialDaySecondsElapsed: currentDaySecs,
+          initialTaskStartTimestamp: taskStart,
+          initialClockInTimestamp: clockInStart,
           initialIsOvertime: !!session.isOvertime,
         };
       }
     }
     return {
       initialIsClockedIn: false,
-      initialIsOnBreak: false,
       initialTimerStart: '',
       initialProject: '',
       initialLocation: '',
       initialNotes: '',
       initialSecondsElapsed: 0,
-      initialBreakSecondsElapsed: 0,
       initialDaySecondsElapsed: 0,
-      initialDayBreakSecondsElapsed: 0,
+      initialTaskStartTimestamp: null as number | null,
+      initialClockInTimestamp: null as number | null,
       initialIsOvertime: false,
     };
   }, []);
 
   // Timer States
   const [isClockedIn, setIsClockedIn] = useState(initialIsClockedIn);
-  const [isOnBreak, setIsOnBreak] = useState(initialIsOnBreak);
+  const [taskStartTimestamp, setTaskStartTimestamp] = useState<number | null>(initialTaskStartTimestamp);
+  const [clockInTimestamp, setClockInTimestamp] = useState<number | null>(initialClockInTimestamp);
   const [secondsElapsed, setSecondsElapsed] = useState(initialSecondsElapsed);
-  const [breakSecondsElapsed, setBreakSecondsElapsed] = useState(initialBreakSecondsElapsed);
   const [daySecondsElapsed, setDaySecondsElapsed] = useState(initialDaySecondsElapsed);
-  const [dayBreakSecondsElapsed, setDayBreakSecondsElapsed] = useState(initialDayBreakSecondsElapsed);
   const [timerStart, setTimerStart] = useState<string>(initialTimerStart);
   const [isOvertime, setIsOvertime] = useState<boolean>(initialIsOvertime);
+  const [bypassLunch, setBypassLunch] = useState<boolean>(false);
   
   // Alberta Holiday States
   const [todayHoliday, setTodayHoliday] = useState<string | null>(null);
@@ -249,14 +254,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
       return '16:00';
     }
   });
-  const [manualBreak, setManualBreak] = useState<number>(() => {
-    try {
-      const breakMins = getAppSettings().defaultBreakMinutes;
-      return breakMins !== undefined ? breakMins : 30;
-    } catch {
-      return 30;
-    }
-  });
+  const [manualBypassLunch, setManualBypassLunch] = useState<boolean>(false);
   const [manualProject, setManualProject] = useState('');
   const [manualLocation, setManualLocation] = useState('');
   const [manualNotes, setManualNotes] = useState('');
@@ -293,67 +291,59 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
       const session = allSessions[user.username];
 
       if (session && session.isClockedIn) {
-        // Compute current seconds elapsed taking background time into account
-        const lastActive = new Date(session.lastActiveTimestamp).getTime();
         const now = Date.now();
-        const elapsedBg = Math.max(0, Math.floor((now - lastActive) / 1000));
+        const lastActive = session.lastActiveTimestamp ? new Date(session.lastActiveTimestamp).getTime() : now;
         const storedWork = session.secondsElapsed || 0;
-        const storedBreak = session.breakSecondsElapsed || 0;
         const storedDayWork = session.daySecondsElapsed || storedWork;
-        const storedDayBreak = session.dayBreakSecondsElapsed || storedBreak;
+        const elapsedBg = Math.max(0, Math.floor((now - lastActive) / 1000));
 
-        const incomingSecondsElapsed = session.isOnBreak ? storedWork : storedWork + elapsedBg;
-        const incomingBreakSecondsElapsed = session.isOnBreak ? storedBreak + elapsedBg : storedBreak;
-        const incomingDaySecondsElapsed = session.isOnBreak ? storedDayWork : storedDayWork + elapsedBg;
-        const incomingDayBreakSecondsElapsed = session.isOnBreak ? storedDayBreak + elapsedBg : storedDayBreak;
+        const incomingTaskStart = session.taskStartTimestamp || (now - (storedWork + elapsedBg) * 1000);
+        const incomingClockIn = session.clockInTimestamp || (now - (storedDayWork + elapsedBg) * 1000);
 
-        // Check if there is a real difference
+        const incomingSecondsElapsed = Math.max(0, Math.floor((now - incomingTaskStart) / 1000));
+        const incomingDaySecondsElapsed = Math.max(0, Math.floor((now - incomingClockIn) / 1000));
+
         const statusChanged = !isClockedIn;
-        const breakChanged = isOnBreak !== session.isOnBreak;
         const startChanged = timerStart !== session.startTime;
         const projectChanged = activeProject !== (session.project || '');
         const locationChanged = activeLocation !== (session.location || '');
         const notesChanged = activeNotes !== (session.notes || '');
-        // Sync seconds only if they differ significantly (e.g., by more than 5 seconds) to avoid jitter
-        const workSecsDiff = Math.abs(secondsElapsed - incomingSecondsElapsed) > 5;
-        const breakSecsDiff = Math.abs(breakSecondsElapsed - incomingBreakSecondsElapsed) > 5;
 
         if (
           statusChanged ||
-          breakChanged ||
           startChanged ||
           projectChanged ||
           locationChanged ||
-          notesChanged ||
-          workSecsDiff ||
-          breakSecsDiff
+          notesChanged
         ) {
           setIsClockedIn(true);
-          setIsOnBreak(session.isOnBreak);
           setTimerStart(session.startTime);
           setActiveProject(session.project || '');
           setActiveLocation(session.location || '');
           setActiveNotes(session.notes || '');
           setIsOvertime(!!session.isOvertime);
-          
-          if (statusChanged || workSecsDiff) {
-            setSecondsElapsed(incomingSecondsElapsed);
-            setDaySecondsElapsed(incomingDaySecondsElapsed);
+          setTaskStartTimestamp(incomingTaskStart);
+          setClockInTimestamp(incomingClockIn);
+          setSecondsElapsed(incomingSecondsElapsed);
+          setDaySecondsElapsed(incomingDaySecondsElapsed);
+        } else {
+          // If state is already clocked in, update timestamps & duration if significantly drifted or externally updated
+          if (!taskStartTimestamp || Math.abs(taskStartTimestamp - incomingTaskStart) > 2000) {
+            setTaskStartTimestamp(incomingTaskStart);
           }
-          if (statusChanged || breakSecsDiff) {
-            setBreakSecondsElapsed(incomingBreakSecondsElapsed);
-            setDayBreakSecondsElapsed(incomingDayBreakSecondsElapsed);
+          if (!clockInTimestamp || Math.abs(clockInTimestamp - incomingClockIn) > 2000) {
+            setClockInTimestamp(incomingClockIn);
           }
+          setSecondsElapsed(incomingSecondsElapsed);
+          setDaySecondsElapsed(incomingDaySecondsElapsed);
         }
       } else {
-        // If the database says we are clocked out, but locally we are clocked in, sync that!
         if (isClockedIn) {
           setIsClockedIn(false);
-          setIsOnBreak(false);
+          setTaskStartTimestamp(null);
+          setClockInTimestamp(null);
           setSecondsElapsed(0);
-          setBreakSecondsElapsed(0);
           setDaySecondsElapsed(0);
-          setDayBreakSecondsElapsed(0);
           setIsOvertime(false);
         }
       }
@@ -368,13 +358,12 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
   }, [
     user,
     isClockedIn,
-    isOnBreak,
     timerStart,
     activeProject,
     activeLocation,
     activeNotes,
-    secondsElapsed,
-    breakSecondsElapsed,
+    taskStartTimestamp,
+    clockInTimestamp,
   ]);
 
   // Synchronize active session status changes (excluding seconds) to Firestore/localStorage instantly
@@ -385,21 +374,23 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     if (isClockedIn) {
       updateActiveSession({
         isClockedIn: true,
-        isOnBreak,
+        isOnBreak: false,
         startTime: timerStart,
         project: activeProject || 'General Task',
         location: activeLocation || 'Office',
         notes: activeNotes || 'Working...',
         isOvertime,
         secondsElapsed,
-        breakSecondsElapsed,
+        breakSecondsElapsed: 0,
         daySecondsElapsed,
-        dayBreakSecondsElapsed,
+        dayBreakSecondsElapsed: 0,
+        taskStartTimestamp: taskStartTimestamp || undefined,
+        clockInTimestamp: clockInTimestamp || undefined,
       });
     } else {
       clearActiveSession();
     }
-  }, [isClockedIn, isOnBreak, timerStart, activeProject, activeLocation, activeNotes, isOvertime]);
+  }, [isClockedIn, timerStart, activeProject, activeLocation, activeNotes, isOvertime, taskStartTimestamp, clockInTimestamp]);
 
   // Periodically sync seconds elapsed to Firestore (every 10 seconds) to avoid quota issues, but keep localStorage updated every second
   useEffect(() => {
@@ -412,41 +403,69 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
       all[user.username] = {
         ...all[user.username],
         secondsElapsed,
-        breakSecondsElapsed,
         daySecondsElapsed,
-        dayBreakSecondsElapsed,
+        taskStartTimestamp: taskStartTimestamp || undefined,
+        clockInTimestamp: clockInTimestamp || undefined,
         lastActiveTimestamp: new Date().toISOString()
       };
       localStorage.setItem('timesheets_tracker_active_sessions', JSON.stringify(all));
 
       // Sync to Firestore only every 10 seconds to throttle writes
-      if (secondsElapsed % 10 === 0 || breakSecondsElapsed % 10 === 0) {
+      if (secondsElapsed % 10 === 0) {
         syncActiveSessionToFirestore(user.username, all[user.username]);
       }
     }
-  }, [secondsElapsed, breakSecondsElapsed, daySecondsElapsed, dayBreakSecondsElapsed, isClockedIn]);
+  }, [secondsElapsed, daySecondsElapsed, isClockedIn, taskStartTimestamp, clockInTimestamp]);
 
+  // Exact timestamp-based active timer effect
   useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isClockedIn && !isOnBreak) {
-      interval = setInterval(() => {
-        setSecondsElapsed(prev => prev + 1);
-        setDaySecondsElapsed(prev => prev + 1);
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [isClockedIn, isOnBreak]);
+    if (!isClockedIn) return;
 
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isClockedIn && isOnBreak) {
-      interval = setInterval(() => {
-        setBreakSecondsElapsed(prev => prev + 1);
-        setDayBreakSecondsElapsed(prev => prev + 1);
-      }, 1000);
-    }
+    const updateDuration = () => {
+      const now = Date.now();
+      if (taskStartTimestamp) {
+        setSecondsElapsed(Math.max(0, Math.floor((now - taskStartTimestamp) / 1000)));
+      }
+      if (clockInTimestamp) {
+        setDaySecondsElapsed(Math.max(0, Math.floor((now - clockInTimestamp) / 1000)));
+      }
+    };
+
+    updateDuration();
+    const interval = setInterval(updateDuration, 500);
     return () => clearInterval(interval);
-  }, [isClockedIn, isOnBreak]);
+  }, [isClockedIn, taskStartTimestamp, clockInTimestamp]);
+
+  // Tab Focus & Visibility Change Re-sync
+  useEffect(() => {
+    const handleFocusOrVisibility = () => {
+      if (document.visibilityState === 'visible' || document.hasFocus()) {
+        const now = Date.now();
+        // 1. Recalculate and update the running shift duration immediately
+        if (isClockedIn) {
+          if (taskStartTimestamp) {
+            setSecondsElapsed(Math.max(0, Math.floor((now - taskStartTimestamp) / 1000)));
+          }
+          if (clockInTimestamp) {
+            setDaySecondsElapsed(Math.max(0, Math.floor((now - clockInTimestamp) / 1000)));
+          }
+        }
+
+        // 2. Re-fetch the latest timesheet ledger, schedule, and shift state from Firestore
+        refetchFromFirestore(() => {
+          onRefreshEntries();
+        });
+      }
+    };
+
+    window.addEventListener('focus', handleFocusOrVisibility);
+    document.addEventListener('visibilitychange', handleFocusOrVisibility);
+
+    return () => {
+      window.removeEventListener('focus', handleFocusOrVisibility);
+      document.removeEventListener('visibilitychange', handleFocusOrVisibility);
+    };
+  }, [isClockedIn, taskStartTimestamp, clockInTimestamp, onRefreshEntries]);
 
   // Overtime automatic flag checking: shifts longer than 8 hours (28800 seconds) are overtime
   useEffect(() => {
@@ -488,13 +507,14 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
       return; // Locked on holidays without override
     }
     const now = new Date();
+    const nowMs = now.getTime();
     setTimerStart(now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }));
     setIsClockedIn(true);
-    setIsOnBreak(false);
+    setClockInTimestamp(nowMs);
+    setTaskStartTimestamp(nowMs);
     setSecondsElapsed(0);
-    setBreakSecondsElapsed(0);
     setDaySecondsElapsed(0);
-    setDayBreakSecondsElapsed(0);
+    setBypassLunch(false);
     
     // Auto-populate activeNotes with Holiday text on holiday
     if (isHoliday) {
@@ -509,10 +529,6 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     }
   };
 
-  const handleToggleBreak = () => {
-    setIsOnBreak(!isOnBreak);
-  };
-
   const handleClockOut = () => {
     if (!isClockedIn) return;
 
@@ -520,29 +536,29 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     const now = new Date();
     const endStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
     
-    // Total break minutes spent on this task segment
-    const breakMins = Math.round(breakSecondsElapsed / 60);
+    // Lunch deduction: 30 minutes by default, 0 if bypassed
+    const breakMins = bypassLunch ? 0 : 30;
 
     // Save the entry
     addTimesheetEntry({
       date: now.toISOString().slice(0, 10),
       startTime: timerStart,
       endTime: endStr,
-      breakMinutes: breakMins || 1, // at least 1 minute break if any
+      breakMinutes: breakMins,
       project: activeProject,
       locationName: activeLocation,
-      notes: activeNotes || 'Standard shift logged via active timer.',
+      notes: activeNotes || (bypassLunch ? 'Standard shift (Worked through lunch).' : 'Standard shift logged via active timer (30m lunch auto-deducted).'),
       geofencedClockIn: simulatedGeoTrigger || false,
       geofencedClockOut: simulatedGeoTrigger || false,
       isOvertime: isOvertime
     });
 
     setIsClockedIn(false);
-    setIsOnBreak(false);
+    setTaskStartTimestamp(null);
+    setClockInTimestamp(null);
     setSecondsElapsed(0);
-    setBreakSecondsElapsed(0);
     setDaySecondsElapsed(0);
-    setDayBreakSecondsElapsed(0);
+    setBypassLunch(false);
     setIsOvertime(false);
     
     onRefreshEntries();
@@ -552,17 +568,15 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     if (!isClockedIn) return;
 
     const now = new Date();
+    const nowMs = now.getTime();
     const endStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-    
-    // Total break minutes spent on this task segment
-    const breakMins = Math.round(breakSecondsElapsed / 60);
 
-    // Save current task segment
+    // Save current task segment without break deduction (deduction applied on end of shift)
     addTimesheetEntry({
       date: now.toISOString().slice(0, 10),
       startTime: timerStart,
       endTime: endStr,
-      breakMinutes: breakMins,
+      breakMinutes: 0,
       project: activeProject,
       locationName: activeLocation,
       notes: activeNotes || 'Work segment completed.',
@@ -573,8 +587,8 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
 
     // Start next task segment immediately
     setTimerStart(endStr);
+    setTaskStartTimestamp(nowMs);
     setSecondsElapsed(0);
-    setBreakSecondsElapsed(0);
     // KEEP day duration timer running! No reset to daySecondsElapsed!
     
     setSwitchNotification(`Logged segment for "${activeProject}" (${formatTimer(secondsElapsed)}). Day total running: ${formatTimer(daySecondsElapsed)}. Ready for next task!`);
@@ -588,13 +602,15 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
 
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const breakMins = manualBypassLunch ? 0 : 30;
+
     if (editingEntry) {
       updateTimesheetEntry({
         ...editingEntry,
         date: manualDate,
         startTime: manualStart,
         endTime: manualEnd,
-        breakMinutes: Number(manualBreak),
+        breakMinutes: breakMins,
         project: manualProject,
         locationName: manualLocation,
         notes: manualNotes,
@@ -605,10 +621,10 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
         date: manualDate,
         startTime: manualStart,
         endTime: manualEnd,
-        breakMinutes: Number(manualBreak),
+        breakMinutes: breakMins,
         project: manualProject,
         locationName: manualLocation,
-        notes: manualNotes || 'Manual shift entry.',
+        notes: manualNotes || (manualBypassLunch ? 'Manual shift (Worked through lunch).' : 'Manual shift entry (30m lunch auto-deducted).'),
         isOvertime: manualIsOvertime
       });
     }
@@ -617,6 +633,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     setEditingEntry(null);
     setManualNotes('');
     setManualIsOvertime(false);
+    setManualBypassLunch(false);
     onRefreshEntries();
   };
 
@@ -626,7 +643,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     setManualProject(entry.project);
     setManualStart(entry.startTime);
     setManualEnd(entry.endTime);
-    setManualBreak(entry.breakMinutes);
+    setManualBypassLunch(entry.breakMinutes === 0);
     setManualLocation(entry.locationName);
     setManualNotes(entry.notes);
     setManualIsOvertime(!!entry.isOvertime);
@@ -649,7 +666,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     setManualProject('');
     setManualStart(currentSettings.defaultStartTime || '07:30');
     setManualEnd(currentSettings.defaultEndTime || '16:00');
-    setManualBreak(currentSettings.defaultBreakMinutes !== undefined ? currentSettings.defaultBreakMinutes : 30);
+    setManualBypassLunch(false);
     setManualLocation('');
     setManualNotes('');
     setManualIsOvertime(false);
@@ -810,14 +827,14 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
             <span className={`text-xs font-semibold font-mono ${isClockedIn ? 'text-blue-100' : 'text-muted-text'}`}>LIVE TIMER</span>
             <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
               isClockedIn 
-                ? (isOnBreak ? 'bg-amber-400/20 text-amber-200' : 'bg-white/20 text-white') 
+                ? 'bg-white/20 text-white' 
                 : 'bg-app-bg text-muted-text border border-main-border'
             }`}>
-              <span className={`h-1.5 w-1.5 rounded-full ${isClockedIn ? (isOnBreak ? 'bg-amber-400 animate-pulse' : 'bg-white animate-ping') : 'bg-muted-text'}`} />
-              {isClockedIn ? (isOnBreak ? 'On Break' : 'Active Shift') : 'Inactive'}
+              <span className={`h-1.5 w-1.5 rounded-full ${isClockedIn ? 'bg-white animate-ping' : 'bg-muted-text'}`} />
+              {isClockedIn ? 'Active Shift' : 'Inactive'}
             </span>
           </div>
- 
+
           {/* Time Display */}
           <div className={`text-center ${isMobileView ? 'py-4' : 'py-6'} space-y-4`}>
             {isClockedIn ? (
@@ -844,10 +861,10 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
               </div>
             )}
             {isClockedIn && (
-              <div className="mt-2 flex items-center justify-center gap-4 text-xs font-mono text-blue-100/80">
+              <div className="mt-2 flex items-center justify-center gap-3 text-xs font-mono text-blue-100/80">
                 <span>Start: <strong className="text-white">{timerStart}</strong></span>
                 <span>•</span>
-                <span>Break: <strong className="text-white">{formatTimer(breakSecondsElapsed)}</strong></span>
+                <span>Lunch Deduction: <strong className="text-white">{bypassLunch ? 'Bypassed (0m)' : 'Auto -30m'}</strong></span>
               </div>
             )}
           </div>
@@ -981,21 +998,23 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
             ) : (
               <>
                 <button
-                  onClick={handleToggleBreak}
-                  className={`w-1/2 flex items-center justify-center gap-1.5 rounded-2xl ${isMobileView ? 'py-2.5 text-xs' : 'py-3 text-sm'} font-medium border transition cursor-pointer ${
-                    isOnBreak 
-                      ? 'text-amber-200 border-amber-400/40 bg-amber-500/10' 
+                  type="button"
+                  onClick={() => setBypassLunch(!bypassLunch)}
+                  className={`w-1/2 flex items-center justify-center gap-1.5 rounded-2xl ${isMobileView ? 'py-2.5 text-xs' : 'py-3 text-xs'} font-semibold border transition active:scale-[0.98] cursor-pointer ${
+                    bypassLunch 
+                      ? 'text-amber-200 border-amber-400/50 bg-amber-500/20 shadow-sm' 
                       : 'text-blue-100 border-white/20 bg-blue-700/30 hover:bg-blue-700/50'
                   }`}
+                  title="Click to toggle working through lunch without deduction"
                 >
-                  <Coffee className="h-4 w-4" />
-                  <span>{isOnBreak ? 'Resume' : 'Take Break'}</span>
+                  {bypassLunch ? <UtensilsCrossed className="h-4 w-4 text-amber-300 shrink-0" /> : <Utensils className="h-4 w-4 text-emerald-300 shrink-0" />}
+                  <span className="truncate">{bypassLunch ? 'Lunch Bypassed' : 'Auto 30m Lunch'}</span>
                 </button>
                 <button
                   onClick={handleClockOut}
                   className={`w-1/2 flex items-center justify-center gap-1.5 rounded-2xl bg-white text-blue-700 font-semibold ${isMobileView ? 'py-2.5 text-xs' : 'py-3'} hover:bg-blue-50 shadow-lg transition active:scale-[0.98] cursor-pointer`}
                 >
-                  <Square className="h-3.5 w-3.5 fill-blue-700 stroke-none" />
+                  <Square className="h-3.5 w-3.5 fill-blue-700 stroke-none shrink-0" />
                   <span>End Day</span>
                 </button>
               </>
@@ -1837,7 +1856,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-[11px] font-semibold text-muted-text block mb-1 uppercase font-mono">Start Time</label>
                     <input
@@ -1858,17 +1877,20 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                       className="w-full rounded-xl border border-main-border bg-input-bg px-3 py-2 text-xs font-medium text-main-text focus:border-blue-500/50 focus:outline-none transition-colors"
                     />
                   </div>
-                  <div>
-                    <label className="text-[11px] font-semibold text-muted-text block mb-1 uppercase font-mono">Break (m)</label>
-                    <input
-                      type="number"
-                      required
-                      min={0}
-                      value={manualBreak}
-                      onChange={(e) => setManualBreak(Number(e.target.value))}
-                      className="w-full rounded-xl border border-main-border bg-input-bg px-3 py-2 text-xs font-medium text-main-text focus:border-blue-500/50 focus:outline-none transition-colors"
-                    />
-                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 rounded-xl border border-main-border bg-input-bg p-3">
+                  <input
+                    type="checkbox"
+                    id="manual-lunch-bypass-toggle"
+                    checked={manualBypassLunch}
+                    onChange={(e) => setManualBypassLunch(e.target.checked)}
+                    className="h-4 w-4 rounded border-main-border text-blue-600 focus:ring-blue-500/50 bg-[#121214] cursor-pointer shrink-0"
+                  />
+                  <label htmlFor="manual-lunch-bypass-toggle" className="text-xs font-medium text-main-text cursor-pointer select-none">
+                    <span>Worked Through Lunch (Bypass 30m Deduction)</span>
+                    <span className="block text-[10px] text-muted-text mt-0.5">By default, 30 minutes (0.5 hrs) is automatically deducted for lunch.</span>
+                  </label>
                 </div>
 
                 <div>
