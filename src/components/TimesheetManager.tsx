@@ -536,8 +536,9 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     const now = new Date();
     const endStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
     
-    // Lunch deduction: 30 minutes by default, 0 if bypassed
-    const breakMins = bypassLunch ? 0 : 30;
+    // Lunch deduction: 30 minutes by default, 0 if bypassed or shift is under 5 hours (18000 seconds)
+    const isUnder5Hours = daySecondsElapsed < 18000;
+    const breakMins = (bypassLunch || isUnder5Hours) ? 0 : 30;
 
     // Save the entry
     addTimesheetEntry({
@@ -547,7 +548,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
       breakMinutes: breakMins,
       project: activeProject,
       locationName: activeLocation,
-      notes: activeNotes || (bypassLunch ? 'Standard shift (Worked through lunch).' : 'Standard shift logged via active timer (30m lunch auto-deducted).'),
+      notes: activeNotes || (bypassLunch ? 'Standard shift (Worked through lunch).' : isUnder5Hours ? 'Shift under 5 hours (No lunch deduction).' : 'Standard shift logged via active timer (30m lunch auto-deducted).'),
       geofencedClockIn: simulatedGeoTrigger || false,
       geofencedClockOut: simulatedGeoTrigger || false,
       isOvertime: isOvertime
@@ -864,7 +865,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
               <div className="mt-2 flex items-center justify-center gap-3 text-xs font-mono text-blue-100/80">
                 <span>Start: <strong className="text-white">{timerStart}</strong></span>
                 <span>•</span>
-                <span>Lunch Deduction: <strong className="text-white">{bypassLunch ? 'Bypassed (0m)' : 'Auto -30m'}</strong></span>
+                <span>Lunch Deduction: <strong className="text-white">{bypassLunch ? 'Bypassed (0m)' : (daySecondsElapsed < 18000 ? 'None (< 5 hrs)' : 'Auto -30m')}</strong></span>
               </div>
             )}
           </div>

@@ -878,8 +878,9 @@ export function calculateHoursAndEarnings(startTime: string, endTime: string, br
   const grossHalfHours = Math.ceil(grossMinutes / 30);
   const grossHours = grossHalfHours * 0.5;
   
-  // Subtract lunch duration after rounding has been made
-  const breakHours = (breakMinutes || 0) / 60;
+  // Any shift under 5 hours (300 minutes) will not have auto lunch removal
+  const effectiveBreakMinutes = grossMinutes < 300 ? 0 : (breakMinutes || 0);
+  const breakHours = effectiveBreakMinutes / 60;
   const totalHours = Number(Math.max(0, grossHours - breakHours).toFixed(2));
   
   return { totalHours, earnings: 0 };
