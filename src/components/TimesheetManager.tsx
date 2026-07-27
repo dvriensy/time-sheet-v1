@@ -540,15 +540,6 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     };
   }, [isClockedIn, taskStartTimestamp, clockInTimestamp, onRefreshEntries]);
 
-  // Overtime automatic flag checking: shifts longer than 8 hours (28800 seconds) are overtime
-  useEffect(() => {
-    if (daySecondsElapsed > 28800) {
-      setIsOvertime(true);
-    } else {
-      setIsOvertime(false);
-    }
-  }, [daySecondsElapsed]);
-
   // Automated geofence entry effects
   useEffect(() => {
     if (simulatedGeoTrigger && !isClockedIn) {

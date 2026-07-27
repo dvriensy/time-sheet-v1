@@ -1638,18 +1638,24 @@ export function enrichEntriesWithOvertime(entries: TimesheetEntry[], usersList?:
       let regularHours = 0;
       let overtimeHours = 0;
       
-      if (runningTotalHours >= 8) {
+      // If entry is explicitly imputed as overtime work (e.g., manual override or toggle)
+      if (entry.isOvertime) {
         overtimeHours = entryHours;
         regularHours = 0;
-      } else if (runningTotalHours + entryHours <= 8) {
-        regularHours = entryHours;
-        overtimeHours = 0;
       } else {
-        regularHours = 8 - runningTotalHours;
-        overtimeHours = entryHours - regularHours;
+        // Automatic calculation: First 8 hours on a date are regular; hours exceeding 8 are automatically overtime
+        if (runningTotalHours >= 8) {
+          overtimeHours = entryHours;
+          regularHours = 0;
+        } else if (runningTotalHours + entryHours <= 8) {
+          regularHours = entryHours;
+          overtimeHours = 0;
+        } else {
+          regularHours = 8 - runningTotalHours;
+          overtimeHours = entryHours - regularHours;
+        }
+        runningTotalHours += entryHours;
       }
-      
-      runningTotalHours += entryHours;
       
       const computedEarnings = (regularHours * rate) + (overtimeHours * rate * 1.5);
       
@@ -1658,7 +1664,7 @@ export function enrichEntriesWithOvertime(entries: TimesheetEntry[], usersList?:
         regularHours: Number(regularHours.toFixed(2)),
         overtimeHours: Number(overtimeHours.toFixed(2)),
         earnings: Number(computedEarnings.toFixed(2)),
-        isOvertime: overtimeHours > 0
+        isOvertime: !!entry.isOvertime || overtimeHours > 0
       });
     }
   }

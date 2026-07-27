@@ -37,6 +37,7 @@ export const JobTimeSheetPrintout: React.FC<JobTimeSheetPrintoutProps> = ({
     }
 
     return {
+      date: entry.date,
       startTime: entry.startTime,
       stopTime: entry.endTime,
       jobType: jobTypeStr,
@@ -82,7 +83,7 @@ export const JobTimeSheetPrintout: React.FC<JobTimeSheetPrintoutProps> = ({
           </span>
         </div>
         <div>
-          <span className="font-bold">Date:</span>{' '}
+          <span className="font-bold">Date Range:</span>{' '}
           <span className="ml-1 border-b border-black/60 min-w-[160px] inline-block font-mono text-slate-900 text-right pb-0.5">
             {dateRange || '________________'}
           </span>
@@ -94,25 +95,27 @@ export const JobTimeSheetPrintout: React.FC<JobTimeSheetPrintoutProps> = ({
         <table className="w-full border-collapse border border-slate-600 text-xs text-black">
           <thead>
             <tr className="bg-slate-200 border-b border-slate-600 font-bold text-center text-[11px]">
-              <th className="border border-slate-500 py-2 px-2 w-[11%]">Start time</th>
-              <th className="border border-slate-500 py-2 px-2 w-[11%]">Stop time</th>
-              <th className="border border-slate-500 py-2 px-2 w-[15%]">Job type</th>
-              <th className="border border-slate-500 py-2 px-2 w-[25%]">Task</th>
-              <th className="border border-slate-500 py-2 px-2 w-[18%]">Client</th>
-              <th className="border border-slate-500 py-2 px-2 w-[10%]">Direct hours</th>
-              <th className="border border-slate-500 py-2 px-2 w-[10%]">Admin hours</th>
+              <th className="border border-slate-500 py-2 px-1.5 w-[13%]">Date</th>
+              <th className="border border-slate-500 py-2 px-1.5 w-[10%]">Start time</th>
+              <th className="border border-slate-500 py-2 px-1.5 w-[10%]">Stop time</th>
+              <th className="border border-slate-500 py-2 px-1.5 w-[12%]">Job type</th>
+              <th className="border border-slate-500 py-2 px-1.5 w-[23%]">Task</th>
+              <th className="border border-slate-500 py-2 px-1.5 w-[14%]">Client</th>
+              <th className="border border-slate-500 py-2 px-1.5 w-[9%]">Direct hrs</th>
+              <th className="border border-slate-500 py-2 px-1.5 w-[9%]">Admin hrs</th>
             </tr>
           </thead>
           <tbody>
             {processedRows.map((row, idx) => (
               <tr key={idx} className="h-8 border-b border-slate-400 text-center">
-                <td className="border border-slate-400 py-1.5 px-2 font-mono whitespace-nowrap">{row.startTime}</td>
-                <td className="border border-slate-400 py-1.5 px-2 font-mono whitespace-nowrap">{row.stopTime}</td>
-                <td className="border border-slate-400 py-1.5 px-2">{row.jobType}</td>
-                <td className="border border-slate-400 py-1.5 px-2 text-left font-medium truncate max-w-[180px]">{row.task}</td>
-                <td className="border border-slate-400 py-1.5 px-2 text-left truncate max-w-[140px]">{row.client}</td>
-                <td className="border border-slate-400 py-1.5 px-2 font-mono font-semibold">{row.directHours > 0 ? row.directHours.toFixed(2) : ''}</td>
-                <td className="border border-slate-400 py-1.5 px-2 font-mono font-semibold">{row.adminHours > 0 ? row.adminHours.toFixed(2) : ''}</td>
+                <td className="border border-slate-400 py-1.5 px-1.5 font-mono text-[11px] whitespace-nowrap">{row.date}</td>
+                <td className="border border-slate-400 py-1.5 px-1.5 font-mono whitespace-nowrap">{row.startTime}</td>
+                <td className="border border-slate-400 py-1.5 px-1.5 font-mono whitespace-nowrap">{row.stopTime}</td>
+                <td className="border border-slate-400 py-1.5 px-1.5">{row.jobType}</td>
+                <td className="border border-slate-400 py-1.5 px-1.5 text-left font-medium truncate max-w-[170px]">{row.task}</td>
+                <td className="border border-slate-400 py-1.5 px-1.5 text-left truncate max-w-[130px]">{row.client}</td>
+                <td className="border border-slate-400 py-1.5 px-1.5 font-mono font-semibold">{row.directHours > 0 ? row.directHours.toFixed(2) : ''}</td>
+                <td className="border border-slate-400 py-1.5 px-1.5 font-mono font-semibold">{row.adminHours > 0 ? row.adminHours.toFixed(2) : ''}</td>
               </tr>
             ))}
 
@@ -126,12 +129,13 @@ export const JobTimeSheetPrintout: React.FC<JobTimeSheetPrintoutProps> = ({
                 <td className="border border-slate-300"></td>
                 <td className="border border-slate-300"></td>
                 <td className="border border-slate-300"></td>
+                <td className="border border-slate-300"></td>
               </tr>
             ))}
 
             {/* TOTAL SUMMARY ROW */}
             <tr className="bg-slate-200 font-bold border-t-2 border-slate-600 text-center text-xs h-9">
-              <td colSpan={4} className="border border-slate-500 py-2 px-3 text-left font-bold text-black font-sans">
+              <td colSpan={5} className="border border-slate-500 py-2 px-3 text-left font-bold text-black font-sans">
                 Direct / Admin Total
               </td>
               <td className="border border-slate-500 py-2 px-2 text-center font-bold text-black font-sans">
@@ -149,7 +153,7 @@ export const JobTimeSheetPrintout: React.FC<JobTimeSheetPrintoutProps> = ({
               <td colSpan={3} className="border border-slate-500 py-2 px-3 text-right font-sans text-slate-900">
                 Total Regular Hours: <span className="font-mono font-black text-black ml-1.5 text-xs">{totalRegularHours.toFixed(2)}</span>
               </td>
-              <td colSpan={2} className="border border-slate-500 py-2 px-3 text-right font-sans text-amber-950 bg-amber-50/80">
+              <td colSpan={3} className="border border-slate-500 py-2 px-3 text-right font-sans text-amber-950 bg-amber-50/80">
                 Total Overtime Hours: <span className="font-mono font-black text-amber-900 ml-1.5 text-xs">{totalOvertimeHours.toFixed(2)}</span>
               </td>
               <td colSpan={2} className="border border-slate-500 py-2 px-3 text-center font-sans text-slate-950 bg-blue-50/80">
