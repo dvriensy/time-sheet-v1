@@ -16,14 +16,19 @@ export const JobTimeSheetPrintout: React.FC<JobTimeSheetPrintoutProps> = ({
   footerCopyright = '© 2013 www.double-entry-bookkeeping.com',
   version = 'v 1.0'
 }) => {
-  // Process entries into direct vs admin hours
+  // Process entries into direct vs admin hours & regular vs overtime hours
   const processedRows = entries.map(entry => {
     const isAdmin = /admin|office|paperwork|meeting|overhead|training/i.test(`${entry.project} ${entry.notes}`);
     const direct = isAdmin ? 0 : entry.totalHours;
     const admin = isAdmin ? entry.totalHours : 0;
 
-    const ot = (entry as any).overtimeHours || (entry.isOvertime ? entry.totalHours : 0);
-    const reg = (entry as any).regularHours || (entry.isOvertime ? 0 : entry.totalHours);
+    const ot = (entry as any).overtimeHours !== undefined 
+      ? Number((entry as any).overtimeHours) 
+      : (entry.isOvertime ? entry.totalHours : 0);
+    const reg = (entry as any).regularHours !== undefined 
+      ? Number((entry as any).regularHours) 
+      : (entry.isOvertime ? 0 : entry.totalHours);
+
     let jobTypeStr = 'Regular';
     if (ot > 0 && reg > 0) {
       jobTypeStr = 'Reg / OT';
@@ -39,6 +44,9 @@ export const JobTimeSheetPrintout: React.FC<JobTimeSheetPrintoutProps> = ({
       client: entry.locationName || 'Client Project',
       directHours: direct,
       adminHours: admin,
+      regHours: reg,
+      otHours: ot,
+      totalHours: entry.totalHours,
       notes: entry.notes
     };
   });
@@ -46,6 +54,9 @@ export const JobTimeSheetPrintout: React.FC<JobTimeSheetPrintoutProps> = ({
   // Calculate totals
   const totalDirectHours = processedRows.reduce((sum, r) => sum + r.directHours, 0);
   const totalAdminHours = processedRows.reduce((sum, r) => sum + r.adminHours, 0);
+  const totalRegularHours = processedRows.reduce((sum, r) => sum + r.regHours, 0);
+  const totalOvertimeHours = processedRows.reduce((sum, r) => sum + r.otHours, 0);
+  const grandTotalHours = totalRegularHours + totalOvertimeHours;
 
   // Fill up to 14 rows to mirror the reference template image layout
   const MIN_ROWS = 14;
@@ -120,7 +131,9 @@ export const JobTimeSheetPrintout: React.FC<JobTimeSheetPrintoutProps> = ({
 
             {/* TOTAL SUMMARY ROW */}
             <tr className="bg-slate-200 font-bold border-t-2 border-slate-600 text-center text-xs h-9">
-              <td colSpan={4} className="border border-slate-500"></td>
+              <td colSpan={4} className="border border-slate-500 py-2 px-3 text-left font-bold text-black font-sans">
+                Direct / Admin Total
+              </td>
               <td className="border border-slate-500 py-2 px-2 text-center font-bold text-black font-sans">
                 Total
               </td>
@@ -131,8 +144,36 @@ export const JobTimeSheetPrintout: React.FC<JobTimeSheetPrintoutProps> = ({
                 {totalAdminHours > 0 ? totalAdminHours.toFixed(2) : '0.00'}
               </td>
             </tr>
+            {/* REGULAR / OVERTIME / GRAND TOTAL BREAKDOWN ROW */}
+            <tr className="bg-slate-100 font-bold border-t border-slate-500 text-xs h-9">
+              <td colSpan={3} className="border border-slate-500 py-2 px-3 text-right font-sans text-slate-900">
+                Total Regular Hours: <span className="font-mono font-black text-black ml-1.5 text-xs">{totalRegularHours.toFixed(2)}</span>
+              </td>
+              <td colSpan={2} className="border border-slate-500 py-2 px-3 text-right font-sans text-amber-950 bg-amber-50/80">
+                Total Overtime Hours: <span className="font-mono font-black text-amber-900 ml-1.5 text-xs">{totalOvertimeHours.toFixed(2)}</span>
+              </td>
+              <td colSpan={2} className="border border-slate-500 py-2 px-3 text-center font-sans text-slate-950 bg-blue-50/80">
+                Grand Total: <span className="font-mono font-black text-blue-900 ml-1.5 text-xs">{grandTotalHours.toFixed(2)} hrs</span>
+              </td>
+            </tr>
           </tbody>
         </table>
+      </div>
+
+      {/* SUMMARY HIGHLIGHT CARDS FOR PRINT / REVIEW */}
+      <div className="grid grid-cols-3 gap-3 mb-6 p-3 bg-slate-50 border border-slate-300 rounded-lg text-black font-sans text-xs">
+        <div className="p-2.5 bg-white border border-slate-300 rounded-md text-center">
+          <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Regular Hours</span>
+          <span className="block text-base font-black text-slate-900 font-mono mt-0.5">{totalRegularHours.toFixed(2)} hrs</span>
+        </div>
+        <div className="p-2.5 bg-amber-50 border border-amber-300 rounded-md text-center">
+          <span className="block text-[10px] font-bold text-amber-800 uppercase tracking-wider">Total Overtime Hours</span>
+          <span className="block text-base font-black text-amber-950 font-mono mt-0.5">{totalOvertimeHours.toFixed(2)} hrs</span>
+        </div>
+        <div className="p-2.5 bg-blue-50 border border-blue-300 rounded-md text-center">
+          <span className="block text-[10px] font-bold text-blue-800 uppercase tracking-wider">Grand Total Hours</span>
+          <span className="block text-base font-black text-blue-950 font-mono mt-0.5">{grandTotalHours.toFixed(2)} hrs</span>
+        </div>
       </div>
 
       {/* SIGNATURES SECTION */}
