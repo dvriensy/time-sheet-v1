@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Play, Square, Plus, Trash2, FileOutput, Printer, X, MapPin, Briefcase, Calendar, CheckCircle2, Pencil, ClipboardList, Folder, FolderOpen, ChevronDown, ChevronRight, ChevronLeft, Archive, AlertTriangle, HelpCircle, Bell, Inbox, Send, Utensils, UtensilsCrossed } from 'lucide-react';
+import { Play, Square, Plus, Trash2, FileOutput, Printer, X, MapPin, Briefcase, Calendar, CheckCircle2, Pencil, ClipboardList, Folder, FolderOpen, ChevronDown, ChevronRight, ChevronLeft, Archive, AlertTriangle, HelpCircle, Bell, Inbox, Send, Utensils, UtensilsCrossed, Clock } from 'lucide-react';
 import { 
   getPayPeriodsGrouped, 
   addTimesheetEntry, 
@@ -2146,34 +2146,64 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
-                    {showPdfPreview.entries.map((entry) => (
-                      <tr key={entry.id} className="align-top hover:bg-slate-50/50">
-                        <td className="py-3 px-3 font-semibold text-slate-900 whitespace-nowrap">
-                          {entry.date}
-                        </td>
-                        <td className="py-3 px-3">
-                          <p className="font-semibold text-slate-800 break-words">
-                            {entry.project}
-                            {entry.isOvertime && (
-                              <span className="ml-2 inline-flex items-center rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-800 ring-1 ring-inset ring-amber-600/20 uppercase tracking-wider print:bg-slate-100 print:text-black shrink-0">
-                                Overtime
-                              </span>
-                            )}
-                          </p>
-                          <p className="text-[10px] text-slate-500">Where: {entry.locationName}</p>
-                          {entry.notes && (
-                            <p className="text-[10px] text-slate-400 italic mt-1 break-words leading-relaxed">{entry.notes}</p>
-                          )}
-                        </td>
-                        <td className="py-3 px-3 text-slate-600">
-                          <div className="font-medium">{entry.startTime} – {entry.endTime}</div>
-                          <div className="text-[10px] text-slate-400 font-mono">break: {entry.breakMinutes}m</div>
-                        </td>
-                        <td className={`py-3 px-3 text-right font-mono font-semibold text-xs ${entry.isOvertime ? 'text-amber-600' : 'text-slate-800'}`}>
-                          {entry.totalHours} hrs
-                        </td>
-                      </tr>
-                    ))}
+                    {(() => {
+                      const groups: Record<string, TimesheetEntry[]> = {};
+                      showPdfPreview.entries.forEach(entry => {
+                        if (!groups[entry.date]) groups[entry.date] = [];
+                        groups[entry.date].push(entry);
+                      });
+                      const sortedDates = Object.keys(groups).sort((a, b) => b.localeCompare(a));
+
+                      return sortedDates.flatMap(dateStr => {
+                        const dayEntries = groups[dateStr];
+                        const isMultiTask = dayEntries.length > 1;
+                        const dayTotal = dayEntries.reduce((sum, e) => sum + e.totalHours, 0);
+
+                        const rows = dayEntries.map(entry => (
+                          <tr key={entry.id} className="align-top hover:bg-slate-50/50">
+                            <td className="py-3 px-3 font-semibold text-slate-900 whitespace-nowrap">
+                              {entry.date}
+                            </td>
+                            <td className="py-3 px-3">
+                              <p className="font-semibold text-slate-800 break-words">
+                                {entry.project}
+                                {entry.isOvertime && (
+                                  <span className="ml-2 inline-flex items-center rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-800 ring-1 ring-inset ring-amber-600/20 uppercase tracking-wider print:bg-slate-100 print:text-black shrink-0">
+                                    Overtime
+                                  </span>
+                                )}
+                              </p>
+                              <p className="text-[10px] text-slate-500">Where: {entry.locationName}</p>
+                              {entry.notes && (
+                                <p className="text-[10px] text-slate-400 italic mt-1 break-words leading-relaxed">{entry.notes}</p>
+                              )}
+                            </td>
+                            <td className="py-3 px-3 text-slate-600">
+                              <div className="font-medium">{entry.startTime} – {entry.endTime}</div>
+                              <div className="text-[10px] text-slate-400 font-mono">break: {entry.breakMinutes}m</div>
+                            </td>
+                            <td className={`py-3 px-3 text-right font-mono font-semibold text-xs ${entry.isOvertime ? 'text-amber-600' : 'text-slate-800'}`}>
+                              {entry.totalHours} hrs
+                            </td>
+                          </tr>
+                        ));
+
+                        if (isMultiTask) {
+                          rows.push(
+                            <tr key={`day-total-${dateStr}`} className="bg-blue-50/70 border-b-2 border-slate-300 font-bold">
+                              <td colSpan={3} className="py-2 px-3 text-right text-slate-700 uppercase tracking-wider text-[10px] font-mono">
+                                Day Total ({dateStr}):
+                              </td>
+                              <td className="py-2 px-3 text-right font-mono text-blue-700 text-xs font-extrabold">
+                                Day Total: {Number(dayTotal.toFixed(2))}h
+                              </td>
+                            </tr>
+                          );
+                        }
+
+                        return rows;
+                      });
+                    })()}
                   </tbody>
                 </table>
               </div>
@@ -2354,62 +2384,92 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
 
                                 {/* Shift List */}
                                 <div className="divide-y divide-main-border/40 space-y-3">
-                                  {period.entries.map((entry) => (
-                                    <div key={entry.id} className="pt-3 first:pt-0 flex flex-col justify-between gap-2.5">
-                                      <div className="space-y-1.5">
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                          <span className="text-xs font-semibold text-main-text">
-                                            {new Date(entry.date + 'T00:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'})}
-                                          </span>
-                                          <span className="inline-flex items-center gap-0.5 rounded-md bg-app-bg px-1.5 py-0.5 text-[9px] font-medium text-main-text border border-main-border">
-                                            Task: {entry.project}
-                                          </span>
-                                          <span className="inline-flex items-center gap-0.5 rounded-md bg-app-bg px-1.5 py-0.5 text-[9px] font-medium text-main-text border border-main-border">
-                                            Where: {entry.locationName}
-                                          </span>
+                                  {(() => {
+                                    const groups: Record<string, TimesheetEntry[]> = {};
+                                    period.entries.forEach(entry => {
+                                      if (!groups[entry.date]) groups[entry.date] = [];
+                                      groups[entry.date].push(entry);
+                                    });
+                                    const sortedDates = Object.keys(groups).sort((a, b) => b.localeCompare(a));
+
+                                    return sortedDates.flatMap(dateStr => {
+                                      const dayEntries = groups[dateStr];
+                                      const isMultiTask = dayEntries.length > 1;
+                                      const dayTotal = dayEntries.reduce((sum, e) => sum + e.totalHours, 0);
+
+                                      const items = dayEntries.map(entry => (
+                                        <div key={entry.id} className="pt-3 first:pt-0 flex flex-col justify-between gap-2.5">
+                                          <div className="space-y-1.5">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                              <span className="text-xs font-semibold text-main-text">
+                                                {new Date(entry.date + 'T00:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'})}
+                                              </span>
+                                              <span className="inline-flex items-center gap-0.5 rounded-md bg-app-bg px-1.5 py-0.5 text-[9px] font-medium text-main-text border border-main-border">
+                                                Task: {entry.project}
+                                              </span>
+                                              <span className="inline-flex items-center gap-0.5 rounded-md bg-app-bg px-1.5 py-0.5 text-[9px] font-medium text-main-text border border-main-border">
+                                                Where: {entry.locationName}
+                                              </span>
+                                            </div>
+
+                                            {entry.notes && (
+                                              <p className="text-xs text-muted-text leading-relaxed bg-app-bg/25 p-2 rounded-lg border border-main-border/30">
+                                                {entry.notes}
+                                              </p>
+                                            )}
+
+                                            <p className="text-[10px] font-mono text-muted-text">
+                                              Shift: {entry.startTime} – {entry.endTime} ({entry.breakMinutes}m break)
+                                            </p>
+                                          </div>
+
+                                          <div className="flex items-center justify-between border-t border-main-border/30 pt-2 mt-1">
+                                            <span className="text-xs font-semibold font-mono text-blue-400">
+                                              {entry.totalHours.toFixed(2)} hours
+                                            </span>
+
+                                            <div className="flex items-center gap-1.5">
+                                              <button
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  handleEditClick(entry);
+                                                }}
+                                                className="p-1.5 rounded-lg text-muted-text hover:text-blue-500 hover:bg-app-bg transition cursor-pointer"
+                                                title="Edit entry"
+                                              >
+                                                <Pencil className="h-3.5 w-3.5" />
+                                              </button>
+                                              <button
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  setDeletingId(entry.id);
+                                                }}
+                                                className="p-1.5 rounded-lg text-muted-text hover:text-rose-500 hover:bg-app-bg transition cursor-pointer"
+                                                title="Delete entry"
+                                              >
+                                                <Trash2 className="h-3.5 w-3.5" />
+                                              </button>
+                                            </div>
+                                          </div>
                                         </div>
+                                      ));
 
-                                        {entry.notes && (
-                                          <p className="text-xs text-muted-text leading-relaxed bg-app-bg/25 p-2 rounded-lg border border-main-border/30">
-                                            {entry.notes}
-                                          </p>
-                                        )}
+                                      if (isMultiTask) {
+                                        items.push(
+                                          <div key={`day-total-${dateStr}`} className="mt-2.5 p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-between text-xs font-bold text-main-text">
+                                            <div className="flex items-center gap-1.5 text-blue-500">
+                                              <Clock className="h-3.5 w-3.5" />
+                                              <span className="uppercase text-[10px] font-mono tracking-wider">Day Total ({dateStr})</span>
+                                            </div>
+                                            <span className="font-mono text-blue-500 text-sm font-extrabold">Day Total: {Number(dayTotal.toFixed(2))}h</span>
+                                          </div>
+                                        );
+                                      }
 
-                                        <p className="text-[10px] font-mono text-muted-text">
-                                          Shift: {entry.startTime} – {entry.endTime} ({entry.breakMinutes}m break)
-                                        </p>
-                                      </div>
+                                      return items;
+                                    });
+                                  })()}
 
-                                      <div className="flex items-center justify-between border-t border-main-border/30 pt-2 mt-1">
-                                        <span className="text-xs font-semibold font-mono text-blue-400">
-                                          {entry.totalHours.toFixed(2)} hours
-                                        </span>
-
-                                        <div className="flex items-center gap-1.5">
-                                          <button
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              handleEditClick(entry);
-                                            }}
-                                            className="p-1.5 rounded-lg text-muted-text hover:text-blue-500 hover:bg-app-bg transition cursor-pointer"
-                                            title="Edit entry"
-                                          >
-                                            <Pencil className="h-3.5 w-3.5" />
-                                          </button>
-                                          <button
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              setDeletingId(entry.id);
-                                            }}
-                                            className="p-1.5 rounded-lg text-muted-text hover:text-rose-500 hover:bg-app-bg transition cursor-pointer"
-                                            title="Delete entry"
-                                          >
-                                            <Trash2 className="h-3.5 w-3.5" />
-                                          </button>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  ))}
                                 </div>
                               </div>
                             </motion.div>

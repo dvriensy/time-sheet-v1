@@ -1241,44 +1241,73 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                           </div>
 
                           <div className="divide-y divide-main-border/40">
-                            {user.entries.map((entry) => (
-                              <div key={entry.id} className="py-4 flex flex-col sm:flex-row sm:items-start justify-between gap-3 first:pt-0">
-                                <div className="space-y-1.5 max-w-xl">
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="text-xs font-semibold text-main-text">
-                                      {new Date(entry.date + 'T00:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'})}
-                                    </span>
-                                    <span className="inline-flex items-center gap-1 rounded-md bg-app-bg px-2 py-0.5 text-[10px] font-medium text-main-text border border-main-border">
-                                      <Briefcase className="h-3 w-3 text-blue-500" />
-                                      Task: {entry.project}
-                                    </span>
-                                    <span className="inline-flex items-center gap-1 rounded-md bg-app-bg px-2 py-0.5 text-[10px] font-medium text-main-text border border-main-border">
-                                      <MapPin className="h-3 w-3 text-blue-500" />
-                                      Site: {entry.locationName}
-                                    </span>
+                            {(() => {
+                              const groups: Record<string, typeof user.entries> = {};
+                              user.entries.forEach(entry => {
+                                if (!groups[entry.date]) groups[entry.date] = [];
+                                groups[entry.date].push(entry);
+                              });
+                              const sortedDates = Object.keys(groups).sort((a, b) => b.localeCompare(a));
+
+                              return sortedDates.flatMap(dateStr => {
+                                const dayEntries = groups[dateStr];
+                                const isMultiTask = dayEntries.length > 1;
+                                const dayTotal = dayEntries.reduce((sum, e) => sum + e.totalHours, 0);
+
+                                const items = dayEntries.map(entry => (
+                                  <div key={entry.id} className="py-4 flex flex-col sm:flex-row sm:items-start justify-between gap-3 first:pt-0">
+                                    <div className="space-y-1.5 max-w-xl">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="text-xs font-semibold text-main-text">
+                                          {new Date(entry.date + 'T00:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'})}
+                                        </span>
+                                        <span className="inline-flex items-center gap-1 rounded-md bg-app-bg px-2 py-0.5 text-[10px] font-medium text-main-text border border-main-border">
+                                          <Briefcase className="h-3 w-3 text-blue-500" />
+                                          Task: {entry.project}
+                                        </span>
+                                        <span className="inline-flex items-center gap-1 rounded-md bg-app-bg px-2 py-0.5 text-[10px] font-medium text-main-text border border-main-border">
+                                          <MapPin className="h-3 w-3 text-blue-500" />
+                                          Site: {entry.locationName}
+                                        </span>
+                                      </div>
+                                      
+                                      {entry.notes && (
+                                        <p className="text-xs text-muted-text leading-relaxed">
+                                          {entry.notes}
+                                        </p>
+                                      )}
+                                      
+                                      <p className="text-[11px] font-mono text-muted-text">
+                                        Shift Segment: <strong className="text-muted-text/80">{entry.startTime} – {entry.endTime}</strong> (Break: {entry.breakMinutes} mins)
+                                      </p>
+                                    </div>
+                                    
+                                    <div className="flex items-center justify-between sm:flex-col sm:items-end gap-1.5 shrink-0">
+                                      <span className="text-xs font-semibold font-mono text-main-text">
+                                        {entry.totalHours.toFixed(2)} hrs
+                                      </span>
+                                      <span className="text-[10px] font-mono text-muted-text uppercase">
+                                        ${((entry.totalHours) * (user.hourlyRate || 45)).toLocaleString(undefined, { minimumFractionDigits: 2 })} est.
+                                      </span>
+                                    </div>
                                   </div>
-                                  
-                                  {entry.notes && (
-                                    <p className="text-xs text-muted-text leading-relaxed">
-                                      {entry.notes}
-                                    </p>
-                                  )}
-                                  
-                                  <p className="text-[11px] font-mono text-muted-text">
-                                    Shift Segment: <strong className="text-muted-text/80">{entry.startTime} – {entry.endTime}</strong> (Break: {entry.breakMinutes} mins)
-                                  </p>
-                                </div>
-                                
-                                <div className="flex items-center justify-between sm:flex-col sm:items-end gap-1.5 shrink-0">
-                                  <span className="text-xs font-semibold font-mono text-main-text">
-                                    {entry.totalHours.toFixed(2)} hrs
-                                  </span>
-                                  <span className="text-[10px] font-mono text-muted-text uppercase">
-                                    ${((entry.totalHours) * (user.hourlyRate || 45)).toLocaleString(undefined, { minimumFractionDigits: 2 })} est.
-                                  </span>
-                                </div>
-                              </div>
-                            ))}
+                                ));
+
+                                if (isMultiTask) {
+                                  items.push(
+                                    <div key={`day-total-${dateStr}`} className="my-2 p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-between text-xs font-bold text-main-text">
+                                      <div className="flex items-center gap-1.5 text-blue-500">
+                                        <Clock className="h-3.5 w-3.5" />
+                                        <span className="uppercase text-[10px] font-mono tracking-wider">Day Total ({dateStr})</span>
+                                      </div>
+                                      <span className="font-mono text-blue-500 text-sm font-extrabold">Day Total: {Number(dayTotal.toFixed(2))}h</span>
+                                    </div>
+                                  );
+                                }
+
+                                return items;
+                              });
+                            })()}
 
                             {user.entries.length === 0 && (
                               <div className="py-6 text-center text-muted-text/60">
@@ -2516,33 +2545,63 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 text-slate-800 text-xs">
-                    {selectedManagerPrint.entries.map((entry, idx) => {
-                      const isHoliday = getAlbertaHoliday(entry.date);
-                      const baseBg = idx % 2 === 1 ? 'bg-slate-50/50 print-bg-slate-50' : 'bg-transparent';
-                      const rowBg = isHoliday ? 'bg-rose-50/40 print-bg-rose-50' : baseBg;
-                      return (
-                        <tr key={entry.id || idx} className={`${rowBg}`}>
-                          <td className="py-2.5 px-3 font-mono font-medium text-slate-950 text-left">
-                            <span className="block">{new Date(entry.date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</span>
-                            {isHoliday && (
-                              <span className="inline-block mt-0.5 rounded bg-rose-100 print-bg-rose-100 text-[8px] font-extrabold text-rose-700 px-1.5 py-0.5 uppercase tracking-tight border border-rose-200">
-                                Stat Holiday: {isHoliday}
-                              </span>
-                            )}
-                          </td>
-                          <td className="py-2.5 px-3 text-left">
-                            <span className="font-semibold text-slate-900 block">{entry.project || 'General Operations'}</span>
-                            {entry.notes && <span className="text-[10px] text-slate-500 italic block mt-0.5">{entry.notes}</span>}
-                          </td>
-                          <td className="py-2.5 px-3 text-center font-mono text-slate-600">
-                            {entry.startTime} - {entry.endTime}
-                          </td>
-                          <td className="py-2.5 px-3 text-right font-mono font-semibold text-slate-950">
-                            {entry.totalHours.toFixed(2)} {entry.isOvertime && <span className="text-[9px] font-extrabold text-blue-600 uppercase tracking-wider">OT</span>}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                    {(() => {
+                      const groups: Record<string, typeof selectedManagerPrint.entries> = {};
+                      selectedManagerPrint.entries.forEach(entry => {
+                        if (!groups[entry.date]) groups[entry.date] = [];
+                        groups[entry.date].push(entry);
+                      });
+                      const sortedDates = Object.keys(groups).sort((a, b) => b.localeCompare(a));
+
+                      return sortedDates.flatMap((dateStr) => {
+                        const dayEntries = groups[dateStr];
+                        const isMultiTask = dayEntries.length > 1;
+                        const dayTotal = dayEntries.reduce((sum, e) => sum + e.totalHours, 0);
+
+                        const rows = dayEntries.map((entry, idx) => {
+                          const isHoliday = getAlbertaHoliday(entry.date);
+                          const baseBg = idx % 2 === 1 ? 'bg-slate-50/50 print-bg-slate-50' : 'bg-transparent';
+                          const rowBg = isHoliday ? 'bg-rose-50/40 print-bg-rose-50' : baseBg;
+                          return (
+                            <tr key={entry.id || idx} className={`${rowBg}`}>
+                              <td className="py-2.5 px-3 font-mono font-medium text-slate-950 text-left">
+                                <span className="block">{new Date(entry.date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</span>
+                                {isHoliday && (
+                                  <span className="inline-block mt-0.5 rounded bg-rose-100 print-bg-rose-100 text-[8px] font-extrabold text-rose-700 px-1.5 py-0.5 uppercase tracking-tight border border-rose-200">
+                                    Stat Holiday: {isHoliday}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-2.5 px-3 text-left">
+                                <span className="font-semibold text-slate-900 block">{entry.project || 'General Operations'}</span>
+                                {entry.notes && <span className="text-[10px] text-slate-500 italic block mt-0.5">{entry.notes}</span>}
+                              </td>
+                              <td className="py-2.5 px-3 text-center font-mono text-slate-600">
+                                {entry.startTime} - {entry.endTime}
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-mono font-semibold text-slate-950">
+                                {entry.totalHours.toFixed(2)} {entry.isOvertime && <span className="text-[9px] font-extrabold text-blue-600 uppercase tracking-wider">OT</span>}
+                              </td>
+                            </tr>
+                          );
+                        });
+
+                        if (isMultiTask) {
+                          rows.push(
+                            <tr key={`day-total-${dateStr}`} className="bg-blue-50/70 border-b-2 border-slate-300 font-bold">
+                              <td colSpan={3} className="py-2 px-3 text-right text-slate-700 uppercase tracking-wider text-[10px] font-mono">
+                                Day Total ({dateStr}):
+                              </td>
+                              <td className="py-2 px-3 text-right font-mono text-blue-700 text-xs font-extrabold">
+                                Day Total: {Number(dayTotal.toFixed(2))}h
+                              </td>
+                            </tr>
+                          );
+                        }
+
+                        return rows;
+                      });
+                    })()}
                   </tbody>
                 </table>
               </div>
