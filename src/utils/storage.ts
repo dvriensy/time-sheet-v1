@@ -1229,13 +1229,22 @@ export function updateActiveSession(session: Partial<ActiveSession>) {
   syncActiveSessionToFirestore(currentUsername, all[currentUsername]);
 }
 
+export function clearActiveSessionLocally(username?: string) {
+  const currentUsername = username || localStorage.getItem('timesheets_tracker_current_user');
+  if (!currentUsername) return;
+  
+  const all = getActiveSessions();
+  if (all[currentUsername]) {
+    delete all[currentUsername];
+    localStorage.setItem('timesheets_tracker_active_sessions', JSON.stringify(all));
+  }
+}
+
 export function clearActiveSession() {
   const currentUsername = localStorage.getItem('timesheets_tracker_current_user');
   if (!currentUsername) return;
   
-  const all = getActiveSessions();
-  delete all[currentUsername];
-  localStorage.setItem('timesheets_tracker_active_sessions', JSON.stringify(all));
+  clearActiveSessionLocally(currentUsername);
   deleteActiveSessionFromFirestore(currentUsername);
 }
 

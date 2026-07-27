@@ -17,6 +17,7 @@ import {
   getCurrentUser,
   updateActiveSession,
   clearActiveSession,
+  clearActiveSessionLocally,
   getActiveSessions,
   syncActiveSessionToFirestore,
   refetchFromFirestore,
@@ -25,8 +26,11 @@ import {
   getTimeOffRequests,
   TimeOffRequest,
   addSubmittedTimesheet,
-  getSubmittedTimesheets
+  getSubmittedTimesheets,
+  ActiveSession
 } from '../utils/storage';
+import { db } from '../lib/firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { TimesheetEntry, FutureShift, SubmittedTimesheet } from '../types';
 import { getAlbertaHoliday } from '../utils/albertaHolidays';
 
@@ -281,14 +285,78 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     }
   }, [manualHoliday]);
 
-  // Synchronize active session changes in real-time from other devices (via firestore / storage-sync)
+  // Real-time Firestore onSnapshot listener: instantly detects when an active shift is started, updated, ended, or cleared on any device
+  useEffect(() => {
+    const currentUser = getCurrentUser();
+    if (!currentUser || !currentUser.username) return;
+
+    const sessionRef = doc(db, 'activeSessions', currentUser.username);
+
+    const unsubscribe = onSnapshot(sessionRef, (docSnap) => {
+      if (docSnap.exists() && docSnap.data()?.isClockedIn) {
+        const session = docSnap.data() as ActiveSession;
+        const now = Date.now();
+        const lastActive = session.lastActiveTimestamp ? new Date(session.lastActiveTimestamp).getTime() : now;
+        const storedWork = session.secondsElapsed || 0;
+        const storedDayWork = session.daySecondsElapsed || storedWork;
+        const elapsedBg = Math.max(0, Math.floor((now - lastActive) / 1000));
+
+        const incomingTaskStart = session.taskStartTimestamp || (now - (storedWork + elapsedBg) * 1000);
+        const incomingClockIn = session.clockInTimestamp || (now - (storedDayWork + elapsedBg) * 1000);
+
+        const incomingSecondsElapsed = Math.max(0, Math.floor((now - incomingTaskStart) / 1000));
+        const incomingDaySecondsElapsed = Math.max(0, Math.floor((now - incomingClockIn) / 1000));
+
+        // Update local storage active session cache
+        const all = getActiveSessions();
+        all[currentUser.username] = session;
+        localStorage.setItem('timesheets_tracker_active_sessions', JSON.stringify(all));
+
+        setIsClockedIn(true);
+        setTimerStart(session.startTime || '');
+        setActiveProject(session.project || '');
+        setActiveLocation(session.location || '');
+        setActiveNotes(session.notes || '');
+        setIsOvertime(!!session.isOvertime);
+        setTaskStartTimestamp(incomingTaskStart);
+        setClockInTimestamp(incomingClockIn);
+        setSecondsElapsed(incomingSecondsElapsed);
+        setDaySecondsElapsed(incomingDaySecondsElapsed);
+      } else {
+        // Document deleted or isClockedIn = false -> Active shift ended or cleared!
+        // Immediately clear active shift timestamps and session from localStorage
+        clearActiveSessionLocally(currentUser.username);
+
+        // Immediately stop active timer and clear state across all devices
+        setIsClockedIn(false);
+        setTaskStartTimestamp(null);
+        setClockInTimestamp(null);
+        setSecondsElapsed(0);
+        setDaySecondsElapsed(0);
+        setTimerStart('');
+        setIsOvertime(false);
+        setBypassLunch(false);
+
+        // Refresh UI & entries list
+        onRefreshEntries();
+      }
+    }, (error) => {
+      console.error('Real-time activeSession onSnapshot error:', error);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [user?.username, onRefreshEntries]);
+
+  // Synchronize active session changes in real-time from other local storage sync events
   useEffect(() => {
     const handleActiveSessionSync = () => {
-      const user = getCurrentUser();
-      if (!user) return;
+      const currentUser = getCurrentUser();
+      if (!currentUser) return;
 
       const allSessions = getActiveSessions();
-      const session = allSessions[user.username];
+      const session = allSessions[currentUser.username];
 
       if (session && session.isClockedIn) {
         const now = Date.now();
@@ -326,25 +394,19 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
           setClockInTimestamp(incomingClockIn);
           setSecondsElapsed(incomingSecondsElapsed);
           setDaySecondsElapsed(incomingDaySecondsElapsed);
-        } else {
-          // If state is already clocked in, update timestamps & duration if significantly drifted or externally updated
-          if (!taskStartTimestamp || Math.abs(taskStartTimestamp - incomingTaskStart) > 2000) {
-            setTaskStartTimestamp(incomingTaskStart);
-          }
-          if (!clockInTimestamp || Math.abs(clockInTimestamp - incomingClockIn) > 2000) {
-            setClockInTimestamp(incomingClockIn);
-          }
-          setSecondsElapsed(incomingSecondsElapsed);
-          setDaySecondsElapsed(incomingDaySecondsElapsed);
         }
       } else {
         if (isClockedIn) {
+          clearActiveSessionLocally(currentUser.username);
           setIsClockedIn(false);
           setTaskStartTimestamp(null);
           setClockInTimestamp(null);
           setSecondsElapsed(0);
           setDaySecondsElapsed(0);
+          setTimerStart('');
           setIsOvertime(false);
+          setBypassLunch(false);
+          onRefreshEntries();
         }
       }
     };
@@ -364,12 +426,13 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     activeNotes,
     taskStartTimestamp,
     clockInTimestamp,
+    onRefreshEntries
   ]);
 
-  // Synchronize active session status changes (excluding seconds) to Firestore/localStorage instantly
+  // Synchronize active session status changes to Firestore/localStorage when user is active
   useEffect(() => {
-    const user = getCurrentUser();
-    if (!user) return;
+    const currentUser = getCurrentUser();
+    if (!currentUser) return;
     
     if (isClockedIn) {
       updateActiveSession({
@@ -388,7 +451,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
         clockInTimestamp: clockInTimestamp || undefined,
       });
     } else {
-      clearActiveSession();
+      clearActiveSessionLocally(currentUser.username);
     }
   }, [isClockedIn, timerStart, activeProject, activeLocation, activeNotes, isOvertime, taskStartTimestamp, clockInTimestamp]);
 
