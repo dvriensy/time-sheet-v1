@@ -81,12 +81,15 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
 
         return {
           initialIsClockedIn: true,
+          initialIsOnBreak: !!session.isOnBreak,
           initialTimerStart: session.startTime,
           initialProject: session.project || '',
           initialLocation: session.location || '',
           initialNotes: session.notes || '',
           initialSecondsElapsed: currentTaskSecs,
+          initialBreakSecondsElapsed: session.breakSecondsElapsed || 0,
           initialDaySecondsElapsed: currentDaySecs,
+          initialDayBreakSecondsElapsed: session.dayBreakSecondsElapsed || 0,
           initialTaskStartTimestamp: taskStart,
           initialClockInTimestamp: clockInStart,
           initialIsOvertime: !!session.isOvertime,
@@ -95,12 +98,15 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     }
     return {
       initialIsClockedIn: false,
+      initialIsOnBreak: false,
       initialTimerStart: '',
       initialProject: '',
       initialLocation: '',
       initialNotes: '',
       initialSecondsElapsed: 0,
+      initialBreakSecondsElapsed: 0,
       initialDaySecondsElapsed: 0,
+      initialDayBreakSecondsElapsed: 0,
       initialTaskStartTimestamp: null as number | null,
       initialClockInTimestamp: null as number | null,
       initialIsOvertime: false,
@@ -154,6 +160,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
   const [showPdfPreview, setShowPdfPreview] = useState<PayPeriodGroup | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [expandedPastPeriods, setExpandedPastPeriods] = useState<Record<string, boolean>>({});
@@ -603,29 +610,34 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     const isUnder5Hours = daySecondsElapsed < 18000;
     const breakMins = (bypassLunch || isUnder5Hours) ? 0 : 30;
 
-    // Save the entry
-    addTimesheetEntry({
-      date: now.toISOString().slice(0, 10),
-      startTime: timerStart,
-      endTime: endStr,
-      breakMinutes: breakMins,
-      project: activeProject,
-      locationName: activeLocation,
-      notes: activeNotes || (bypassLunch ? 'Standard shift (Worked through lunch).' : isUnder5Hours ? 'Shift under 5 hours (No lunch deduction).' : 'Standard shift logged via active timer (30m lunch auto-deducted).'),
-      geofencedClockIn: simulatedGeoTrigger || false,
-      geofencedClockOut: simulatedGeoTrigger || false,
-      isOvertime: isOvertime
-    });
+    try {
+      // Save the entry
+      addTimesheetEntry({
+        date: now.toISOString().slice(0, 10),
+        startTime: timerStart,
+        endTime: endStr,
+        breakMinutes: breakMins,
+        project: activeProject,
+        locationName: activeLocation,
+        notes: activeNotes || (bypassLunch ? 'Standard shift (Worked through lunch).' : isUnder5Hours ? 'Shift under 5 hours (No lunch deduction).' : 'Standard shift logged via active timer (30m lunch auto-deducted).'),
+        geofencedClockIn: simulatedGeoTrigger || false,
+        geofencedClockOut: simulatedGeoTrigger || false,
+        isOvertime: isOvertime
+      });
 
-    setIsClockedIn(false);
-    setTaskStartTimestamp(null);
-    setClockInTimestamp(null);
-    setSecondsElapsed(0);
-    setDaySecondsElapsed(0);
-    setBypassLunch(false);
-    setIsOvertime(false);
-    
-    onRefreshEntries();
+      setIsClockedIn(false);
+      setTaskStartTimestamp(null);
+      setClockInTimestamp(null);
+      setSecondsElapsed(0);
+      setDaySecondsElapsed(0);
+      setBypassLunch(false);
+      setIsOvertime(false);
+      
+      onRefreshEntries();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setValidationError(msg);
+    }
   };
 
   const handleSwitchTask = () => {
@@ -635,70 +647,79 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     const nowMs = now.getTime();
     const endStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
 
-    // Save current task segment without break deduction (deduction applied on end of shift)
-    addTimesheetEntry({
-      date: now.toISOString().slice(0, 10),
-      startTime: timerStart,
-      endTime: endStr,
-      breakMinutes: 0,
-      project: activeProject,
-      locationName: activeLocation,
-      notes: activeNotes || 'Work segment completed.',
-      geofencedClockIn: false,
-      geofencedClockOut: false,
-      isOvertime: isOvertime
-    });
+    try {
+      // Save current task segment without break deduction (deduction applied on end of shift)
+      addTimesheetEntry({
+        date: now.toISOString().slice(0, 10),
+        startTime: timerStart,
+        endTime: endStr,
+        breakMinutes: 0,
+        project: activeProject,
+        locationName: activeLocation,
+        notes: activeNotes || 'Work segment completed.',
+        geofencedClockIn: false,
+        geofencedClockOut: false,
+        isOvertime: isOvertime
+      });
 
-    // Start next task segment immediately
-    setTimerStart(endStr);
-    setTaskStartTimestamp(nowMs);
-    setSecondsElapsed(0);
-    // KEEP day duration timer running! No reset to daySecondsElapsed!
-    
-    setSwitchNotification(`Logged segment for "${activeProject}" (${formatTimer(secondsElapsed)}). Day total running: ${formatTimer(daySecondsElapsed)}. Ready for next task!`);
-    setTimeout(() => {
-      setSwitchNotification(null);
-    }, 6000);
+      // Start next task segment immediately
+      setTimerStart(endStr);
+      setTaskStartTimestamp(nowMs);
+      setSecondsElapsed(0);
+      
+      setSwitchNotification(`Logged segment for "${activeProject}" (${formatTimer(secondsElapsed)}). Day total running: ${formatTimer(daySecondsElapsed)}. Ready for next task!`);
+      setTimeout(() => {
+        setSwitchNotification(null);
+      }, 6000);
 
-    setActiveNotes(''); // Clear notes for the next segment
-    onRefreshEntries();
+      setActiveNotes(''); // Clear notes for the next segment
+      onRefreshEntries();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setValidationError(msg);
+    }
   };
 
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const breakMins = manualBypassLunch ? 0 : 30;
 
-    if (editingEntry) {
-      updateTimesheetEntry({
-        ...editingEntry,
-        date: manualDate,
-        startTime: manualStart,
-        endTime: manualEnd,
-        breakMinutes: breakMins,
-        project: manualProject,
-        locationName: manualLocation,
-        notes: manualNotes,
-        isOvertime: manualIsOvertime
-      });
-    } else {
-      addTimesheetEntry({
-        date: manualDate,
-        startTime: manualStart,
-        endTime: manualEnd,
-        breakMinutes: breakMins,
-        project: manualProject,
-        locationName: manualLocation,
-        notes: manualNotes || (manualBypassLunch ? 'Manual shift (Worked through lunch).' : 'Manual shift entry (30m lunch auto-deducted).'),
-        isOvertime: manualIsOvertime
-      });
+    try {
+      if (editingEntry) {
+        updateTimesheetEntry({
+          ...editingEntry,
+          date: manualDate,
+          startTime: manualStart,
+          endTime: manualEnd,
+          breakMinutes: breakMins,
+          project: manualProject,
+          locationName: manualLocation,
+          notes: manualNotes,
+          isOvertime: manualIsOvertime
+        });
+      } else {
+        addTimesheetEntry({
+          date: manualDate,
+          startTime: manualStart,
+          endTime: manualEnd,
+          breakMinutes: breakMins,
+          project: manualProject,
+          locationName: manualLocation,
+          notes: manualNotes || (manualBypassLunch ? 'Manual shift (Worked through lunch).' : 'Manual shift entry (30m lunch auto-deducted).'),
+          isOvertime: manualIsOvertime
+        });
+      }
+      
+      setShowManualForm(false);
+      setEditingEntry(null);
+      setManualNotes('');
+      setManualIsOvertime(false);
+      setManualBypassLunch(false);
+      onRefreshEntries();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setValidationError(msg);
     }
-    
-    setShowManualForm(false);
-    setEditingEntry(null);
-    setManualNotes('');
-    setManualIsOvertime(false);
-    setManualBypassLunch(false);
-    onRefreshEntries();
   };
 
   const handleEditClick = (entry: TimesheetEntry) => {
@@ -720,8 +741,13 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
   };
 
   const handleDelete = (id: string) => {
-    deleteTimesheetEntry(id);
-    onRefreshEntries();
+    try {
+      deleteTimesheetEntry(id);
+      onRefreshEntries();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setValidationError(msg);
+    }
   };
 
   const handleOpenNewManualForm = () => {
@@ -2484,6 +2510,41 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
 
             </motion.div>
           </>
+        )}
+      </AnimatePresence>
+
+      {/* Validation Error / Compliance Alert Modal */}
+      <AnimatePresence>
+        {validationError && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-card-bg border border-rose-500/30 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 text-main-text"
+            >
+              <div className="flex items-start gap-3">
+                <div className="p-3 rounded-full bg-rose-500/20 text-rose-500 shrink-0">
+                  <AlertTriangle className="h-6 w-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-rose-500">Action Restricted</h3>
+                  <p className="text-xs text-muted-text mt-1 leading-relaxed">
+                    {validationError}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-2 border-t border-main-border/40">
+                <button
+                  onClick={() => setValidationError(null)}
+                  className="px-4 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-xs font-semibold transition cursor-pointer shadow-md"
+                >
+                  Understand & Dismiss
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
 

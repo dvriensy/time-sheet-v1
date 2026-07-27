@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { TimesheetEntry, GeofenceSettings, ReminderSettings, SecurityAuditLog, SyncSettings, AppSettings, FutureShift, SubmittedTimesheet, WorkDispatch, DispatchReply } from '../types';
+import { TimesheetEntry, GeofenceSettings, ReminderSettings, SecurityAuditLog, SyncSettings, AppSettings, FutureShift, SubmittedTimesheet, WorkDispatch, DispatchReply, AuditRecord, OfflineQueueItem } from '../types';
 import { DEFAULT_GEOFENCE, MOCK_TIMESHEETS, MOCK_SECURITY_LOGS } from '../data/mockData';
 import { db } from '../lib/firebase';
 import { doc, setDoc, getDoc, getDocs, collection, deleteDoc, updateDoc, onSnapshot } from 'firebase/firestore';
@@ -67,6 +67,188 @@ const KEY_APP_SETTINGS = 'timesheets_tracker_app_settings';
 const KEY_FUTURE_SHIFTS = 'timesheets_tracker_future_shifts';
 const KEY_SUBMITTED_TIMESHEETS = 'timesheets_tracker_submitted';
 const KEY_WORK_DISPATCHES = 'timesheets_tracker_work_dispatches';
+const KEY_AUDIT_TRAIL = 'timesheets_tracker_audit_trail';
+const KEY_OFFLINE_QUEUE = 'timesheets_tracker_offline_queue';
+
+// Offline Queue Management
+export function getOfflineQueue(): OfflineQueueItem[] {
+  const raw = localStorage.getItem(KEY_OFFLINE_QUEUE);
+  return raw ? JSON.parse(raw) : [];
+}
+
+export function enqueueOfflineOp(
+  operation: 'WRITE' | 'DELETE',
+  collectionName: string,
+  documentId: string,
+  payload?: any
+) {
+  const queue = getOfflineQueue();
+  const filtered = queue.filter(q => q.documentId !== documentId || q.collectionName !== collectionName);
+  filtered.push({
+    id: `off-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+    operation,
+    collectionName,
+    documentId,
+    payload,
+    timestamp: new Date().toISOString()
+  });
+  localStorage.setItem(KEY_OFFLINE_QUEUE, JSON.stringify(filtered));
+  window.dispatchEvent(new Event('offline-queue-changed'));
+}
+
+export async function flushOfflineQueue() {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+  const queue = getOfflineQueue();
+  if (queue.length === 0) return;
+
+  console.log(`[Offline Sync] Flushing ${queue.length} queued items to Firestore...`);
+  const remaining: OfflineQueueItem[] = [];
+
+  for (const item of queue) {
+    try {
+      if (item.operation === 'WRITE' && item.payload) {
+        await setDoc(doc(db, item.collectionName, item.documentId), item.payload);
+      } else if (item.operation === 'DELETE') {
+        await deleteDoc(doc(db, item.collectionName, item.documentId));
+      }
+    } catch (err) {
+      console.warn(`[Offline Sync] Could not process queue item ${item.id}:`, err);
+      remaining.push(item);
+    }
+  }
+
+  localStorage.setItem(KEY_OFFLINE_QUEUE, JSON.stringify(remaining));
+  window.dispatchEvent(new Event('offline-queue-changed'));
+  window.dispatchEvent(new Event('storage-sync'));
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => {
+    console.log('[Network] Device reconnected online. Auto-syncing offline queue...');
+    flushOfflineQueue();
+  });
+}
+
+// Audit Record Trail Management
+export function getAuditTrail(): AuditRecord[] {
+  initializeStorage();
+  const raw = localStorage.getItem(KEY_AUDIT_TRAIL);
+  return raw ? JSON.parse(raw) : [];
+}
+
+export function addAuditRecord(
+  action: AuditRecord['action'],
+  entityType: AuditRecord['entityType'],
+  entityId: string,
+  changeDetails: string,
+  reason?: string
+): AuditRecord {
+  const currentUserObj = getCurrentUser();
+  const userId = currentUserObj ? currentUserObj.username : 'system';
+  const userFullName = currentUserObj ? currentUserObj.fullName : 'System User';
+
+  const record: AuditRecord = {
+    id: `audit-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+    timestamp: new Date().toISOString(), // UTC ISO 8601
+    userId,
+    userFullName,
+    action,
+    entityType,
+    entityId,
+    changeDetails,
+    reason: reason || ''
+  };
+
+  const logs = getAuditTrail();
+  logs.unshift(record);
+  if (logs.length > 500) logs.pop(); // Keep last 500 audit logs
+  localStorage.setItem(KEY_AUDIT_TRAIL, JSON.stringify(logs));
+
+  syncAuditRecordToFirestore(record);
+  window.dispatchEvent(new Event('storage-sync'));
+  return record;
+}
+
+export async function syncAuditRecordToFirestore(record: AuditRecord) {
+  try {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      enqueueOfflineOp('WRITE', 'auditTrail', record.id, record);
+      return;
+    }
+    await setDoc(doc(db, 'auditTrail', record.id), record);
+  } catch (err) {
+    console.error('Firestore syncAuditRecordToFirestore error:', err);
+    enqueueOfflineOp('WRITE', 'auditTrail', record.id, record);
+  }
+}
+
+// Pay Period Locking Verification
+export function isPayPeriodLocked(dateStr: string, username?: string): { locked: boolean; reason?: string; submissionId?: string } {
+  const currentUsername = username || localStorage.getItem(KEY_CURRENT_USER);
+  if (!currentUsername) return { locked: false };
+
+  const submissions = getSubmittedTimesheets();
+  const userSubmissions = submissions.filter(
+    s => s.username === currentUsername && (s.status === 'submitted' || s.status === 'approved')
+  );
+
+  for (const sub of userSubmissions) {
+    if (dateStr >= sub.startDate && dateStr <= sub.endDate) {
+      return {
+        locked: true,
+        reason: `Pay Period Locked: Date ${dateStr} belongs to a ${sub.status.toUpperCase()} timesheet pay period (${sub.startDate} to ${sub.endDate}).`,
+        submissionId: sub.id
+      };
+    }
+  }
+
+  return { locked: false };
+}
+
+// Overlapping Shift Prevention
+export function parseTimeToMinutes(timeStr: string): number {
+  if (!timeStr) return 0;
+  const [h, m] = timeStr.split(':').map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
+export function checkShiftOverlap(
+  newShift: { date: string; startTime: string; endTime: string; username?: string },
+  ignoreEntryId?: string
+): { overlaps: boolean; conflictingEntry?: TimesheetEntry } {
+  const targetUsername = newShift.username || localStorage.getItem(KEY_CURRENT_USER);
+  if (!targetUsername) return { overlaps: false };
+
+  const allEntries = getTimesheets();
+  const dateEntries = allEntries.filter(
+    e => e.username === targetUsername && e.date === newShift.date && e.id !== ignoreEntryId
+  );
+
+  let newStart = parseTimeToMinutes(newShift.startTime);
+  let newEnd = parseTimeToMinutes(newShift.endTime);
+
+  if (newEnd <= newStart) {
+    newEnd += 1440; // 24-hour overnight shift adjustment
+  }
+
+  for (const existing of dateEntries) {
+    let existStart = parseTimeToMinutes(existing.startTime);
+    let existEnd = parseTimeToMinutes(existing.endTime);
+    if (existEnd <= existStart) {
+      existEnd += 1440;
+    }
+
+    if (newStart < existEnd && newEnd > existStart) {
+      return {
+        overlaps: true,
+        conflictingEntry: existing
+      };
+    }
+  }
+
+  return { overlaps: false };
+}
+
 
 // Background Firestore Sync Writers
 export async function syncUserToFirestore(user: UserAccount) {
@@ -887,8 +1069,26 @@ export function calculateHoursAndEarnings(startTime: string, endTime: string, br
 }
 
 export function addTimesheetEntry(entry: Omit<TimesheetEntry, 'id' | 'totalHours' | 'earnings' | 'isSynced'>): TimesheetEntry {
-  const entries = getTimesheets();
   const currentUser = localStorage.getItem(KEY_CURRENT_USER) || 'guest';
+  
+  // 1. Pay period lock check
+  const lockStatus = isPayPeriodLocked(entry.date, currentUser);
+  if (lockStatus.locked) {
+    throw new Error(lockStatus.reason);
+  }
+
+  // 2. Shift overlap check
+  const overlapStatus = checkShiftOverlap({
+    date: entry.date,
+    startTime: entry.startTime,
+    endTime: entry.endTime,
+    username: currentUser
+  });
+  if (overlapStatus.overlaps) {
+    throw new Error(`Shift Overlap Detected: This shift (${entry.startTime}–${entry.endTime}) overlaps with an existing entry (${overlapStatus.conflictingEntry?.project}: ${overlapStatus.conflictingEntry?.startTime}–${overlapStatus.conflictingEntry?.endTime}) on ${entry.date}.`);
+  }
+
+  const entries = getTimesheets();
   const { totalHours, earnings } = calculateHoursAndEarnings(entry.startTime, entry.endTime, entry.breakMinutes, entry.hourlyRate || 0);
   
   const newEntry: TimesheetEntry = {
@@ -904,6 +1104,14 @@ export function addTimesheetEntry(entry: Omit<TimesheetEntry, 'id' | 'totalHours
   saveTimesheets(entries);
   syncTimesheetToFirestore(newEntry);
   
+  addAuditRecord(
+    'CREATE',
+    'timesheet',
+    newEntry.id,
+    `Created shift entry on ${entry.date} (${entry.startTime}–${entry.endTime}, Task: "${entry.project}", ${totalHours} hrs)`,
+    entry.notes
+  );
+  
   addSecurityLog(
     'Manual timesheet edit',
     `Created timesheet card for task: ${entry.project} on ${entry.date} (Hours: ${totalHours})`,
@@ -914,9 +1122,27 @@ export function addTimesheetEntry(entry: Omit<TimesheetEntry, 'id' | 'totalHours
 }
 
 export function updateTimesheetEntry(updated: TimesheetEntry) {
+  const currentUser = updated.username || localStorage.getItem(KEY_CURRENT_USER) || 'guest';
+
+  // 1. Pay period lock check
+  const lockStatus = isPayPeriodLocked(updated.date, currentUser);
+  if (lockStatus.locked) {
+    throw new Error(lockStatus.reason);
+  }
+
+  // 2. Shift overlap check
+  const overlapStatus = checkShiftOverlap({
+    date: updated.date,
+    startTime: updated.startTime,
+    endTime: updated.endTime,
+    username: currentUser
+  }, updated.id);
+  if (overlapStatus.overlaps) {
+    throw new Error(`Shift Overlap Detected: Modified time (${updated.startTime}–${updated.endTime}) overlaps with existing entry (${overlapStatus.conflictingEntry?.project}: ${overlapStatus.conflictingEntry?.startTime}–${overlapStatus.conflictingEntry?.endTime}) on ${updated.date}.`);
+  }
+
   const entries = getTimesheets();
   const index = entries.findIndex(e => e.id === updated.id);
-  const currentUser = localStorage.getItem(KEY_CURRENT_USER) || 'guest';
   if (index !== -1) {
     const { totalHours, earnings } = calculateHoursAndEarnings(updated.startTime, updated.endTime, updated.breakMinutes, updated.hourlyRate || 0);
     const updatedEntry = {
@@ -929,6 +1155,15 @@ export function updateTimesheetEntry(updated: TimesheetEntry) {
     entries[index] = updatedEntry;
     saveTimesheets(entries);
     syncTimesheetToFirestore(updatedEntry);
+
+    addAuditRecord(
+      'EDIT',
+      'timesheet',
+      updated.id,
+      `Updated shift [${updated.id}] on ${updated.date} (${updated.startTime}–${updated.endTime}, Task: "${updated.project}", ${totalHours} hrs)`,
+      updated.notes
+    );
+
     addSecurityLog(
       'Manual timesheet edit',
       `Modified timesheet card [${updated.id}] on date ${updated.date}`,
@@ -939,9 +1174,29 @@ export function updateTimesheetEntry(updated: TimesheetEntry) {
 
 export function deleteTimesheetEntry(id: string) {
   const entries = getTimesheets();
+  const target = entries.find(e => e.id === id);
+  if (target) {
+    // 1. Pay period lock check
+    const lockStatus = isPayPeriodLocked(target.date, target.username);
+    if (lockStatus.locked) {
+      throw new Error(lockStatus.reason);
+    }
+  }
+
   const filtered = entries.filter(e => e.id !== id);
   saveTimesheets(filtered);
   deleteTimesheetFromFirestore(id);
+
+  if (target) {
+    addAuditRecord(
+      'DELETE',
+      'timesheet',
+      id,
+      `Deleted shift entry [${id}] on date ${target.date} (Task: "${target.project}")`,
+      'Manual deletion'
+    );
+  }
+
   addSecurityLog(
     'Manual timesheet edit',
     `Deleted timesheet card [${id}]`,
@@ -1602,6 +1857,14 @@ export function addSubmittedTimesheet(
   
   localStorage.setItem(KEY_SUBMITTED_TIMESHEETS, JSON.stringify(filtered));
   syncSubmittedTimesheetToFirestore(newSubmission);
+
+  addAuditRecord(
+    'SUBMIT',
+    'submitted_timesheet',
+    newSubmission.id,
+    `Submitted timesheet for pay period ${startDate} to ${endDate} (${totalHours} hrs, Reg: ${regularHours}, OT: ${overtimeHours})`,
+    'User submission'
+  );
   
   window.dispatchEvent(new Event('storage-sync'));
   return newSubmission;
@@ -1615,6 +1878,14 @@ export function respondToSubmittedTimesheet(id: string, status: 'approved' | 're
   submissions[index].status = status;
   localStorage.setItem(KEY_SUBMITTED_TIMESHEETS, JSON.stringify(submissions));
   syncSubmittedTimesheetToFirestore(submissions[index]);
+
+  addAuditRecord(
+    status === 'approved' ? 'APPROVE' : 'REJECT',
+    'submitted_timesheet',
+    id,
+    `Manager ${status.toUpperCase()} timesheet submission [${id}] for user ${submissions[index].username} (${submissions[index].startDate} to ${submissions[index].endDate})`,
+    `Status updated to ${status}`
+  );
   
   window.dispatchEvent(new Event('storage-sync'));
   return true;

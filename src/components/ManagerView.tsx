@@ -35,9 +35,10 @@ import {
   deleteSubmittedTimesheet,
   syncUserToFirestore,
   syncActiveSessionToFirestore,
-  syncTimeOffRequestToFirestore
+  syncTimeOffRequestToFirestore,
+  getAuditTrail
 } from '../utils/storage';
-import { TimesheetEntry, FutureShift, SubmittedTimesheet } from '../types';
+import { TimesheetEntry, FutureShift, SubmittedTimesheet, AuditRecord } from '../types';
 import { getAlbertaHoliday } from '../utils/albertaHolidays';
 import TimeOffCalendar from './TimeOffCalendar';
 import WorkDispatchChat from './WorkDispatchChat';
@@ -49,15 +50,15 @@ interface ManagerViewProps {
 }
 
 export default function ManagerView({ currentUser, isMobileView = false, onLoginAsUser }: ManagerViewProps) {
-  // Tabs: 'live', 'history', 'timeoff', 'schedule', 'accounts', 'inbox', or 'dispatches'
-  const [managerTab, setManagerTab] = useState<'live' | 'history' | 'timeoff' | 'schedule' | 'accounts' | 'inbox' | 'dispatches'>('live');
+  // Tabs: 'live', 'history', 'timeoff', 'schedule', 'accounts', 'inbox', 'dispatches', or 'audit'
+  const [managerTab, setManagerTab] = useState<'live' | 'history' | 'timeoff' | 'schedule' | 'accounts' | 'inbox' | 'dispatches' | 'audit'>('live');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [submittedList, setSubmittedList] = useState<SubmittedTimesheet[]>([]);
   const isOwner = currentUser.username === 'derek_vriens' || 
                   currentUser.fullName.toLowerCase() === 'derek vriens' || 
                   currentUser.email?.toLowerCase() === 'dvriensy@gmail.com';
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'offline'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'break' | 'offline'>('all');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Time off decision state
@@ -824,7 +825,8 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                   { value: 'schedule', label: 'Shift Scheduler', icon: CalendarDays, badge: 0 },
                   { value: 'accounts', label: 'User Accounts', icon: User, badge: 0 },
                   { value: 'inbox', label: 'Timesheets Inbox', icon: Inbox, badge: submittedList.filter(s => s.status === 'submitted').length },
-                  { value: 'dispatches', label: 'Work Dispatch & Chat', icon: Briefcase, badge: 0 }
+                  { value: 'dispatches', label: 'Work Dispatch & Chat', icon: Briefcase, badge: 0 },
+                  { value: 'audit', label: 'Compliance & Audit Trail', icon: ShieldAlert, badge: 0 }
                 ].find(o => o.value === managerTab) || { value: 'live', label: 'Live Team Members', icon: Activity, badge: 0 };
                 const Icon = opt.icon;
                 return (
@@ -866,7 +868,8 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                     { value: 'schedule', label: 'Shift Scheduler', icon: CalendarDays, desc: 'Design and assign future shifts and schedules.' },
                     { value: 'accounts', label: 'User Accounts', icon: User, desc: 'Manage login credentials, hourly rates, and user profiles.' },
                     { value: 'inbox', label: 'Timesheets Inbox', icon: Inbox, desc: 'Review, approve, or reject formal timesheet submissions.', badge: submittedList.filter(s => s.status === 'submitted').length },
-                    { value: 'dispatches', label: 'Work Dispatch & Chat', icon: Briefcase, desc: 'Post extra shifts and chat with available responders.' }
+                    { value: 'dispatches', label: 'Work Dispatch & Chat', icon: Briefcase, desc: 'Post extra shifts and chat with available responders.' },
+                    { value: 'audit', label: 'Compliance & Audit Trail', icon: ShieldAlert, desc: 'Immutable audit records for shift creations, edits, deletions, and submissions.' }
                   ].map((opt) => {
                     const Icon = opt.icon;
                     const isSelected = opt.value === managerTab;
@@ -2083,6 +2086,111 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
 
       {managerTab === 'dispatches' && (
         <WorkDispatchChat currentUser={currentUser} />
+      )}
+
+      {managerTab === 'audit' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-xs font-bold text-muted-text uppercase tracking-wider font-mono">
+                Immutable Compliance & Audit Log Trail
+              </h3>
+              <p className="text-[10px] text-muted-text">
+                Recorded events for all shift creations, modifications, deletions, and timesheet approvals
+              </p>
+            </div>
+            <span className="text-[10px] font-mono text-emerald-500 font-bold bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-full uppercase">
+              Audit Encryption Active
+            </span>
+          </div>
+
+          <div className="bg-card-bg border border-main-border rounded-2xl shadow-xl overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-main-border/50 bg-app-bg/50 text-[10px] uppercase font-mono font-bold text-muted-text">
+                    <th className="p-3">Timestamp (UTC)</th>
+                    <th className="p-3">User / Actor</th>
+                    <th className="p-3">Action</th>
+                    <th className="p-3">Entity</th>
+                    <th className="p-3">Details</th>
+                    <th className="p-3">Reason / Memo</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-main-border/30 text-xs">
+                  {(() => {
+                    const auditLogs = getAuditTrail();
+                    const filteredLogs = searchQuery.trim()
+                      ? auditLogs.filter(l =>
+                          l.userFullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          l.userId.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          l.action.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          l.changeDetails.toLowerCase().includes(searchQuery.toLowerCase())
+                        )
+                      : auditLogs;
+
+                    if (filteredLogs.length === 0) {
+                      return (
+                        <tr>
+                          <td colSpan={6} className="p-8 text-center text-muted-text italic font-sans">
+                            No audit records found matching your query.
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    return filteredLogs.map((log) => {
+                      const actionColors: Record<string, string> = {
+                        CREATE: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+                        EDIT: 'bg-blue-500/10 text-blue-400 border-blue-500/30',
+                        DELETE: 'bg-rose-500/10 text-rose-400 border-rose-500/30',
+                        SUBMIT: 'bg-purple-500/10 text-purple-400 border-purple-500/30',
+                        APPROVE: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40',
+                        REJECT: 'bg-rose-500/15 text-rose-300 border-rose-500/40',
+                        CLOCK_IN: 'bg-teal-500/10 text-teal-400 border-teal-500/30',
+                        CLOCK_OUT: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
+                      };
+                      const colorClass = actionColors[log.action] || 'bg-slate-500/10 text-slate-400 border-slate-500/30';
+
+                      return (
+                        <tr key={log.id} className="hover:bg-main-border/10 transition-colors font-mono text-[11px]">
+                          <td className="p-3 text-muted-text whitespace-nowrap">
+                            {new Date(log.timestamp).toLocaleString(undefined, {
+                              year: 'numeric',
+                              month: 'short',
+                              day: '2-digit',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              second: '2-digit'
+                            })}
+                          </td>
+                          <td className="p-3 font-sans font-semibold text-main-text">
+                            <div>{log.userFullName}</div>
+                            <div className="text-[9px] font-mono text-muted-text">@{log.userId}</div>
+                          </td>
+                          <td className="p-3">
+                            <span className={`inline-block px-2 py-0.5 rounded text-[9px] font-bold border uppercase tracking-wider ${colorClass}`}>
+                              {log.action}
+                            </span>
+                          </td>
+                          <td className="p-3 text-muted-text capitalize">
+                            {log.entityType.replace('_', ' ')}
+                          </td>
+                          <td className="p-3 font-sans text-main-text max-w-xs leading-relaxed">
+                            {log.changeDetails}
+                          </td>
+                          <td className="p-3 font-sans italic text-muted-text max-w-xs">
+                            {log.reason || '—'}
+                          </td>
+                        </tr>
+                      );
+                    });
+                  })()}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       )}
       </div>
 

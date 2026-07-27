@@ -125,4 +125,26 @@ export interface WorkDispatch {
   isClosed?: boolean;
 }
 
+export interface AuditRecord {
+  id: string;
+  timestamp: string; // ISO 8601 UTC string
+  userId: string;
+  userFullName: string;
+  action: 'CREATE' | 'EDIT' | 'DELETE' | 'SUBMIT' | 'APPROVE' | 'REJECT' | 'CLOCK_IN' | 'CLOCK_OUT';
+  entityType: 'timesheet' | 'active_session' | 'submitted_timesheet' | 'time_off' | 'future_shift';
+  entityId: string;
+  changeDetails: string;
+  reason?: string;
+}
+
+export interface OfflineQueueItem {
+  id: string;
+  operation: 'WRITE' | 'DELETE';
+  collectionName: string;
+  documentId: string;
+  payload?: any;
+  timestamp: string; // ISO 8601 UTC
+}
+
+
 
