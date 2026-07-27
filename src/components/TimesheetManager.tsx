@@ -28,6 +28,7 @@ import {
   TimeOffRequest,
   addSubmittedTimesheet,
   getSubmittedTimesheets,
+  enrichEntriesWithOvertime,
   ActiveSession
 } from '../utils/storage';
 import { db } from '../lib/firebase';
@@ -173,25 +174,23 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     if (!user) return;
     setIsSubmitting(true);
     try {
+      const enriched = enrichEntriesWithOvertime(period.entries);
       let total = 0;
       let regular = 0;
       let overtime = 0;
-      period.entries.forEach(entry => {
+      enriched.forEach(entry => {
         total += entry.totalHours;
-        if (entry.isOvertime) {
-          overtime += entry.totalHours;
-        } else {
-          regular += entry.totalHours;
-        }
+        regular += entry.regularHours;
+        overtime += entry.overtimeHours;
       });
 
       addSubmittedTimesheet(
         period.start,
         period.end,
-        total,
-        regular,
-        overtime,
-        period.entries
+        Number(total.toFixed(2)),
+        Number(regular.toFixed(2)),
+        Number(overtime.toFixed(2)),
+        enriched
       );
       setSubmitSuccess("Timesheet successfully submitted to the manager's inbox!");
       setTimeout(() => setSubmitSuccess(null), 4000);
@@ -894,16 +893,14 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
 
   const reportHoursSummary = useMemo(() => {
     if (!showPdfPreview) return { total: 0, regular: 0, overtime: 0 };
+    const enriched = enrichEntriesWithOvertime(showPdfPreview.entries);
     let total = 0;
     let regular = 0;
     let overtime = 0;
-    showPdfPreview.entries.forEach(e => {
+    enriched.forEach(e => {
       total += e.totalHours;
-      if (e.isOvertime) {
-        overtime += e.totalHours;
-      } else {
-        regular += e.totalHours;
-      }
+      regular += e.regularHours;
+      overtime += e.overtimeHours;
     });
     return {
       total: Number(total.toFixed(2)),

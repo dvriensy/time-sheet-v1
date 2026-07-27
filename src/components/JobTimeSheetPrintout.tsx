@@ -22,10 +22,19 @@ export const JobTimeSheetPrintout: React.FC<JobTimeSheetPrintoutProps> = ({
     const direct = isAdmin ? 0 : entry.totalHours;
     const admin = isAdmin ? entry.totalHours : 0;
 
+    const ot = (entry as any).overtimeHours || (entry.isOvertime ? entry.totalHours : 0);
+    const reg = (entry as any).regularHours || (entry.isOvertime ? 0 : entry.totalHours);
+    let jobTypeStr = 'Regular';
+    if (ot > 0 && reg > 0) {
+      jobTypeStr = 'Reg / OT';
+    } else if (ot > 0) {
+      jobTypeStr = 'Overtime';
+    }
+
     return {
       startTime: entry.startTime,
       stopTime: entry.endTime,
-      jobType: entry.isOvertime ? 'Overtime' : 'Regular',
+      jobType: jobTypeStr,
       task: entry.project,
       client: entry.locationName || 'Client Project',
       directHours: direct,

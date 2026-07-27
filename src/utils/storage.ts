@@ -1391,9 +1391,10 @@ export interface PayPeriodGroup {
 
 export function getPayPeriodsGrouped(): PayPeriodGroup[] {
   const entries = getTimesheets();
-  const groups: { [key: string]: TimesheetEntry[] } = {};
+  const enrichedEntries = enrichEntriesWithOvertime(entries);
+  const groups: { [key: string]: EnrichedTimesheetEntry[] } = {};
   
-  entries.forEach(entry => {
+  enrichedEntries.forEach(entry => {
     const dateObj = new Date(entry.date + 'T00:00:00');
     const year = dateObj.getFullYear();
     const month = dateObj.getMonth(); // 0-11
