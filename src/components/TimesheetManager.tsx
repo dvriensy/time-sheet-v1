@@ -18,6 +18,7 @@ import {
   updateActiveSession,
   clearActiveSession,
   clearActiveSessionLocally,
+  deleteActiveSessionFromFirestore,
   getActiveSessions,
   syncActiveSessionToFirestore,
   refetchFromFirestore,
@@ -460,7 +461,8 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
         clockInTimestamp: clockInTimestamp || undefined,
       });
     } else {
-      clearActiveSessionLocally(currentUser.username);
+      clearActiveSession();
+      deleteActiveSessionFromFirestore(currentUser.username);
     }
   }, [isClockedIn, timerStart, activeProject, activeLocation, activeNotes, isOvertime, taskStartTimestamp, clockInTimestamp]);
 
@@ -619,13 +621,19 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
         startTime: timerStart,
         endTime: endStr,
         breakMinutes: breakMins,
-        project: activeProject,
-        locationName: activeLocation,
+        project: activeProject || 'General Work',
+        locationName: activeLocation || 'Site',
         notes: activeNotes || (bypassLunch ? 'Standard shift (Worked through lunch).' : isUnder5Hours ? 'Shift under 5 hours (No lunch deduction).' : 'Standard shift logged via active timer (30m lunch auto-deducted).'),
         geofencedClockIn: simulatedGeoTrigger || false,
         geofencedClockOut: simulatedGeoTrigger || false,
         isOvertime: isOvertime
       });
+
+      // Clear active session locally & in Firestore
+      clearActiveSession();
+      if (user?.username) {
+        deleteActiveSessionFromFirestore(user.username);
+      }
 
       setIsClockedIn(false);
       setTaskStartTimestamp(null);
@@ -634,7 +642,10 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
       setDaySecondsElapsed(0);
       setBypassLunch(false);
       setIsOvertime(false);
+      setTimerStart('');
+      setActiveNotes('');
       
+      window.dispatchEvent(new Event('storage-sync'));
       onRefreshEntries();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -1888,6 +1899,46 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
         )}
 
       </div>
+
+      {/* MODAL 0: VALIDATION / SHIFT OVERLAP ERROR BANNER */}
+      <AnimatePresence>
+        {validationError && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setValidationError(null)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="relative w-full max-w-md overflow-hidden rounded-3xl border border-rose-500/40 bg-card-bg p-6 shadow-2xl z-10 space-y-4"
+            >
+              <div className="flex items-start gap-3 text-left">
+                <div className="p-2 bg-rose-500/10 text-rose-400 rounded-xl border border-rose-500/20 shrink-0">
+                  <AlertTriangle className="h-6 w-6" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-main-text">Action Blocked</h3>
+                  <p className="text-xs text-muted-text mt-1 leading-relaxed">{validationError}</p>
+                </div>
+              </div>
+              <div className="flex justify-end pt-2">
+                <button
+                  type="button"
+                  onClick={() => setValidationError(null)}
+                  className="px-5 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-semibold cursor-pointer transition shadow-lg shadow-rose-600/20"
+                >
+                  Dismiss & Fix
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* MODAL 1: MANUAL ADD TIMESHEET FORM */}
       <AnimatePresence>

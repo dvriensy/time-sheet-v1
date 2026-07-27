@@ -116,6 +116,23 @@
         "entries": { "type": "array" }
       },
       "required": ["id", "username", "fullName", "startDate", "endDate", "totalHours", "regularHours", "overtimeHours", "submittedAt", "status", "entries"]
+    },
+    "AuditRecord": {
+      "title": "AuditRecord",
+      "description": "Security audit record log.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "action": { "type": "string" },
+        "targetType": { "type": "string" },
+        "targetId": { "type": "string" },
+        "performedBy": { "type": "string" },
+        "performedByName": { "type": "string" },
+        "details": { "type": "string" },
+        "changes": { "type": "string" }
+      },
+      "required": ["id", "timestamp", "action", "targetType", "targetId", "performedBy", "performedByName", "details"]
     }
   },
   "firestore": {
@@ -142,6 +159,10 @@
     "/submittedTimesheets/{submissionId}": {
       "schema": "SubmittedTimesheet",
       "description": "Completed timesheet submissions sent to the manager's inbox."
+    },
+    "/auditTrail/{auditId}": {
+      "schema": "AuditRecord",
+      "description": "Audit trail log records."
     }
   }
 }

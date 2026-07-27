@@ -136,5 +136,12 @@ service cloud.firestore {
       allow delete: if isValidId(dispatchId);
     }
 
+    // --- Audit Trail Collection ---
+    match /auditTrail/{auditId} {
+      allow read: if true;
+      allow create, update: if isValidId(auditId);
+      allow delete: if isValidId(auditId);
+    }
+
   }
 }
