@@ -32,6 +32,7 @@ import {
 import { db } from '../lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { TimesheetEntry, FutureShift, SubmittedTimesheet } from '../types';
+import JobTimeSheetPrintout from './JobTimeSheetPrintout';
 import { getAlbertaHoliday } from '../utils/albertaHolidays';
 
 interface TimesheetManagerProps {
@@ -158,6 +159,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
   const [showManualForm, setShowManualForm] = useState(false);
   const [editingEntry, setEditingEntry] = useState<TimesheetEntry | null>(null);
   const [showPdfPreview, setShowPdfPreview] = useState<PayPeriodGroup | null>(null);
+  const [printTemplateMode, setPrintTemplateMode] = useState<'job_timesheet' | 'summary'>('job_timesheet');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -2062,11 +2064,38 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
       <AnimatePresence>
         {showPdfPreview && (
           <div className="fixed inset-0 z-50 flex flex-col bg-app-bg/98 backdrop-blur overflow-y-auto p-4 md:p-8 transition-colors duration-200">
-            <div className="flex items-center justify-between w-full max-w-4xl mx-auto mb-4 text-main-text pb-3 border-b border-main-border print:hidden">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between w-full max-w-4xl mx-auto mb-4 text-main-text pb-3 border-b border-main-border print:hidden gap-3">
               <div>
                 <h3 className="text-base font-semibold">Pay Period Report Export Portal</h3>
-                <p className="text-xs text-muted-text">Review supervisor-ready vector timesheet document guidelines below.</p>
+                <p className="text-xs text-muted-text">Print-ready standard timesheet layout and detailed summary breakdown.</p>
               </div>
+
+              {/* Template Mode Switcher */}
+              <div className="flex items-center gap-1.5 bg-card-bg p-1 border border-main-border rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => setPrintTemplateMode('job_timesheet')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                    printTemplateMode === 'job_timesheet'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'text-muted-text hover:text-main-text hover:bg-main-border/20'
+                  }`}
+                >
+                  Job Time Sheet Form
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPrintTemplateMode('summary')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                    printTemplateMode === 'summary'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'text-muted-text hover:text-main-text hover:bg-main-border/20'
+                  }`}
+                >
+                  Detailed Breakdown
+                </button>
+              </div>
+
               <div className="flex items-center gap-3">
                 {/* Submit to Manager Button / Badge */}
                 {(() => {
@@ -2133,6 +2162,13 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
             )}
 
             {/* Printable Document Core */}
+            {printTemplateMode === 'job_timesheet' ? (
+              <JobTimeSheetPrintout
+                employeeName={getCurrentUser()?.fullName || getCurrentUser()?.username || 'Employee'}
+                dateRange={`${showPdfPreview.start} to ${showPdfPreview.end}`}
+                entries={showPdfPreview.entries}
+              />
+            ) : (
             <div id="payperiod-printout" className="w-full max-w-4xl mx-auto bg-white text-slate-950 p-8 md:p-12 rounded-2xl shadow-2xl print:shadow-none print:p-0 print:m-0 print:bg-white print:text-black">
               
               {/* Report Header */}
@@ -2271,6 +2307,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
               </div>
 
             </div>
+            )}
           </div>
         )}
       </AnimatePresence>

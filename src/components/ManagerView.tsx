@@ -42,6 +42,7 @@ import { TimesheetEntry, FutureShift, SubmittedTimesheet, AuditRecord } from '..
 import { getAlbertaHoliday } from '../utils/albertaHolidays';
 import TimeOffCalendar from './TimeOffCalendar';
 import WorkDispatchChat from './WorkDispatchChat';
+import JobTimeSheetPrintout from './JobTimeSheetPrintout';
 
 interface ManagerViewProps {
   currentUser: UserAccount;
@@ -69,6 +70,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
   const [popupDecisionNote, setPopupDecisionNote] = useState('');
   const [popupCalDate, setPopupCalDate] = useState<Date | null>(null);
   const [selectedManagerPrint, setSelectedManagerPrint] = useState<SubmittedTimesheet | null>(null);
+  const [managerPrintMode, setManagerPrintMode] = useState<'job_timesheet' | 'summary'>('job_timesheet');
 
   useEffect(() => {
     if (activeReplyRequest) {
@@ -2578,11 +2580,38 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
       <AnimatePresence>
         {selectedManagerPrint && (
           <div className="fixed inset-0 z-50 flex flex-col bg-app-bg/98 backdrop-blur overflow-y-auto p-4 md:p-8 transition-colors duration-200 text-left">
-            <div className="flex items-center justify-between w-full max-w-4xl mx-auto mb-4 text-main-text pb-3 border-b border-main-border print:hidden">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between w-full max-w-4xl mx-auto mb-4 text-main-text pb-3 border-b border-main-border print:hidden gap-3">
               <div>
                 <h3 className="text-base font-semibold">Supervisor Timesheet Document Review</h3>
                 <p className="text-xs text-muted-text">Verified digital ledger report submitted by employee.</p>
               </div>
+
+              {/* Template Mode Switcher */}
+              <div className="flex items-center gap-1.5 bg-card-bg p-1 border border-main-border rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => setManagerPrintMode('job_timesheet')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                    managerPrintMode === 'job_timesheet'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'text-muted-text hover:text-main-text hover:bg-main-border/20'
+                  }`}
+                >
+                  Job Time Sheet Form
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setManagerPrintMode('summary')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                    managerPrintMode === 'summary'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'text-muted-text hover:text-main-text hover:bg-main-border/20'
+                  }`}
+                >
+                  Detailed Breakdown
+                </button>
+              </div>
+
               <div className="flex items-center gap-3">
                 <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs px-3 py-1.5 rounded-xl font-semibold uppercase tracking-wider font-mono">
                   Status: {selectedManagerPrint.status}
@@ -2604,6 +2633,18 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
             </div>
 
             {/* Printable Document Core */}
+            {managerPrintMode === 'job_timesheet' ? (
+              <JobTimeSheetPrintout
+                employeeName={
+                  (() => {
+                    const u = allUsers.find(userItem => userItem.username === selectedManagerPrint.username);
+                    return u ? u.fullName : selectedManagerPrint.username;
+                  })()
+                }
+                dateRange={`${selectedManagerPrint.startDate} to ${selectedManagerPrint.endDate}`}
+                entries={selectedManagerPrint.entries || []}
+              />
+            ) : (
             <div id="payperiod-printout" className="w-full max-w-4xl mx-auto bg-white text-slate-950 p-8 md:p-12 rounded-2xl shadow-2xl print:shadow-none print:p-0 print:m-0 print:bg-white print:text-black">
               
               {/* Report Header */}
@@ -2738,6 +2779,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
               </div>
 
             </div>
+            )}
           </div>
         )}
       </AnimatePresence>
