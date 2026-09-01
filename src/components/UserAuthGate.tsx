@@ -166,11 +166,17 @@ export default function UserAuthGate({ onAuthSuccess, isMobileView = false }: Us
         </button>
 
         <div className={`flex flex-col items-center ${isMobileView ? 'mb-4' : 'mb-6'} text-center`}>
-          <div className={`${isMobileView ? 'h-10 w-10 mb-2.5 rounded-xl' : 'h-12 w-12 mb-3.5 rounded-2xl'} bg-blue-600 flex items-center justify-center shadow-md shadow-blue-500/10`}>
-            <Clock className={`${isMobileView ? 'h-5 w-5' : 'h-5.5 w-5.5'} text-white`} />
+          <div className="relative group mb-3.5">
+            <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 via-sky-500 to-cyan-400 rounded-3xl blur-md opacity-40 group-hover:opacity-75 transition duration-300"></div>
+            <img 
+              src="/logo.jpg" 
+              alt="WORKSPACE Logo" 
+              className={`${isMobileView ? 'h-16 w-16 rounded-2xl' : 'h-20 w-20 rounded-3xl'} relative object-cover shadow-xl shadow-blue-500/20 border border-blue-400/30`} 
+            />
           </div>
-          <h1 className={`${isMobileView ? 'text-xl' : 'text-2xl'} font-display font-bold text-main-text tracking-tight`}>
-            TIME<span className="text-blue-500 font-normal">LEDGER</span>
+          <h1 className={`${isMobileView ? 'text-2xl' : 'text-3xl'} font-display font-black text-main-text tracking-wider flex items-center gap-1 justify-center`}>
+            <span>WORK</span>
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-500 via-sky-400 to-cyan-400 font-black">SPACE</span>
           </h1>
           <p className="text-xs text-muted-text mt-1.5 max-w-[280px] leading-relaxed">
             {isForgot ? 'Reset your account password' : isLogin ? 'Securely sign in to manage and log hours' : 'Create an account to start tracking'}

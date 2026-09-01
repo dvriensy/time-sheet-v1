@@ -184,13 +184,26 @@ export default function App() {
         <header className="flex flex-row items-center justify-between p-3 md:px-6 md:py-3.5 mb-3 md:mb-4 bg-card-bg rounded-2xl border border-main-border/60 shadow-sm transition-all duration-200 shrink-0 select-none">
           {/* Logo / Brand & Tabs (Left alignment on desktop) */}
           <div className="flex items-center gap-5 shrink-0">
-            <div className="flex items-center gap-2.5">
-              <div className="bg-blue-600 rounded-xl flex items-center justify-center shadow-md shadow-blue-500/10 w-9 h-9">
-                <Clock className="w-4.5 h-4.5 text-white" />
+            <div className="flex items-center gap-3">
+              <div className="relative group shrink-0">
+                <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-600 via-sky-500 to-cyan-400 rounded-xl blur-[2px] opacity-40 group-hover:opacity-75 transition duration-300"></div>
+                <img 
+                  src="/logo.jpg" 
+                  alt="WORKSPACE Logo" 
+                  className="relative w-9 h-9 md:w-10 md:h-10 rounded-xl object-cover shadow-md shadow-blue-500/20 border border-blue-400/30" 
+                />
               </div>
-              <div>
-                <h1 className="text-sm md:text-base font-display font-bold tracking-tight text-main-text leading-none">TIME<span className="text-blue-500 font-normal">LEDGER</span></h1>
-                {!isMobileView && <p className="text-[9px] font-mono tracking-wider uppercase text-muted-text/85 mt-0.5">Enterprise Clock</p>}
+              <div className="flex flex-col justify-center">
+                <h1 className="text-base md:text-lg font-display font-extrabold tracking-wider text-main-text leading-tight flex items-center">
+                  <span className="tracking-wide">WORK</span>
+                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-500 via-sky-400 to-cyan-400 font-black">SPACE</span>
+                </h1>
+                {!isMobileView && (
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
+                    <p className="text-[9px] font-mono tracking-widest uppercase text-blue-500 dark:text-sky-400 font-medium">Enterprise Suite</p>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -429,7 +442,7 @@ export default function App() {
 
         {/* Footer info line */}
         <footer className="mt-2 shrink-0 border-t border-main-border/30 py-2 text-center text-[9px] text-muted-text font-mono tracking-wider uppercase select-none">
-          Timesheets Work Tracker
+          WORKSPACE Enterprise Tracker
         </footer>
       </div>
     );
