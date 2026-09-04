@@ -11,7 +11,8 @@ import {
   Users, Radio, Clock, MapPin, Briefcase, DollarSign, Search, 
   Activity, Coffee, ChevronDown, ChevronRight, ChevronLeft, CheckCircle2, 
   PlusCircle, ShieldAlert, Landmark, HelpCircle, ArrowRight, User, Trash2,
-  CalendarDays, Check, X, AlertTriangle, Bell, Lock, Edit, Inbox, Printer
+  CalendarDays, Check, X, AlertTriangle, Bell, Lock, Edit, Inbox, Printer,
+  Calendar, ExternalLink, RefreshCw
 } from 'lucide-react';
 import { 
   getAllUsers, 
@@ -43,6 +44,13 @@ import { getAlbertaHoliday } from '../utils/albertaHolidays';
 import TimeOffCalendar from './TimeOffCalendar';
 import WorkDispatchChat from './WorkDispatchChat';
 import JobTimeSheetPrintout from './JobTimeSheetPrintout';
+import GoogleCalendarIntegrationCard from './GoogleCalendarIntegrationCard';
+import { 
+  syncFutureShiftToGoogleCalendar, 
+  deleteGoogleCalendarEvent, 
+  getStoredGoogleCalendarAuth, 
+  isGoogleTokenValid 
+} from '../utils/googleCalendar';
 
 interface ManagerViewProps {
   currentUser: UserAccount;
@@ -149,6 +157,8 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
   const [assignStartTime, setAssignStartTime] = useState('09:00');
   const [assignEndTime, setAssignEndTime] = useState('17:00');
   const [assignNotes, setAssignNotes] = useState('');
+  const [assignLocation, setAssignLocation] = useState('General Site');
+  const [syncingShiftId, setSyncingShiftId] = useState<string | null>(null);
 
   const refreshFutureShifts = () => {
     setFutureShiftsList(getFutureShifts());
@@ -379,7 +389,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
     return days;
   }, [currentYear, currentMonth]);
 
-  const handleAssignShift = (e: React.FormEvent) => {
+  const handleAssignShift = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!assignUsername || !assignProject) return;
     
@@ -389,7 +399,8 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
       assignStartTime,
       assignEndTime,
       assignProject,
-      assignNotes
+      assignNotes,
+      assignLocation
     );
     
     if (newShift) {
@@ -397,17 +408,77 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
       setAssignUsername('');
       setAssignProject('');
       setAssignNotes('');
+      setAssignLocation('General Site');
+      refreshFutureShifts();
+      setTimeout(() => setSuccessMessage(null), 4000);
+
+      // Attempt auto-sync to Google Calendar if manager or employee has connected account
+      try {
+        const mgrAuth = getStoredGoogleCalendarAuth(currentUser?.username);
+        const userAuth = getStoredGoogleCalendarAuth(assignUsername);
+        const activeAuth = (userAuth.isConnected && isGoogleTokenValid(userAuth) && userAuth.autoSyncShifts)
+          ? userAuth
+          : (mgrAuth.isConnected && isGoogleTokenValid(mgrAuth) && mgrAuth.autoSyncShifts)
+          ? mgrAuth
+          : null;
+
+        if (activeAuth) {
+          await syncFutureShiftToGoogleCalendar(newShift, activeAuth);
+          refreshFutureShifts();
+        }
+      } catch (syncErr) {
+        console.warn("Could not auto-sync newly assigned shift to Google Calendar:", syncErr);
+      }
+    }
+  };
+
+  const handleDeleteShift = async (id: string) => {
+    const shiftToDelete = futureShiftsList.find(s => s.id === id);
+    const success = deleteFutureShift(id);
+    if (success) {
+      // If synced to Google Calendar, remove the remote calendar event
+      if (shiftToDelete?.googleCalendarEventId) {
+        const mgrAuth = getStoredGoogleCalendarAuth(currentUser?.username);
+        const userAuth = shiftToDelete.username ? getStoredGoogleCalendarAuth(shiftToDelete.username) : null;
+        const activeToken = (userAuth && isGoogleTokenValid(userAuth)) 
+          ? userAuth.accessToken 
+          : (mgrAuth && isGoogleTokenValid(mgrAuth)) 
+          ? mgrAuth.accessToken 
+          : null;
+
+        if (activeToken) {
+          deleteGoogleCalendarEvent(activeToken, shiftToDelete.googleCalendarEventId).catch(console.warn);
+        }
+      }
+      setSuccessMessage(`Successfully deleted scheduled shift.`);
       refreshFutureShifts();
       setTimeout(() => setSuccessMessage(null), 4000);
     }
   };
 
-  const handleDeleteShift = (id: string) => {
-    const success = deleteFutureShift(id);
-    if (success) {
-      setSuccessMessage(`Successfully deleted scheduled shift.`);
+  const handleSyncShift = async (shift: FutureShift) => {
+    const mgrAuth = getStoredGoogleCalendarAuth(currentUser?.username);
+    const userAuth = shift.username ? getStoredGoogleCalendarAuth(shift.username) : null;
+    const activeAuth = (mgrAuth.isConnected && isGoogleTokenValid(mgrAuth))
+      ? mgrAuth
+      : (userAuth && userAuth.isConnected && isGoogleTokenValid(userAuth))
+      ? userAuth
+      : null;
+
+    if (!activeAuth || !activeAuth.accessToken) {
+      alert("Please connect Google Calendar first via the Google Calendar Sync card.");
+      return;
+    }
+
+    setSyncingShiftId(shift.id);
+    try {
+      await syncFutureShiftToGoogleCalendar(shift, activeAuth);
       refreshFutureShifts();
-      setTimeout(() => setSuccessMessage(null), 4000);
+    } catch (err: any) {
+      console.error("Failed to sync shift:", err);
+      alert(`Could not sync shift to Google Calendar: ${err.message || 'Unknown error'}`);
+    } finally {
+      setSyncingShiftId(null);
     }
   };
 
@@ -1597,6 +1668,12 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
 
       {managerTab === 'schedule' && (
         <div className="space-y-6">
+          <GoogleCalendarIntegrationCard
+            currentUsername={currentUser?.username}
+            shifts={futureShiftsList}
+            onShiftsUpdated={refreshFutureShifts}
+          />
+
           <div className="bg-card-bg border border-main-border rounded-2xl p-5 shadow-xl">
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-6 pb-4 border-b border-main-border/40">
               <div className="text-left">
@@ -1761,6 +1838,20 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                     </div>
 
                     <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-muted-text uppercase font-mono">Location / Work Site</label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          placeholder="e.g. Downtown Highrise - Floor 4"
+                          value={assignLocation}
+                          onChange={(e) => setAssignLocation(e.target.value)}
+                          className="w-full rounded-xl border border-main-border bg-input-bg p-2 pl-7 text-xs text-main-text focus:border-blue-500/40 focus:outline-none"
+                        />
+                        <MapPin className="h-3.5 w-3.5 text-muted-text absolute left-2 top-2.5 pointer-events-none" />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
                       <label className="text-[10px] font-bold text-muted-text uppercase font-mono font-sans">Notes (Optional)</label>
                       <textarea
                         placeholder="Specific instructions or notes for the shift..."
@@ -1795,7 +1886,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                     </span>
                   </div>
 
-                  <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                  <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1">
                     {futureShiftsList.filter(s => s.date === selectedDate).map(s => {
                       const sName = s.fullName || 'Employee';
                       const sProj = s.project || 'General Shift';
@@ -1809,12 +1900,45 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                             <span className="text-[10px] text-blue-400 font-semibold block truncate">
                               💼 {sProj}
                             </span>
+                            <div className="flex items-center gap-1 text-[10px] text-muted-text font-mono truncate">
+                              <MapPin className="h-3 w-3 text-blue-400 shrink-0" />
+                              <span className="truncate">{s.location || 'General Site'}</span>
+                            </div>
+
+                            {/* Google Calendar sync status / button */}
+                            <div className="pt-0.5">
+                              {s.googleCalendarEventId ? (
+                                <a
+                                  href={s.googleCalendarHtmlLink || 'https://calendar.google.com'}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-1 text-[9px] font-mono text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 px-2 py-0.5 rounded-full border border-blue-500/20 transition cursor-pointer"
+                                  title="View event in Google Calendar"
+                                >
+                                  <Calendar className="h-2.5 w-2.5" />
+                                  <span>Google Calendar</span>
+                                  <ExternalLink className="h-2 w-2 opacity-70" />
+                                </a>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleSyncShift(s)}
+                                  disabled={syncingShiftId === s.id}
+                                  className="inline-flex items-center gap-1 text-[9px] font-mono text-slate-400 hover:text-slate-200 bg-slate-800/60 hover:bg-slate-700/70 px-2 py-0.5 rounded-full border border-slate-700/80 transition cursor-pointer disabled:opacity-50"
+                                  title="Push to Google Calendar"
+                                >
+                                  <RefreshCw className={`h-2.5 w-2.5 ${syncingShiftId === s.id ? 'animate-spin text-blue-400' : ''}`} />
+                                  <span>{syncingShiftId === s.id ? 'Syncing...' : 'Sync to Calendar'}</span>
+                                </button>
+                              )}
+                            </div>
+
                             {s.notes && <p className="text-[10px] text-muted-text italic truncate mt-0.5">"{s.notes}"</p>}
                           </div>
                           
                           <button
                             onClick={() => handleDeleteShift(s.id)}
-                            className="text-red-500/70 hover:text-red-500 p-1.5 rounded-lg hover:bg-red-500/10 transition cursor-pointer"
+                            className="text-red-500/70 hover:text-red-500 p-1.5 rounded-lg hover:bg-red-500/10 transition cursor-pointer shrink-0"
                             title="Delete assigned shift"
                             type="button"
                           >

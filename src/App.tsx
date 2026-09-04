@@ -9,6 +9,7 @@ import { Clock, User, Sun, Moon, Users, CalendarDays, Bell } from 'lucide-react'
 import { 
   getTimesheets, 
   getAppSettings, 
+  getReminderSettings,
   initializeStorage, 
   getCurrentUser, 
   logoutUser, 
@@ -18,6 +19,10 @@ import {
   refetchFromFirestore,
   enrichEntriesWithOvertime
 } from './utils/storage';
+import { 
+  registerServiceWorker, 
+  startWorkday5pmScheduler 
+} from './utils/pushNotifications';
 import { TimesheetEntry } from './types';
 
 // Import our modular sub-components
@@ -26,6 +31,7 @@ import TimesheetManager from './components/TimesheetManager';
 import AccountView from './components/AccountView';
 import ManagerView from './components/ManagerView';
 import TimeOffSidebar from './components/TimeOffSidebar';
+import HeaderTimer from './components/HeaderTimer';
 
 export default function App() {
   // Initialize standard LocalStorage templates on mount
@@ -91,6 +97,63 @@ export default function App() {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  // Web Push Notifications Service Worker & 5:00 PM Workday Shift Reminder Scheduler
+  useEffect(() => {
+    // 1. Register the Service Worker in public/sw.js
+    registerServiceWorker();
+
+    // 2. Start client-side 5:00 PM workday check
+    const stopScheduler = startWorkday5pmScheduler(
+      () => {
+        const settings = getReminderSettings();
+        return settings.dailyShiftReminder ?? true;
+      },
+      currentUser?.username
+    );
+
+    // 3. Handle push notification click navigation (opens shift logger directly)
+    const handleCheckUrlActions = () => {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const action = params.get('action');
+        const tab = params.get('tab');
+        if (action === 'log-shift' || tab === 'timesheet' || tab === 'timesheets') {
+          setActiveTab('timesheets');
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('workspace-open-shift-logger'));
+          }, 150);
+        }
+      } catch (e) {
+        console.warn('Error evaluating URL action:', e);
+      }
+    };
+
+    handleCheckUrlActions();
+    window.addEventListener('popstate', handleCheckUrlActions);
+
+    // 4. Handle Service Worker postMessage for foreground tabs
+    const handleSwMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'OPEN_SHIFT_LOGGER') {
+        setActiveTab('timesheets');
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('workspace-open-shift-logger'));
+        }, 150);
+      }
+    };
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', handleSwMessage);
+    }
+
+    return () => {
+      stopScheduler();
+      window.removeEventListener('popstate', handleCheckUrlActions);
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.removeEventListener('message', handleSwMessage);
+      }
+    };
+  }, [currentUser?.username]);
 
   const isManager = !!(currentUser && (currentUser.role === 'manager' || currentUser.username === 'derek_vriens' || currentUser.fullName.toLowerCase() === 'derek vriens' || currentUser.email?.toLowerCase() === 'dvriensy@gmail.com'));
   const [activeTab, setActiveTab] = useState<'timesheets' | 'account' | 'manager'>('timesheets');
@@ -251,6 +314,13 @@ export default function App() {
 
           {/* Action Utilities (Right alignment) */}
           <div className="flex items-center gap-2 md:gap-3">
+            {/* One-Tap Header Shift Timer */}
+            <HeaderTimer 
+              currentUser={currentUser}
+              onShiftLogged={handleRefreshAll}
+              isMobileView={isMobileView}
+            />
+
             {/* Request Time Off Button */}
             <button
               onClick={() => setIsTimeOffOpen(true)}

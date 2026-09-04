@@ -5,11 +5,11 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Play, Square, Plus, Trash2, FileOutput, Printer, X, MapPin, Briefcase, Calendar, CheckCircle2, Pencil, ClipboardList, Folder, FolderOpen, ChevronDown, ChevronRight, ChevronLeft, Archive, AlertTriangle, HelpCircle, Bell, Inbox, Send, Utensils, UtensilsCrossed, Clock } from 'lucide-react';
+import { Play, Square, Plus, Trash2, FileOutput, Printer, X, MapPin, Briefcase, Calendar, CheckCircle2, Pencil, ClipboardList, Folder, FolderOpen, ChevronDown, ChevronRight, ChevronLeft, Archive, AlertTriangle, HelpCircle, Bell, Inbox, Send, Utensils, UtensilsCrossed, Clock, Sparkles, Zap, ExternalLink, RefreshCw } from 'lucide-react';
 import { 
   getPayPeriodsGrouped, 
   addTimesheetEntry, 
-  updateTimesheetEntry,
+  updateTimesheetEntry, 
   deleteTimesheetEntry, 
   getAppSettings,
   calculateHoursAndEarnings,
@@ -36,6 +36,13 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { TimesheetEntry, FutureShift, SubmittedTimesheet } from '../types';
 import JobTimeSheetPrintout from './JobTimeSheetPrintout';
 import { getAlbertaHoliday } from '../utils/albertaHolidays';
+import { SHIFT_PRESETS, ShiftPreset, roundTimeString, getCurrentRoundedTime, calculateEndTimeFromDuration } from '../utils/shiftPresets';
+import GoogleCalendarIntegrationCard from './GoogleCalendarIntegrationCard';
+import { 
+  syncFutureShiftToGoogleCalendar, 
+  getStoredGoogleCalendarAuth, 
+  isGoogleTokenValid 
+} from '../utils/googleCalendar';
 
 interface TimesheetManagerProps {
   entries: TimesheetEntry[];
@@ -170,6 +177,28 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
   const [expandedPastPeriods, setExpandedPastPeriods] = useState<Record<string, boolean>>({});
   const [expandedDays, setExpandedDays] = useState<Record<string, boolean>>({});
 
+  // Listen for push notification click to open shift logger directly
+  useEffect(() => {
+    const handleOpenShiftLogger = () => {
+      setEditingEntry(null);
+      setShowManualForm(true);
+    };
+
+    window.addEventListener('workspace-open-shift-logger', handleOpenShiftLogger);
+
+    const checkUrl = () => {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('action') === 'log-shift') {
+        setShowManualForm(true);
+      }
+    };
+    checkUrl();
+
+    return () => {
+      window.removeEventListener('workspace-open-shift-logger', handleOpenShiftLogger);
+    };
+  }, []);
+
   const handleSubmitTimesheet = async (period: PayPeriodGroup) => {
     if (!user) return;
     setIsSubmitting(true);
@@ -251,6 +280,46 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     };
   }, [user]);
 
+  // Google Calendar individual shift sync state
+  const [syncingShiftId, setSyncingShiftId] = useState<string | null>(null);
+
+  const handleSyncIndividualShift = async (shift: FutureShift) => {
+    const auth = getStoredGoogleCalendarAuth(user?.username);
+    if (!isGoogleTokenValid(auth) || !auth.accessToken) {
+      alert("Please connect your Google Calendar first using the Google Calendar Sync card.");
+      return;
+    }
+
+    setSyncingShiftId(shift.id);
+    try {
+      await syncFutureShiftToGoogleCalendar(shift, auth);
+      // Reload shifts to show updated calendar event link
+      const allShifts = getFutureShifts();
+      const userShifts = user ? allShifts.filter(s => s.username === user.username) : allShifts;
+      setFutureShifts(userShifts);
+    } catch (err: any) {
+      console.error("Failed to sync shift to Google Calendar:", err);
+      alert(`Could not sync shift to Google Calendar: ${err.message || 'Unknown error'}`);
+    } finally {
+      setSyncingShiftId(null);
+    }
+  };
+
+  const handleAcknowledgeWithSync = async (shiftId: string) => {
+    acknowledgeFutureShift(shiftId);
+    const target = futureShifts.find(s => s.id === shiftId);
+    if (target) {
+      const auth = getStoredGoogleCalendarAuth(user?.username);
+      if (isGoogleTokenValid(auth) && auth.autoSyncShifts) {
+        try {
+          await syncFutureShiftToGoogleCalendar({ ...target, acknowledged: true }, auth);
+        } catch (e) {
+          console.warn("Could not sync shift acknowledge to Google Calendar:", e);
+        }
+      }
+    }
+  };
+
   // Manual Form State
   const [manualDate, setManualDate] = useState(new Date().toISOString().slice(0, 10));
   const [manualStart, setManualStart] = useState(() => {
@@ -272,6 +341,53 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
   const [manualLocation, setManualLocation] = useState('');
   const [manualNotes, setManualNotes] = useState('');
   const [manualIsOvertime, setManualIsOvertime] = useState(false);
+  const [selectedPresetId, setSelectedPresetId] = useState<string | null>('standard_8h');
+
+  const handleApplyPreset = (preset: ShiftPreset) => {
+    setSelectedPresetId(preset.id);
+    setManualStart(preset.startTime);
+    setManualEnd(preset.endTime);
+    setManualBypassLunch(preset.bypassLunch);
+    setManualIsOvertime(preset.isOvertime);
+    setManualProject(preset.project);
+    setManualLocation(preset.location);
+    setManualNotes(preset.notes);
+  };
+
+  const handleSetStandardHours = () => {
+    setSelectedPresetId('standard_8h');
+    setManualStart('07:30');
+    setManualEnd('16:00');
+    setManualBypassLunch(false);
+  };
+
+  const handleSetCurrentRoundedTimes = () => {
+    setSelectedPresetId(null);
+    const roundedNow = getCurrentRoundedTime(15);
+    setManualStart(roundedNow);
+    // 8.5h shift (8h work + 30m lunch)
+    const end = calculateEndTimeFromDuration(roundedNow, 510);
+    setManualEnd(end);
+  };
+
+  const handleRoundTime = (type: 'start' | 'end', minutes: 5 | 15) => {
+    setSelectedPresetId(null);
+    if (type === 'start') {
+      setManualStart(prev => roundTimeString(prev, minutes));
+    } else {
+      setManualEnd(prev => roundTimeString(prev, minutes));
+    }
+  };
+
+  const handleSetTimeToNow = (type: 'start' | 'end', minutes: 5 | 15 = 15) => {
+    setSelectedPresetId(null);
+    const rounded = getCurrentRoundedTime(minutes);
+    if (type === 'start') {
+      setManualStart(rounded);
+    } else {
+      setManualEnd(rounded);
+    }
+  };
 
   const manualHoliday = useMemo(() => getAlbertaHoliday(manualDate), [manualDate]);
 
@@ -688,6 +804,10 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     const breakMins = manualBypassLunch ? 0 : 30;
 
     try {
+      const projectVal = manualProject.trim() || 'General Work';
+      const locationVal = manualLocation.trim() || 'General Site';
+      const notesVal = manualNotes.trim();
+
       if (editingEntry) {
         updateTimesheetEntry({
           ...editingEntry,
@@ -695,9 +815,9 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
           startTime: manualStart,
           endTime: manualEnd,
           breakMinutes: breakMins,
-          project: manualProject,
-          locationName: manualLocation,
-          notes: manualNotes,
+          project: projectVal,
+          locationName: locationVal,
+          notes: notesVal,
           isOvertime: manualIsOvertime
         });
       } else {
@@ -706,15 +826,17 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
           startTime: manualStart,
           endTime: manualEnd,
           breakMinutes: breakMins,
-          project: manualProject,
-          locationName: manualLocation,
-          notes: manualNotes || (manualBypassLunch ? 'Manual shift (Worked through lunch).' : 'Manual shift entry (30m lunch auto-deducted).'),
+          project: projectVal,
+          locationName: locationVal,
+          notes: notesVal,
           isOvertime: manualIsOvertime
         });
       }
       
       setShowManualForm(false);
       setEditingEntry(null);
+      setManualProject('');
+      setManualLocation('');
       setManualNotes('');
       setManualIsOvertime(false);
       setManualBypassLunch(false);
@@ -753,16 +875,21 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     }
   };
 
-  const handleOpenNewManualForm = () => {
-    const currentSettings = getAppSettings();
+  const handleOpenNewManualForm = (preset?: ShiftPreset) => {
     setManualDate(new Date().toISOString().slice(0, 10));
-    setManualProject('');
-    setManualStart(currentSettings.defaultStartTime || '07:30');
-    setManualEnd(currentSettings.defaultEndTime || '16:00');
-    setManualBypassLunch(false);
-    setManualLocation('');
-    setManualNotes('');
-    setManualIsOvertime(false);
+    if (preset) {
+      handleApplyPreset(preset);
+    } else {
+      setSelectedPresetId('standard_8h');
+      const currentSettings = getAppSettings();
+      setManualProject('');
+      setManualStart(currentSettings.defaultStartTime || '07:30');
+      setManualEnd(currentSettings.defaultEndTime || '16:00');
+      setManualBypassLunch(false);
+      setManualLocation('');
+      setManualNotes('');
+      setManualIsOvertime(false);
+    }
     setManualOverride(false);
     setEditingEntry(null);
     setShowManualForm(true);
@@ -999,44 +1126,48 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
           {/* Setup / Notes fields before clocking out */}
           <div className={`${isMobileView ? 'mt-3 space-y-2.5 border-t pt-3' : 'mt-4 space-y-3.5 border-t pt-5'} ${isClockedIn ? 'border-white/10' : 'border-main-border'}`}>
             <div>
-              <label className={`text-[11px] font-semibold uppercase font-mono block mb-1 ${isClockedIn ? 'text-blue-200' : 'text-muted-text'}`}>Active Task</label>
+              <label className={`text-[11px] font-semibold uppercase font-mono block mb-1 ${isClockedIn ? 'text-blue-200' : 'text-muted-text'}`}>
+                Active Task <span className="text-muted-text/60 font-normal lowercase">(optional)</span>
+              </label>
               <input
                 type="text"
                 value={activeProject}
                 onChange={(e) => setActiveProject(e.target.value)}
-                placeholder="What task or job are you doing? (e.g. Acme Site Coding)"
+                placeholder="What task or job are you doing? (optional)"
                 className={`w-full rounded-xl px-3 py-2 text-xs font-medium focus:outline-none transition ${
                   isClockedIn 
                     ? 'bg-blue-900/30 text-white border border-blue-400/30' 
                     : 'bg-input-bg text-main-text border border-main-border focus:border-blue-500/50'
                 }`}
-                required
               />
             </div>
 
             <div>
-              <label className={`text-[11px] font-semibold uppercase font-mono block mb-1 ${isClockedIn ? 'text-blue-200' : 'text-muted-text'}`}>Where are you? (Explanation)</label>
+              <label className={`text-[11px] font-semibold uppercase font-mono block mb-1 ${isClockedIn ? 'text-blue-200' : 'text-muted-text'}`}>
+                Where are you? <span className="text-muted-text/60 font-normal lowercase">(optional)</span>
+              </label>
               <input
                 type="text"
                 value={activeLocation}
                 onChange={(e) => setActiveLocation(e.target.value)}
-                placeholder="e.g. Remote, HQ Office, Customer Site"
+                placeholder="e.g. Remote, HQ Office, Customer Site (optional)"
                 className={`w-full rounded-xl px-3 py-2 text-xs font-medium focus:outline-none transition ${
                   isClockedIn 
                     ? 'bg-blue-900/30 text-white border border-blue-400/30' 
                     : 'bg-input-bg text-main-text border border-main-border focus:border-blue-500/50'
                 }`}
-                required
               />
             </div>
 
             {isClockedIn && (
               <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}>
-                <label className="text-[11px] font-semibold text-blue-200 uppercase font-mono block mb-1">Session Notes / Explanation</label>
+                <label className="text-[11px] font-semibold text-blue-200 uppercase font-mono block mb-1">
+                  Notes <span className="text-blue-300/60 font-normal lowercase">(optional)</span>
+                </label>
                 <textarea
                   value={activeNotes}
                   onChange={(e) => setActiveNotes(e.target.value)}
-                  placeholder="Describe your current work segment..."
+                  placeholder="Describe your current work segment (optional)..."
                   className={`w-full rounded-xl border border-blue-400/30 bg-blue-900/30 px-3 py-2 text-xs text-white placeholder-blue-300/50 focus:outline-none ${isMobileView ? 'h-12' : 'h-16'} resize-none`}
                 />
               </motion.div>
@@ -1126,20 +1257,57 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
             </motion.div>
           )}
 
-        </div>        {/* Manual Timesheet Card Injector Button */}
+        </div>
+
+        {/* Manual Timesheet Card Injector Button */}
         <button
-          onClick={handleOpenNewManualForm}
+          onClick={() => handleOpenNewManualForm()}
           className={`w-full flex items-center justify-center gap-2 rounded-2xl border border-main-border bg-card-bg ${isMobileView ? 'py-2.5 text-xs' : 'py-3.5 text-sm'} font-medium text-muted-text hover:bg-input-bg transition cursor-pointer`}
         >
           <Plus className="h-4 w-4 text-blue-500" />
           <span>Manual Shift Logger</span>
         </button>
 
+        {/* One-Tap Quick Shift Presets */}
+        <div className="rounded-2xl border border-main-border bg-card-bg p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold text-muted-text uppercase font-mono tracking-wider flex items-center gap-1.5">
+              <Sparkles className="h-3 w-3 text-blue-400" />
+              Shift Presets
+            </span>
+            <span className="text-[10px] text-muted-text/70 font-mono">One-tap logger</span>
+          </div>
+          <div className="grid grid-cols-3 gap-1.5">
+            {SHIFT_PRESETS.map((preset) => (
+              <button
+                key={`dash-preset-${preset.id}`}
+                onClick={() => handleOpenNewManualForm(preset)}
+                className="flex flex-col items-center justify-center p-2 rounded-xl border border-main-border/70 bg-input-bg/60 hover:border-blue-500/50 hover:bg-blue-500/10 text-muted-text hover:text-main-text transition-all cursor-pointer text-center group"
+                title={`Quick log: ${preset.name} (${preset.startTime} – ${preset.endTime})`}
+              >
+                <span className="text-xs font-bold group-hover:text-blue-400 transition-colors">{preset.name}</span>
+                <span className="text-[9px] font-mono text-muted-text mt-0.5">{preset.badge}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
       </div>
 
       {/* RIGHT COLUMN: WEEKLY LOGS */}
       <div className={`lg:col-span-2 ${isMobileView ? 'space-y-6' : 'space-y-6 h-full overflow-y-auto pr-1 pb-4'}`}>
         
+        {/* GOOGLE CALENDAR SYNC & OAUTH INTEGRATION CARD */}
+        <GoogleCalendarIntegrationCard
+          currentUsername={user?.username}
+          shifts={futureShifts}
+          onShiftsUpdated={() => {
+            const allShifts = getFutureShifts();
+            const userShifts = user ? allShifts.filter(s => s.username === user.username) : allShifts;
+            setFutureShifts(userShifts);
+          }}
+        />
+
         {/* FUTURE SCHEDULE & ABSENCES CALENDAR */}
         <div className="rounded-3xl border border-blue-500/20 bg-[#1e3a8a]/5 p-6 shadow-xl space-y-5">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between pb-3 border-b border-slate-800">
@@ -1303,18 +1471,52 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                           : 'border-blue-500/40 bg-blue-500/5 text-slate-200'
                       }`}
                     >
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
+                      <div className="space-y-1.5 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
                           <span className="inline-flex items-center rounded bg-blue-500/10 px-1.5 py-0.5 text-[9px] font-bold text-blue-400 uppercase tracking-wider border border-blue-500/15 font-mono">
                             {shift.project || 'General Shift'}
                           </span>
                           {!shift.acknowledged && (
                             <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse" title="Requires Acknowledgment" />
                           )}
+
+                          {/* Google Calendar Sync Indicator */}
+                          {shift.googleCalendarEventId ? (
+                            <a
+                              href={shift.googleCalendarHtmlLink || 'https://calendar.google.com'}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-[9px] font-mono text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 px-2 py-0.5 rounded-full border border-blue-500/20 transition cursor-pointer"
+                              title="Event synced on Google Calendar. Click to view."
+                            >
+                              <Calendar className="h-2.5 w-2.5" />
+                              <span>Google Calendar Synced</span>
+                              <ExternalLink className="h-2 w-2 opacity-70" />
+                            </a>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleSyncIndividualShift(shift)}
+                              disabled={syncingShiftId === shift.id}
+                              className="inline-flex items-center gap-1 text-[9px] font-mono text-slate-400 hover:text-slate-200 bg-slate-800/60 hover:bg-slate-700/70 px-2 py-0.5 rounded-full border border-slate-700/80 transition cursor-pointer disabled:opacity-50"
+                              title="Sync this shift to your Google Calendar"
+                            >
+                              <RefreshCw className={`h-2.5 w-2.5 ${syncingShiftId === shift.id ? 'animate-spin text-blue-400' : ''}`} />
+                              <span>{syncingShiftId === shift.id ? 'Syncing...' : 'Sync to Calendar'}</span>
+                            </button>
+                          )}
                         </div>
-                        <p className="text-xs font-bold font-mono text-slate-100">
-                          Time: {shift.startTime} – {shift.endTime}
-                        </p>
+
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-mono">
+                          <span className="font-bold text-slate-100">
+                            ⏰ {shift.startTime} – {shift.endTime}
+                          </span>
+                          <span className="text-slate-300 flex items-center gap-1">
+                            <MapPin className="h-3 w-3 text-blue-400 shrink-0" />
+                            <span className="truncate">{shift.location || 'General Site'}</span>
+                          </span>
+                        </div>
+
                         {shift.notes && (
                           <p className="text-[11px] text-slate-400 italic bg-[#09090B]/45 px-2 py-1.5 rounded border border-slate-800/80 max-w-lg font-mono">
                             Note: {shift.notes}
@@ -1330,9 +1532,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                           </span>
                         ) : (
                           <button
-                            onClick={() => {
-                              acknowledgeFutureShift(shift.id);
-                            }}
+                            onClick={() => handleAcknowledgeWithSync(shift.id)}
                             className="flex items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 text-xs font-semibold transition active:scale-95 cursor-pointer shadow-md shadow-blue-500/15"
                           >
                             <CheckCircle2 className="h-3.5 w-3.5" />
@@ -1510,13 +1710,47 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                           </span>
                         </div>
 
-                        <div className="space-y-0.5">
+                        <div className="space-y-1">
                           <h4 className="text-xs font-bold text-slate-100 font-mono">
                             {formattedShiftDate}
                           </h4>
-                          <p className="text-xs text-slate-300 font-mono flex items-center gap-1">
-                            <span className="text-blue-400 font-bold font-sans">●</span> {shift.startTime} – {shift.endTime}
-                          </p>
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-300 font-mono">
+                            <span className="flex items-center gap-1">
+                              <span className="text-blue-400 font-bold font-sans">●</span> {shift.startTime} – {shift.endTime}
+                            </span>
+                            <span className="flex items-center gap-1 text-slate-300">
+                              <MapPin className="h-3 w-3 text-blue-400 shrink-0" />
+                              <span>{shift.location || 'General Site'}</span>
+                            </span>
+                          </div>
+
+                          {/* Google Calendar Sync Badge / Action */}
+                          <div className="pt-0.5">
+                            {shift.googleCalendarEventId ? (
+                              <a
+                                href={shift.googleCalendarHtmlLink || 'https://calendar.google.com'}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 text-[9px] font-mono text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 px-2 py-0.5 rounded-full border border-blue-500/20 transition cursor-pointer"
+                                title="Synced on Google Calendar. Click to open."
+                              >
+                                <Calendar className="h-2.5 w-2.5" />
+                                <span>Google Calendar Synced</span>
+                                <ExternalLink className="h-2 w-2 opacity-70" />
+                              </a>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleSyncIndividualShift(shift)}
+                                disabled={syncingShiftId === shift.id}
+                                className="inline-flex items-center gap-1 text-[9px] font-mono text-slate-400 hover:text-slate-200 bg-slate-800/60 hover:bg-slate-700/70 px-2 py-0.5 rounded-full border border-slate-700/80 transition cursor-pointer disabled:opacity-50"
+                                title="Sync this shift to your Google Calendar"
+                              >
+                                <RefreshCw className={`h-2.5 w-2.5 ${syncingShiftId === shift.id ? 'animate-spin text-blue-400' : ''}`} />
+                                <span>{syncingShiftId === shift.id ? 'Syncing...' : 'Sync to Google Calendar'}</span>
+                              </button>
+                            )}
+                          </div>
                         </div>
 
                         {shift.notes && (
@@ -1535,7 +1769,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                           </span>
                         ) : (
                           <button
-                            onClick={() => acknowledgeFutureShift(shift.id)}
+                            onClick={() => handleAcknowledgeWithSync(shift.id)}
                             className="flex items-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 text-xs font-bold transition active:scale-95 cursor-pointer shadow-md shadow-blue-500/15 font-sans"
                           >
                             <CheckCircle2 className="h-3.5 w-3.5" />
@@ -1963,6 +2197,42 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
 
               <form onSubmit={handleManualSubmit} className="space-y-4">
                 
+                {/* ONE-TAP SHIFT PRESETS */}
+                <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-blue-500 dark:text-blue-400 uppercase font-mono tracking-wider flex items-center gap-1">
+                      <Sparkles className="h-3 w-3 text-blue-500" />
+                      One-Tap Shift Presets
+                    </span>
+                    <span className="text-[10px] text-muted-text">Auto-fills hours & lunch</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {SHIFT_PRESETS.map((preset) => {
+                      const isSelected = selectedPresetId === preset.id || (manualStart === preset.startTime && manualEnd === preset.endTime && manualBypassLunch === preset.bypassLunch);
+                      return (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => handleApplyPreset(preset)}
+                          className={`flex flex-col items-start p-2 rounded-xl border text-left transition-all cursor-pointer ${
+                            isSelected
+                              ? 'border-blue-500 bg-blue-500/15 text-main-text shadow-xs ring-1 ring-blue-500/30'
+                              : 'border-main-border bg-card-bg/80 text-muted-text hover:text-main-text hover:border-blue-400/40 hover:bg-input-bg'
+                          }`}
+                        >
+                          <span className="text-xs font-bold leading-tight truncate w-full">{preset.name}</span>
+                          <span className="text-[10px] font-mono text-muted-text mt-0.5">{preset.startTime}–{preset.endTime}</span>
+                          <span className={`text-[9px] font-semibold px-1.5 py-0.5 mt-1 rounded-md ${
+                            preset.isOvertime ? 'bg-amber-500/20 text-amber-500 dark:text-amber-300' : 'bg-blue-500/20 text-blue-600 dark:text-blue-300'
+                          }`}>
+                            {preset.badge}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-[11px] font-semibold text-muted-text block mb-1 uppercase font-mono">Date</label>
@@ -1975,38 +2245,130 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                     />
                   </div>
                   <div>
-                    <label className="text-[11px] font-semibold text-muted-text block mb-1 uppercase font-mono">Active Task / Job</label>
+                    <label className="text-[11px] font-semibold text-muted-text block mb-1 uppercase font-mono">
+                      Active Task <span className="text-muted-text/60 font-normal lowercase">(optional)</span>
+                    </label>
                     <input
                       type="text"
-                      required
                       value={manualProject}
                       onChange={(e) => setManualProject(e.target.value)}
-                      placeholder="e.g. Site Maintenance"
+                      placeholder="e.g. Site Maintenance (optional)"
                       className="w-full rounded-xl border border-main-border bg-input-bg px-3 py-2 text-xs font-medium text-main-text focus:border-blue-500/50 focus:outline-none transition-colors"
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-[11px] font-semibold text-muted-text block mb-1 uppercase font-mono">Start Time</label>
-                    <input
-                      type="time"
-                      required
-                      value={manualStart}
-                      onChange={(e) => setManualStart(e.target.value)}
-                      className="w-full rounded-xl border border-main-border bg-input-bg px-3 py-2 text-xs font-medium text-main-text focus:border-blue-500/50 focus:outline-none transition-colors"
-                    />
+                {/* TIME DEFAULTS & AUTO-ROUNDING CONTROLS */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-muted-text uppercase font-mono">Shift Times</span>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={handleSetStandardHours}
+                        className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold border transition cursor-pointer ${
+                          manualStart === '07:30' && manualEnd === '16:00'
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'border-main-border bg-input-bg text-muted-text hover:text-main-text'
+                        }`}
+                        title="Standard Business Hours: 7:30 AM – 4:00 PM"
+                      >
+                        7:30 AM – 4:00 PM
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSetCurrentRoundedTimes}
+                        className="px-2 py-0.5 rounded-lg text-[10px] font-semibold border border-main-border bg-input-bg text-muted-text hover:text-main-text transition cursor-pointer"
+                        title="Set to Current Time rounded to nearest 15 minutes"
+                      >
+                        Now (Round 15m)
+                      </button>
+                    </div>
                   </div>
-                  <div>
-                    <label className="text-[11px] font-semibold text-muted-text block mb-1 uppercase font-mono">End Time</label>
-                    <input
-                      type="time"
-                      required
-                      value={manualEnd}
-                      onChange={(e) => setManualEnd(e.target.value)}
-                      className="w-full rounded-xl border border-main-border bg-input-bg px-3 py-2 text-xs font-medium text-main-text focus:border-blue-500/50 focus:outline-none transition-colors"
-                    />
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-[11px] font-semibold text-muted-text uppercase font-mono">Start Time</label>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleRoundTime('start', 15)}
+                            className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-input-bg border border-main-border text-muted-text hover:text-main-text hover:border-blue-500 transition cursor-pointer"
+                            title="Round start time to nearest 15 minutes"
+                          >
+                            15m
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRoundTime('start', 5)}
+                            className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-input-bg border border-main-border text-muted-text hover:text-main-text hover:border-blue-500 transition cursor-pointer"
+                            title="Round start time to nearest 5 minutes"
+                          >
+                            5m
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSetTimeToNow('start', 15)}
+                            className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-blue-500/15 border border-blue-500/30 text-blue-500 dark:text-blue-400 hover:bg-blue-500 hover:text-white transition cursor-pointer"
+                            title="Set start time to current time (15m rounded)"
+                          >
+                            Now
+                          </button>
+                        </div>
+                      </div>
+                      <input
+                        type="time"
+                        required
+                        value={manualStart}
+                        onChange={(e) => {
+                          setManualStart(e.target.value);
+                          setSelectedPresetId(null);
+                        }}
+                        className="w-full rounded-xl border border-main-border bg-input-bg px-3 py-2 text-xs font-medium text-main-text focus:border-blue-500/50 focus:outline-none transition-colors"
+                      />
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-[11px] font-semibold text-muted-text uppercase font-mono">End Time</label>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleRoundTime('end', 15)}
+                            className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-input-bg border border-main-border text-muted-text hover:text-main-text hover:border-blue-500 transition cursor-pointer"
+                            title="Round end time to nearest 15 minutes"
+                          >
+                            15m
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRoundTime('end', 5)}
+                            className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-input-bg border border-main-border text-muted-text hover:text-main-text hover:border-blue-500 transition cursor-pointer"
+                            title="Round end time to nearest 5 minutes"
+                          >
+                            5m
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSetTimeToNow('end', 15)}
+                            className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-blue-500/15 border border-blue-500/30 text-blue-500 dark:text-blue-400 hover:bg-blue-500 hover:text-white transition cursor-pointer"
+                            title="Set end time to current time (15m rounded)"
+                          >
+                            Now
+                          </button>
+                        </div>
+                      </div>
+                      <input
+                        type="time"
+                        required
+                        value={manualEnd}
+                        onChange={(e) => {
+                          setManualEnd(e.target.value);
+                          setSelectedPresetId(null);
+                        }}
+                        className="w-full rounded-xl border border-main-border bg-input-bg px-3 py-2 text-xs font-medium text-main-text focus:border-blue-500/50 focus:outline-none transition-colors"
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -2025,13 +2387,14 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                 </div>
 
                 <div>
-                  <label className="text-[11px] font-semibold text-muted-text block mb-1 uppercase font-mono">Where? (Explanation)</label>
+                  <label className="text-[11px] font-semibold text-muted-text block mb-1 uppercase font-mono">
+                    Where / Location <span className="text-muted-text/60 font-normal lowercase">(optional)</span>
+                  </label>
                   <input
                     type="text"
-                    required
                     value={manualLocation}
                     onChange={(e) => setManualLocation(e.target.value)}
-                    placeholder="e.g. Remote, Office, Customer Site"
+                    placeholder="e.g. Remote, Office, Customer Site (optional)"
                     className="w-full rounded-xl border border-main-border bg-input-bg px-3 py-2 text-xs font-medium text-main-text focus:border-blue-500/50 focus:outline-none transition-colors"
                   />
                 </div>
@@ -2050,12 +2413,13 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                 </div>
 
                 <div>
-                  <label className="text-[11px] font-semibold text-muted-text block mb-1 uppercase font-mono">Tasks / Achievements / Explanation</label>
+                  <label className="text-[11px] font-semibold text-muted-text block mb-1 uppercase font-mono">
+                    Notes <span className="text-muted-text/60 font-normal lowercase">(optional)</span>
+                  </label>
                   <textarea
-                    required
                     value={manualNotes}
                     onChange={(e) => setManualNotes(e.target.value)}
-                    placeholder="Describe task accomplishments or provide explanation during this shift segment..."
+                    placeholder="Add shift notes or comments (optional)..."
                     className="w-full rounded-xl border border-main-border bg-input-bg px-3 py-2 text-xs text-main-text placeholder-muted-text/60 focus:border-blue-500/50 focus:outline-none h-20 resize-none transition-colors"
                   />
                 </div>

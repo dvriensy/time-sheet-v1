@@ -8,6 +8,7 @@ import { DEFAULT_GEOFENCE, MOCK_TIMESHEETS, MOCK_SECURITY_LOGS } from '../data/m
 import { db } from '../lib/firebase';
 import { doc, setDoc, getDoc, getDocs, collection, deleteDoc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
+import { getAlbertaHoliday } from './albertaHolidays';
 
 export enum OperationType {
   CREATE = 'create',
@@ -659,7 +660,10 @@ export function initializeStorage() {
       clockInTime: '09:00',
       clockOutReminder: true,
       clockOutTime: '17:00',
-      geofenceReminder: true
+      geofenceReminder: true,
+      dailyShiftReminder: true,
+      dailyShiftReminderTime: '17:00',
+      pushNotificationsEnabled: true
     };
     localStorage.setItem(KEY_REMINDERS, JSON.stringify(defaultReminders));
   }
@@ -1043,9 +1047,16 @@ export function saveTimesheets(entries: TimesheetEntry[]) {
 }
 
 export function calculateHoursAndEarnings(startTime: string, endTime: string, breakMinutes: number, rate?: number) {
+  if (!startTime || !endTime) {
+    return { totalHours: 0, earnings: 0 };
+  }
   const [startH, startM] = startTime.split(':').map(Number);
   const [endH, endM] = endTime.split(':').map(Number);
   
+  if (isNaN(startH) || isNaN(startM) || isNaN(endH) || isNaN(endM)) {
+    return { totalHours: 0, earnings: 0 };
+  }
+
   let startVal = startH * 60 + startM;
   let endVal = endH * 60 + endM;
   
@@ -1060,10 +1071,11 @@ export function calculateHoursAndEarnings(startTime: string, endTime: string, br
   const grossHalfHours = Math.ceil(grossMinutes / 30);
   const grossHours = grossHalfHours * 0.5;
   
-  // Any shift under 5 hours (300 minutes) will not have auto lunch removal
-  const effectiveBreakMinutes = grossMinutes < 300 ? 0 : (breakMinutes || 0);
+  // Any shift under 5 hours (300 minutes) will not have auto lunch removal.
+  // Prevent negative hours on short shifts with lunch deductions by clamping effective deduction.
+  const effectiveBreakMinutes = grossMinutes < 300 ? 0 : Math.min(grossMinutes, (breakMinutes || 0));
   const breakHours = effectiveBreakMinutes / 60;
-  const totalHours = Number(Math.max(0, grossHours - breakHours).toFixed(2));
+  const totalHours = Math.max(0, Number(Math.max(0, grossHours - breakHours).toFixed(2)));
   
   return { totalHours, earnings: 0 };
 }
@@ -1224,12 +1236,28 @@ export function saveGeofenceSettings(settings: GeofenceSettings) {
 export function getReminderSettings(): ReminderSettings {
   initializeStorage();
   const raw = localStorage.getItem(KEY_REMINDERS);
-  return raw ? JSON.parse(raw) : {
-    clockInReminder: true,
-    clockInTime: '09:00',
-    clockOutReminder: true,
-    clockOutTime: '17:00',
-    geofenceReminder: true
+  if (!raw) {
+    return {
+      clockInReminder: true,
+      clockInTime: '09:00',
+      clockOutReminder: true,
+      clockOutTime: '17:00',
+      geofenceReminder: true,
+      dailyShiftReminder: true,
+      dailyShiftReminderTime: '17:00',
+      pushNotificationsEnabled: true
+    };
+  }
+  const parsed = JSON.parse(raw);
+  return {
+    clockInReminder: parsed.clockInReminder ?? true,
+    clockInTime: parsed.clockInTime || '09:00',
+    clockOutReminder: parsed.clockOutReminder ?? true,
+    clockOutTime: parsed.clockOutTime || '17:00',
+    geofenceReminder: parsed.geofenceReminder ?? true,
+    dailyShiftReminder: parsed.dailyShiftReminder ?? true,
+    dailyShiftReminderTime: parsed.dailyShiftReminderTime || '17:00',
+    pushNotificationsEnabled: parsed.pushNotificationsEnabled ?? true
   };
 }
 
@@ -1504,6 +1532,100 @@ export function clearActiveSession() {
   deleteActiveSessionFromFirestore(currentUsername);
 }
 
+export function startOneTapTimer(options?: {
+  project?: string;
+  location?: string;
+  notes?: string;
+  isOvertime?: boolean;
+}): ActiveSession | null {
+  const currentUsername = localStorage.getItem('timesheets_tracker_current_user');
+  if (!currentUsername) return null;
+
+  const currentUserObj = getCurrentUser();
+  const fullName = currentUserObj ? currentUserObj.fullName : currentUsername;
+  
+  const now = new Date();
+  const nowMs = now.getTime();
+  const startTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+  const todayStr = now.toISOString().slice(0, 10);
+  const holiday = getAlbertaHoliday(todayStr);
+
+  const newSession: ActiveSession = {
+    username: currentUsername,
+    fullName,
+    isClockedIn: true,
+    isOnBreak: false,
+    startTime,
+    project: options?.project || 'General Work',
+    location: options?.location || 'General Site',
+    notes: options?.notes || (holiday ? `Holiday: ${holiday}` : ''),
+    lastActiveTimestamp: now.toISOString(),
+    secondsElapsed: 0,
+    breakSecondsElapsed: 0,
+    daySecondsElapsed: 0,
+    dayBreakSecondsElapsed: 0,
+    isOvertime: options?.isOvertime || false,
+    taskStartTimestamp: nowMs,
+    clockInTimestamp: nowMs,
+  };
+
+  const all = getActiveSessions();
+  all[currentUsername] = newSession;
+  localStorage.setItem('timesheets_tracker_active_sessions', JSON.stringify(all));
+  syncActiveSessionToFirestore(currentUsername, newSession);
+
+  window.dispatchEvent(new Event('storage-sync'));
+  window.dispatchEvent(new CustomEvent('timer-state-changed', { detail: { isClockedIn: true, session: newSession } }));
+  return newSession;
+}
+
+export function stopOneTapTimer(options?: {
+  bypassLunch?: boolean;
+  notes?: string;
+  project?: string;
+  location?: string;
+  isOvertime?: boolean;
+}): TimesheetEntry | null {
+  const currentUsername = localStorage.getItem('timesheets_tracker_current_user');
+  if (!currentUsername) return null;
+
+  const all = getActiveSessions();
+  const session = all[currentUsername];
+  if (!session || !session.isClockedIn) return null;
+
+  const now = new Date();
+  const nowMs = now.getTime();
+  const endStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+
+  // Calculate elapsed time from clockInTimestamp
+  const clockInMs = session.clockInTimestamp || (nowMs - ((session.daySecondsElapsed || session.secondsElapsed || 0) * 1000));
+  const elapsedSecs = Math.max(0, Math.floor((nowMs - clockInMs) / 1000));
+
+  // Lunch deduction: under 5 hours (18000s) = 0 lunch deduction, otherwise 30m unless bypassLunch
+  const isUnder5Hours = elapsedSecs < 18000;
+  const breakMinutes = (options?.bypassLunch || isUnder5Hours) ? 0 : 30;
+
+  const entry = addTimesheetEntry({
+    date: now.toISOString().slice(0, 10),
+    startTime: session.startTime || endStr,
+    endTime: endStr,
+    breakMinutes,
+    project: options?.project || session.project || 'General Work',
+    locationName: options?.location || session.location || 'General Site',
+    notes: options?.notes || session.notes || (options?.bypassLunch ? 'Standard shift (Worked through lunch).' : isUnder5Hours ? 'Shift under 5 hours (No lunch deduction).' : 'Standard shift logged via active timer (30m lunch auto-deducted).'),
+    geofencedClockIn: false,
+    geofencedClockOut: false,
+    isOvertime: options?.isOvertime !== undefined ? options.isOvertime : !!session.isOvertime,
+  });
+
+  clearActiveSessionLocally(currentUsername);
+  deleteActiveSessionFromFirestore(currentUsername);
+
+  window.dispatchEvent(new Event('storage-sync'));
+  window.dispatchEvent(new CustomEvent('timer-state-changed', { detail: { isClockedIn: false, entry } }));
+  return entry;
+}
+
 export async function deleteUserAccount(username: string): Promise<boolean> {
   const usersRaw = localStorage.getItem(KEY_USERS_LIST);
   let users: UserAccount[] = usersRaw ? JSON.parse(usersRaw) : [];
@@ -1630,31 +1752,35 @@ export function enrichEntriesWithOvertime(entries: TimesheetEntry[], usersList?:
     // Sort chronologically by startTime
     groupEntries.sort((a, b) => a.startTime.localeCompare(b.startTime));
     
-    let runningTotalHours = 0;
+    let runningRegularHours = 0;
     for (const entry of groupEntries) {
       const rate = entry.hourlyRate || users.find(u => u.username === entry.username)?.hourlyRate || 45;
-      const entryHours = entry.totalHours;
+      const entryHours = Math.max(0, entry.totalHours);
       
       let regularHours = 0;
       let overtimeHours = 0;
       
-      // If entry is explicitly imputed as overtime work (e.g., manual override or toggle)
+      // If entry is explicitly marked as overtime work (e.g., manual override or toggle)
       if (entry.isOvertime) {
         overtimeHours = entryHours;
         regularHours = 0;
+        // CRITICAL: Manual overtime shifts DO NOT count toward the daily 8-hour regular threshold,
+        // preventing manual overtime hours from prematurely forcing subsequent regular shifts into overtime.
       } else {
-        // Automatic calculation: First 8 hours on a date are regular; hours exceeding 8 are automatically overtime
-        if (runningTotalHours >= 8) {
+        // Automatic calculation: First 8 regular hours on a date are regular; hours exceeding 8 are automatically overtime
+        const remainingRegular = Math.max(0, 8 - runningRegularHours);
+        if (remainingRegular <= 0) {
           overtimeHours = entryHours;
           regularHours = 0;
-        } else if (runningTotalHours + entryHours <= 8) {
+        } else if (entryHours <= remainingRegular) {
           regularHours = entryHours;
           overtimeHours = 0;
+          runningRegularHours += entryHours;
         } else {
-          regularHours = 8 - runningTotalHours;
+          regularHours = remainingRegular;
           overtimeHours = entryHours - regularHours;
+          runningRegularHours += regularHours;
         }
-        runningTotalHours += entryHours;
       }
       
       const computedEarnings = (regularHours * rate) + (overtimeHours * rate * 1.5);
@@ -1785,7 +1911,7 @@ export function getFutureShifts(): FutureShift[] {
   return raw ? JSON.parse(raw) : [];
 }
 
-export function addFutureShift(username: string, date: string, startTime: string, endTime: string, project: string, notes?: string): FutureShift | null {
+export function addFutureShift(username: string, date: string, startTime: string, endTime: string, project: string, notes?: string, location?: string): FutureShift | null {
   const users = getAllUsers();
   const foundUser = users.find(u => u.username === username);
   const fullName = foundUser ? foundUser.fullName : username;
@@ -1799,6 +1925,7 @@ export function addFutureShift(username: string, date: string, startTime: string
     startTime,
     endTime,
     project,
+    location: location || 'General Site',
     notes: notes || '',
     createdAt: new Date().toISOString()
   };
@@ -1809,6 +1936,19 @@ export function addFutureShift(username: string, date: string, startTime: string
   
   window.dispatchEvent(new Event('storage-sync'));
   return newShift;
+}
+
+export function updateFutureShift(updatedShift: FutureShift): boolean {
+  const shifts = getFutureShifts();
+  const index = shifts.findIndex(s => s.id === updatedShift.id);
+  if (index === -1) return false;
+
+  shifts[index] = { ...shifts[index], ...updatedShift };
+  localStorage.setItem(KEY_FUTURE_SHIFTS, JSON.stringify(shifts));
+  syncFutureShiftToFirestore(shifts[index]);
+
+  window.dispatchEvent(new Event('storage-sync'));
+  return true;
 }
 
 export function deleteFutureShift(id: string): boolean {

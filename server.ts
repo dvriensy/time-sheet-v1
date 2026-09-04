@@ -3,6 +3,7 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { initializeApp } from "firebase/app";
 import { getFirestore, collection, query, where, getDocs, deleteDoc, doc, getDoc, setDoc } from "firebase/firestore";
+import webpush from "web-push";
 
 // Initialize Firebase SDK on the backend
 const firebaseConfig = {
@@ -17,6 +18,29 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app, "ai-studio-timesheets-73827a6b-bcc0-4d4a-96a4-7fb232ef0f22");
 
+// Configure VAPID Web Push Keys
+let activeVapidKeys: { publicKey: string; privateKey: string };
+try {
+  activeVapidKeys = webpush.generateVAPIDKeys();
+  webpush.setVapidDetails(
+    'mailto:notifications@workspace.app',
+    activeVapidKeys.publicKey,
+    activeVapidKeys.privateKey
+  );
+  console.log('[PUSH SERVER] VAPID keys successfully generated and configured.');
+} catch (vapidErr) {
+  console.error('[PUSH SERVER] Error initializing VAPID keys:', vapidErr);
+}
+
+// In-memory registry of active push subscriptions
+interface StoredSubscription {
+  id: string;
+  username: string;
+  subscription: webpush.PushSubscription;
+  createdAt: string;
+}
+const activePushSubscriptions = new Map<string, StoredSubscription>();
+
 async function startServer() {
   const serverApp = express();
   const PORT = 3000;
@@ -28,6 +52,179 @@ async function startServer() {
   serverApp.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
   });
+
+  // Google OAuth Configuration endpoint for Workspace & Google Calendar Integration
+  serverApp.get("/api/oauth/config", (req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    if (!clientId) {
+      return res.status(200).json({
+        configured: false,
+        clientId: "",
+        scopes: [
+          "https://www.googleapis.com/auth/calendar.events"
+        ],
+        message: "GOOGLE_CLIENT_ID environment variable not set. Please configure in Settings."
+      });
+    }
+
+    return res.json({
+      configured: true,
+      clientId,
+      scopes: [
+        "https://www.googleapis.com/auth/calendar.events"
+      ]
+    });
+  });
+
+  // --- Web Push Notifications API ---
+  // Return VAPID Public Key for browser pushManager.subscribe()
+  serverApp.get("/api/push/vapid-public-key", (req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    if (!activeVapidKeys?.publicKey) {
+      return res.status(500).json({ error: "VAPID keys not configured." });
+    }
+    return res.json({ publicKey: activeVapidKeys.publicKey });
+  });
+
+  // Store Push Subscription from Client
+  serverApp.post("/api/push/subscribe", (req, res) => {
+    const { subscription, username } = req.body;
+    if (!subscription || !subscription.endpoint) {
+      return res.status(400).json({ error: "Valid push subscription object required." });
+    }
+
+    const key = subscription.endpoint;
+    activePushSubscriptions.set(key, {
+      id: key,
+      username: username || 'user',
+      subscription,
+      createdAt: new Date().toISOString()
+    });
+
+    console.log(`[PUSH SERVER] Registered push subscription for @${username || 'user'}. Total active subscriptions: ${activePushSubscriptions.size}`);
+    return res.status(201).json({ success: true, registered: true });
+  });
+
+  // Unsubscribe Endpoint
+  serverApp.post("/api/push/unsubscribe", (req, res) => {
+    const { endpoint } = req.body;
+    if (endpoint && activePushSubscriptions.has(endpoint)) {
+      activePushSubscriptions.delete(endpoint);
+      console.log(`[PUSH SERVER] Removed subscription for endpoint. Remaining: ${activePushSubscriptions.size}`);
+    }
+    return res.json({ success: true, removed: true });
+  });
+
+  // Trigger 5:00 PM Workday Shift Reminder Push Notification
+  serverApp.post("/api/push/trigger-5pm-reminder", async (req, res) => {
+    const { username } = req.body;
+    console.log(`[PUSH SERVER] Triggering 5:00 PM Workday Shift Reminder push notification${username ? ` for @${username}` : ' to all subscribers'}`);
+
+    const payload = JSON.stringify({
+      title: "WORKSPACE • 5:00 PM Shift Reminder",
+      body: "Your workday shift has ended! Tap here to open the shift logger and record your hours.",
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      url: "/?tab=timesheet&action=log-shift",
+      tag: "workday-shift-reminder-5pm"
+    });
+
+    let sentCount = 0;
+    const errors: any[] = [];
+
+    const sendPromises: Promise<any>[] = [];
+    activePushSubscriptions.forEach((sub, key) => {
+      if (!username || sub.username === username) {
+        sendPromises.push(
+          webpush.sendNotification(sub.subscription, payload)
+            .then(() => {
+              sentCount++;
+            })
+            .catch((err) => {
+              console.warn(`[PUSH SERVER] Failed to send push to ${key.slice(0, 30)}...`, err?.statusCode || err?.message);
+              // Clean up expired subscriptions (410 Gone / 404 Not Found)
+              if (err?.statusCode === 410 || err?.statusCode === 404) {
+                activePushSubscriptions.delete(key);
+              }
+              errors.push(err?.message || "Send error");
+            })
+        );
+      }
+    });
+
+    await Promise.all(sendPromises);
+
+    return res.json({
+      success: true,
+      sentCount,
+      totalSubscribers: activePushSubscriptions.size,
+      errors: errors.length > 0 ? errors : undefined
+    });
+  });
+
+  // Trigger Test Push Alert
+  serverApp.post("/api/push/test", async (req, res) => {
+    const { username } = req.body;
+    const payload = JSON.stringify({
+      title: "WORKSPACE • Test Push Notification",
+      body: "Push alerts & Service Worker are fully operational! Tap to open the shift logger.",
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      url: "/?tab=timesheet&action=log-shift",
+      tag: "workspace-push-test"
+    });
+
+    let sentCount = 0;
+    const sendPromises: Promise<any>[] = [];
+    activePushSubscriptions.forEach((sub, key) => {
+      if (!username || sub.username === username) {
+        sendPromises.push(
+          webpush.sendNotification(sub.subscription, payload)
+            .then(() => { sentCount++; })
+            .catch((err) => {
+              if (err?.statusCode === 410 || err?.statusCode === 404) {
+                activePushSubscriptions.delete(key);
+              }
+            })
+        );
+      }
+    });
+
+    await Promise.all(sendPromises);
+    return res.json({ success: true, sentCount });
+  });
+
+  // Server-side Automated Workday 5:00 PM Dispatcher
+  let lastDispatchedDate = "";
+  setInterval(async () => {
+    const now = new Date();
+    const dayOfWeek = now.getDay(); // 1-5 = Monday to Friday
+    const isWorkday = dayOfWeek >= 1 && dayOfWeek <= 5;
+    
+    if (isWorkday && now.getHours() === 17 && now.getMinutes() === 0) {
+      const todayTag = now.toISOString().slice(0, 10);
+      if (lastDispatchedDate !== todayTag) {
+        lastDispatchedDate = todayTag;
+        console.log(`[PUSH SERVER] Automated 5:00 PM Workday Shift Reminder triggered for ${todayTag}!`);
+
+        const payload = JSON.stringify({
+          title: "WORKSPACE • 5:00 PM Shift Reminder",
+          body: "Your workday shift has ended! Tap here to open the shift logger and record your hours.",
+          icon: "/icon-192.png",
+          badge: "/icon-192.png",
+          url: "/?tab=timesheet&action=log-shift",
+          tag: "workday-shift-reminder-5pm"
+        });
+
+        activePushSubscriptions.forEach((sub) => {
+          webpush.sendNotification(sub.subscription, payload).catch((err) => {
+            console.warn('[PUSH SERVER] Automated push send failure:', err?.message);
+          });
+        });
+      }
+    }
+  }, 30000);
 
   // User list API route for manager dashboard
   const getUsersHandler = async (req: express.Request, res: express.Response) => {

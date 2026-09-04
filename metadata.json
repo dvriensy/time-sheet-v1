@@ -1,6 +1,6 @@
 {
   "name": "WORKSPACE",
   "description": "WORKSPACE - Time tracking, timesheets, future shift scheduling, supervisor approvals, dispatch operations, and PDF export reports.",
-  "requestFramePermissions": [],
+  "requestFramePermissions": ["geolocation"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

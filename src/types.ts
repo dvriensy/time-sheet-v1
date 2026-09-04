@@ -22,6 +22,21 @@ export interface TimesheetEntry {
   earnings?: number; // calculated
   isSynced: boolean;
   isOvertime?: boolean;
+  googleCalendarEventId?: string;
+  googleCalendarHtmlLink?: string;
+  lastSyncedToCalendar?: string;
+}
+
+export interface GoogleCalendarAuthState {
+  isConnected: boolean;
+  accessToken: string | null;
+  expiresAt: number | null;
+  email: string | null;
+  name: string | null;
+  picture: string | null;
+  calendarId: string;
+  autoSyncShifts: boolean;
+  lastSyncTime: string | null;
 }
 
 export interface GeofenceSettings {
@@ -40,6 +55,9 @@ export interface ReminderSettings {
   clockOutReminder: boolean;
   clockOutTime: string; // HH:MM
   geofenceReminder: boolean;
+  dailyShiftReminder: boolean;
+  dailyShiftReminderTime?: string; // HH:MM, default "17:00"
+  pushNotificationsEnabled?: boolean;
 }
 
 export interface TeamMember {
@@ -83,9 +101,13 @@ export interface FutureShift {
   startTime: string; // HH:MM
   endTime: string; // HH:MM
   project: string;
+  location?: string;
   notes?: string;
   createdAt: string;
   acknowledged?: boolean;
+  googleCalendarEventId?: string;
+  googleCalendarHtmlLink?: string;
+  lastSyncedToCalendar?: string;
 }
 
 export interface SubmittedTimesheet {

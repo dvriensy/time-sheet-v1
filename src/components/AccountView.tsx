@@ -3,14 +3,27 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   User, Mail, Phone, Briefcase, DollarSign, Camera, Save, 
   Sparkles, CheckCircle2, RefreshCw, LogOut, Clock, Landmark,
-  Trash2
+  Trash2, BellRing, Send, ShieldCheck
 } from 'lucide-react';
-import { UserAccount, updateUserAccount, getTimesheets } from '../utils/storage';
+import { 
+  UserAccount, 
+  updateUserAccount, 
+  getTimesheets,
+  getReminderSettings,
+  saveReminderSettings
+} from '../utils/storage';
+import { ReminderSettings } from '../types';
+import { 
+  registerServiceWorker, 
+  getPushSubscriptionState, 
+  subscribeToPushNotifications, 
+  trigger5pmShiftReminder 
+} from '../utils/pushNotifications';
 
 interface AccountViewProps {
   currentUser: UserAccount;
@@ -59,6 +72,93 @@ export default function AccountView({ currentUser, onUpdateUser, onLogout, isMob
   const [role, setRole] = useState<'employee' | 'manager'>(currentUser.role || 'employee');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
+  const [activeTab, setActiveTab] = useState<'profile' | 'reminders'>('profile');
+
+  // Push notification and shift reminder states
+  const [reminders, setReminders] = useState<ReminderSettings>(() => getReminderSettings());
+  const [pushState, setPushState] = useState<{
+    supported: boolean;
+    permission: NotificationPermission;
+    isSubscribed: boolean;
+  }>({
+    supported: typeof window !== 'undefined' && 'serviceWorker' in navigator && 'Notification' in window,
+    permission: typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default',
+    isSubscribed: false
+  });
+  const [testingPush, setTestingPush] = useState(false);
+  const [enablingPush, setEnablingPush] = useState(false);
+  const [reminderToast, setReminderToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    registerServiceWorker();
+    getPushSubscriptionState().then((s) => {
+      setPushState({
+        supported: s.supported,
+        permission: s.permission,
+        isSubscribed: s.isSubscribed
+      });
+    });
+  }, []);
+
+  const handleSaveReminders = (updates: Partial<ReminderSettings>) => {
+    const next = { ...reminders, ...updates };
+    setReminders(next);
+    saveReminderSettings(next);
+    setReminderToast('Preferences updated successfully.');
+    setTimeout(() => setReminderToast(null), 3000);
+  };
+
+  const handleToggleDailyShiftReminder = async (enabled: boolean) => {
+    handleSaveReminders({ dailyShiftReminder: enabled });
+    if (enabled) {
+      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission !== 'granted') {
+        setEnablingPush(true);
+        try {
+          const ok = await subscribeToPushNotifications(currentUser.username);
+          const s = await getPushSubscriptionState();
+          setPushState({
+            supported: s.supported,
+            permission: s.permission,
+            isSubscribed: s.isSubscribed
+          });
+          if (ok) {
+            setReminderToast('Push Notifications enabled! You will be reminded at 5:00 PM.');
+          } else {
+            setReminderToast('Notification permission was not granted by browser.');
+          }
+        } catch (err: any) {
+          setReminderToast('Could not enable push: ' + (err?.message || 'Error'));
+        } finally {
+          setEnablingPush(false);
+        }
+      } else {
+        setReminderToast('Daily 5:00 PM shift reminder active!');
+      }
+    } else {
+      setReminderToast('Daily 5:00 PM shift reminder disabled.');
+    }
+  };
+
+  const handleTest5pmPushAlert = async () => {
+    setTestingPush(true);
+    try {
+      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission !== 'granted') {
+        await subscribeToPushNotifications(currentUser.username);
+        const s = await getPushSubscriptionState();
+        setPushState({
+          supported: s.supported,
+          permission: s.permission,
+          isSubscribed: s.isSubscribed
+        });
+      }
+      await trigger5pmShiftReminder(currentUser.username);
+      setReminderToast('5:00 PM Push Alert dispatched! Tap notification banner to open shift logger.');
+    } catch (e: any) {
+      setReminderToast('Error firing push alert: ' + (e?.message || 'Check browser permissions'));
+    } finally {
+      setTestingPush(false);
+    }
+  };
 
   // Account deletion states
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -327,13 +427,194 @@ export default function AccountView({ currentUser, onUpdateUser, onLogout, isMob
           </div>
         </div>
 
-        {/* RIGHT COLUMN: DETAILED EDITABLE PROFILE FORM (8 cols) */}
-        <div className="lg:col-span-8">
-          <form onSubmit={handleSave} className="bg-card-bg border border-main-border rounded-2xl p-6 md:p-8 shadow-xl space-y-6">
-            <div className="border-b border-main-border/60 pb-5">
-              <h2 className="text-lg font-bold text-main-text">Profile Information</h2>
-              <p className="text-xs text-muted-text mt-1">Configure and edit your identity, system information, and contract parameters.</p>
+        {/* RIGHT COLUMN: DETAILED EDITABLE PROFILE FORM & SHIFT REMINDERS (8 cols) */}
+        <div className="lg:col-span-8 space-y-6">
+          
+          {/* Sub-tab Navigation */}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-main-border/60 pb-3">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setActiveTab('profile')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer transition ${
+                  activeTab === 'profile'
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+                    : 'bg-card-bg text-muted-text hover:text-main-text hover:bg-main-border/20 border border-main-border'
+                }`}
+              >
+                <User className="h-4 w-4" />
+                <span>Profile Information</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('reminders')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer transition ${
+                  activeTab === 'reminders'
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+                    : 'bg-card-bg text-muted-text hover:text-main-text hover:bg-main-border/20 border border-main-border'
+                }`}
+              >
+                <BellRing className="h-4 w-4 text-blue-400" />
+                <span>Shift Reminders & Web Push</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full font-mono bg-blue-500/20 text-blue-300 font-bold">5:00 PM</span>
+              </button>
             </div>
+
+            {reminderToast && (
+              <span className="text-xs font-medium text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-lg border border-emerald-500/20 animate-fade-in">
+                {reminderToast}
+              </span>
+            )}
+          </div>
+
+          {activeTab === 'reminders' ? (
+            /* SHIFT REMINDERS & WEB PUSH NOTIFICATIONS TAB */
+            <div className="bg-card-bg border border-main-border rounded-2xl p-6 md:p-8 shadow-xl space-y-6 text-left">
+              <div className="border-b border-main-border/60 pb-4">
+                <h2 className="text-lg font-bold text-main-text flex items-center gap-2">
+                  <BellRing className="h-5 w-5 text-blue-500" />
+                  <span>Workday Shift Reminders & Push Alerts</span>
+                </h2>
+                <p className="text-xs text-muted-text mt-1">
+                  Configure browser push notifications, Service Worker alerts, and workday shift reminders.
+                </p>
+              </div>
+
+              {/* FEATURED: Daily Workday Shift Reminder (5:00 PM Web Push) */}
+              <div className="rounded-2xl border border-blue-500/30 bg-blue-500/5 p-5 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-400 uppercase font-mono bg-blue-500/10 px-2 py-0.5 rounded-full border border-blue-500/20">
+                        <Sparkles className="h-3 w-3" />
+                        Web Push API & Service Worker
+                      </span>
+                      <span className="text-[10px] font-mono text-muted-text">5:00 PM (Monday–Friday)</span>
+                    </div>
+                    <h3 className="text-base font-bold text-main-text">Daily Workday Shift Reminder</h3>
+                    <p className="text-xs text-muted-text max-w-xl leading-relaxed">
+                      Sends a background Web Push notification every workday at <strong>5:00 PM</strong> to remind you to log your shift hours. Tapping the push notification opens the shift logger directly.
+                    </p>
+                  </div>
+
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                    <input 
+                      type="checkbox" 
+                      checked={reminders.dailyShiftReminder ?? true} 
+                      onChange={(e) => handleToggleDailyShiftReminder(e.target.checked)}
+                      className="sr-only peer" 
+                    />
+                    <div className="w-11 h-6 bg-slate-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-300 after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 peer-checked:after:bg-white shadow-inner" />
+                  </label>
+                </div>
+
+                {/* Service Worker Status & Live Test Action */}
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-blue-500/20 text-xs">
+                  <div className="flex items-center gap-2.5">
+                    <span className={`w-2.5 h-2.5 rounded-full ${pushState.permission === 'granted' ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+                    <span className="text-[11px] font-mono text-slate-300">
+                      Service Worker: <code className="text-blue-400">public/sw.js</code>
+                      {pushState.permission === 'granted' && ' • Push API Active'}
+                      {pushState.permission === 'default' && ' • (Permission Needed)'}
+                      {pushState.permission === 'denied' && ' • (Notifications Blocked in Browser)'}
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={testingPush || enablingPush}
+                    onClick={handleTest5pmPushAlert}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold cursor-pointer shadow-md shadow-blue-500/20 active:scale-95 transition disabled:opacity-50"
+                  >
+                    <Send className={`h-3.5 w-3.5 ${testingPush ? 'animate-spin' : ''}`} />
+                    <span>{testingPush ? 'Sending Push Alert...' : 'Test 5:00 PM Push Alert'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Other Shift Reminders */}
+              <div className="space-y-4 pt-2">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-muted-text font-mono">Additional Shift Alarms</h4>
+
+                {/* Clock-In Alarm */}
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 rounded-xl border border-main-border/60 bg-input-bg/30">
+                  <div>
+                    <h5 className="text-xs font-bold text-main-text">Daily Clock-In Alarm</h5>
+                    <p className="text-[10px] text-muted-text">Alert if not clocked in by scheduled shift start</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="time"
+                      disabled={!reminders.clockInReminder}
+                      value={reminders.clockInTime}
+                      onChange={(e) => handleSaveReminders({ clockInTime: e.target.value })}
+                      className="rounded-xl border border-main-border bg-input-bg px-2 py-1.5 text-xs text-main-text focus:outline-none focus:border-blue-500/40 disabled:opacity-40"
+                    />
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={reminders.clockInReminder} 
+                        onChange={(e) => handleSaveReminders({ clockInReminder: e.target.checked })}
+                        className="sr-only peer" 
+                      />
+                      <div className="w-9 h-5 bg-slate-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-400 after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600 peer-checked:after:bg-slate-950" />
+                    </label>
+                  </div>
+                </div>
+
+                {/* Clock-Out Alarm */}
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 rounded-xl border border-main-border/60 bg-input-bg/30">
+                  <div>
+                    <h5 className="text-xs font-bold text-main-text">Daily Clock-Out Alarm</h5>
+                    <p className="text-[10px] text-muted-text">Alert if shift exceeds maximum scheduled threshold</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="time"
+                      disabled={!reminders.clockOutReminder}
+                      value={reminders.clockOutTime}
+                      onChange={(e) => handleSaveReminders({ clockOutTime: e.target.value })}
+                      className="rounded-xl border border-main-border bg-input-bg px-2 py-1.5 text-xs text-main-text focus:outline-none focus:border-blue-500/40 disabled:opacity-40"
+                    />
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={reminders.clockOutReminder} 
+                        onChange={(e) => handleSaveReminders({ clockOutReminder: e.target.checked })}
+                        className="sr-only peer" 
+                      />
+                      <div className="w-9 h-5 bg-slate-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-400 after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600 peer-checked:after:bg-slate-950" />
+                    </label>
+                  </div>
+                </div>
+
+                {/* Boundary alerts */}
+                <div className="flex items-center justify-between p-4 rounded-xl border border-main-border/60 bg-input-bg/30">
+                  <div>
+                    <h5 className="text-xs font-bold text-main-text">Boundary Breach Alerts</h5>
+                    <p className="text-[10px] text-muted-text">Alert on geofence border ingress / egress</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      checked={reminders.geofenceReminder} 
+                      onChange={(e) => handleSaveReminders({ geofenceReminder: e.target.checked })}
+                      className="sr-only peer" 
+                    />
+                    <div className="w-9 h-5 bg-slate-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-400 after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600 peer-checked:after:bg-slate-950" />
+                  </label>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* PROFILE INFORMATION TAB */
+            <>
+              <form onSubmit={handleSave} className="bg-card-bg border border-main-border rounded-2xl p-6 md:p-8 shadow-xl space-y-6">
+                <div className="border-b border-main-border/60 pb-5">
+                  <h2 className="text-lg font-bold text-main-text">Profile Information</h2>
+                  <p className="text-xs text-muted-text mt-1">Configure and edit your identity, system information, and contract parameters.</p>
+                </div>
 
             {/* Row 1: Name & Username */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -502,6 +783,37 @@ export default function AccountView({ currentUser, onUpdateUser, onLogout, isMob
             </div>
           </form>
 
+          {/* QUICK ACCESS: WORKDAY SHIFT REMINDER BANNER */}
+          <div className="bg-card-bg border border-blue-500/20 rounded-2xl p-5 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                <BellRing className="h-5 w-5" />
+              </div>
+              <div className="space-y-0.5 text-left">
+                <h4 className="text-xs font-bold text-main-text flex items-center gap-2">
+                  <span>5:00 PM Workday Shift Reminder</span>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold ${
+                    reminders.dailyShiftReminder ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-slate-800 text-slate-400'
+                  }`}>
+                    {reminders.dailyShiftReminder ? 'Active' : 'Disabled'}
+                  </span>
+                </h4>
+                <p className="text-[11px] text-muted-text">
+                  Sends background Web Push alert at 5:00 PM to log shifts. Tapping opens the shift logger.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('reminders')}
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 text-xs font-semibold cursor-pointer transition shrink-0"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              <span>Configure Alerts & Test Push</span>
+            </button>
+          </div>
+
           {/* DANGER ZONE FOR ACCOUNT DELETION */}
           <div className="bg-card-bg border border-red-500/25 rounded-2xl p-6 md:p-8 shadow-xl space-y-4">
             <div className="border-b border-red-500/15 pb-4">
@@ -560,6 +872,8 @@ export default function AccountView({ currentUser, onUpdateUser, onLogout, isMob
               <p className="text-xs font-semibold text-red-400 font-mono mt-2 text-left">{deleteError}</p>
             )}
           </div>
+            </>
+          )}
         </div>
 
       </div>

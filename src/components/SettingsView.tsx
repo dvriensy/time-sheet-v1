@@ -3,11 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   BellRing, ShieldCheck, Download, Trash2, KeySquare, 
-  History, Info, ToggleLeft, Check, AlertTriangle, Eye, EyeOff, Clock
+  History, Info, ToggleLeft, Check, AlertTriangle, Eye, EyeOff, Clock,
+  Send, Sparkles
 } from 'lucide-react';
 import { 
   getReminderSettings, saveReminderSettings, 
@@ -16,6 +17,12 @@ import {
   exportTimesheetsAsCSV, exportAllDataAsJSON, wipeAllLocalData 
 } from '../utils/storage';
 import { ReminderSettings, AppSettings, SecurityAuditLog } from '../types';
+import {
+  registerServiceWorker,
+  getPushSubscriptionState,
+  subscribeToPushNotifications,
+  trigger5pmShiftReminder
+} from '../utils/pushNotifications';
 
 interface SettingsViewProps {
   onSettingsChanged: () => void;
@@ -32,6 +39,29 @@ export default function SettingsView({ onSettingsChanged, privacyMode, onToggleP
   const [appSettings, setAppSettings] = useState<AppSettings>(initialAppSettings);
   const [showWipeConfirm, setShowWipeConfirm] = useState(false);
   const [copiedNotification, setCopiedNotification] = useState<string | null>(null);
+
+  const [pushState, setPushState] = useState<{
+    supported: boolean;
+    permission: NotificationPermission;
+    isSubscribed: boolean;
+  }>({
+    supported: typeof window !== 'undefined' && 'serviceWorker' in navigator && 'Notification' in window,
+    permission: typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default',
+    isSubscribed: false
+  });
+  const [testingPush, setTestingPush] = useState(false);
+  const [enablingPush, setEnablingPush] = useState(false);
+
+  useEffect(() => {
+    registerServiceWorker();
+    getPushSubscriptionState().then((s) => {
+      setPushState({
+        supported: s.supported,
+        permission: s.permission,
+        isSubscribed: s.isSubscribed
+      });
+    });
+  }, []);
 
   const calculateShiftDurationStr = (start: string, end: string) => {
     if (!start || !end) return '';
@@ -169,6 +199,105 @@ export default function SettingsView({ onSettingsChanged, privacyMode, onToggleP
             <p className="text-xs text-slate-400 mb-6">Manage alert reminders for prompt clocking in/out segments.</p>
 
             <div className="space-y-4">
+              
+              {/* Daily Workday Shift Reminder (5:00 PM Web Push via Service Worker) */}
+              <div className="rounded-2xl border border-blue-500/30 bg-blue-500/5 p-4 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-400 uppercase font-mono bg-blue-500/10 px-2 py-0.5 rounded-full border border-blue-500/20">
+                        <Sparkles className="h-3 w-3" />
+                        Web Push & Service Worker
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-400">5:00 PM (Mon–Fri)</span>
+                    </div>
+                    <h4 className="text-sm font-bold text-slate-100">Daily Workday Shift Reminder</h4>
+                    <p className="text-xs text-slate-400 max-w-md leading-relaxed">
+                      Sends a background push notification every workday at 5:00 PM. Tapping the notification opens the shift logger directly to record your hours.
+                    </p>
+                  </div>
+
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                    <input 
+                      type="checkbox" 
+                      checked={reminders.dailyShiftReminder ?? true} 
+                      onChange={async (e) => {
+                        const checked = e.target.checked;
+                        handleSaveReminders({ dailyShiftReminder: checked });
+                        if (checked) {
+                          if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission !== 'granted') {
+                            setEnablingPush(true);
+                            try {
+                              const ok = await subscribeToPushNotifications();
+                              const s = await getPushSubscriptionState();
+                              setPushState({
+                                supported: s.supported,
+                                permission: s.permission,
+                                isSubscribed: s.isSubscribed
+                              });
+                              if (ok) {
+                                showToast('Push notifications enabled for 5:00 PM shift reminder.');
+                              } else {
+                                showToast('Notification permission not granted. Browser alert might be blocked.');
+                              }
+                            } catch (err: any) {
+                              showToast('Push setup error: ' + (err?.message || 'Failed'));
+                            } finally {
+                              setEnablingPush(false);
+                            }
+                          } else {
+                            showToast('Daily 5:00 PM shift reminder active!');
+                          }
+                        } else {
+                          showToast('Daily 5:00 PM shift reminder disabled.');
+                        }
+                      }}
+                      className="sr-only peer" 
+                    />
+                    <div className="w-11 h-6 bg-slate-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-300 after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 peer-checked:after:bg-white shadow-inner" />
+                  </label>
+                </div>
+
+                {/* Service Worker status bar & Trigger Test Alert button */}
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-2.5 border-t border-blue-500/20 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2 h-2 rounded-full ${pushState.permission === 'granted' ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+                    <span className="text-[11px] font-mono text-slate-300">
+                      SW: <code className="text-blue-400">public/sw.js</code>
+                      {pushState.permission === 'granted' ? ' • Push Alerts Active' : ' • Permission Required'}
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={testingPush || enablingPush}
+                    onClick={async () => {
+                      setTestingPush(true);
+                      try {
+                        if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission !== 'granted') {
+                          await subscribeToPushNotifications();
+                          const s = await getPushSubscriptionState();
+                          setPushState({
+                            supported: s.supported,
+                            permission: s.permission,
+                            isSubscribed: s.isSubscribed
+                          });
+                        }
+                        await trigger5pmShiftReminder();
+                        showToast('5:00 PM Shift Reminder triggered! Tap the notification banner to open shift logger.');
+                      } catch (e: any) {
+                        showToast('Error triggering push alert: ' + (e?.message || 'Check browser permissions'));
+                      } finally {
+                        setTestingPush(false);
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold cursor-pointer shadow-md shadow-blue-500/20 active:scale-95 transition disabled:opacity-50"
+                  >
+                    <Send className={`h-3.5 w-3.5 ${testingPush ? 'animate-spin' : ''}`} />
+                    <span>{testingPush ? 'Dispatching...' : 'Test 5:00 PM Alert'}</span>
+                  </button>
+                </div>
+              </div>
               
               {/* Reminder 1: Clock-In */}
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-800/40 pb-4">
