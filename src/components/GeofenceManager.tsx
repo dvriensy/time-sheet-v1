@@ -115,16 +115,16 @@ export default function GeofenceManager({ onGeofenceStateChange, onSimulatedTrig
     <div id="geofence-manager" className="grid grid-cols-1 gap-6 lg:grid-cols-3">
       
       {/* RADAR CHART VISUALIZER */}
-      <div className="lg:col-span-2 rounded-3xl border border-slate-800 bg-[#18181B] p-6 shadow-xl flex flex-col justify-between">
+      <div className="lg:col-span-2 rounded-3xl border border-main-border bg-card-bg p-6 shadow-xl flex flex-col justify-between">
         <div>
           <div className="flex items-center justify-between mb-1">
-            <h2 className="text-sm font-medium text-slate-200 flex items-center gap-2">
-              <Compass className="h-4 w-4 text-blue-400 animate-pulse" />
+            <h2 className="text-sm font-medium text-main-text flex items-center gap-2">
+              <Compass className="h-4 w-4 text-blue-500 animate-pulse" />
               <span>Geofencing Boundary Radar</span>
             </h2>
-            <span className="text-[10px] font-mono text-slate-500 uppercase">GPS CLOCK-IN GATEWAY</span>
+            <span className="text-[10px] font-mono text-muted-text uppercase">GPS CLOCK-IN GATEWAY</span>
           </div>
-          <p className="text-xs text-slate-400">Click anywhere on the radar scanner grid to update your GPS location coordinates.</p>
+          <p className="text-xs text-muted-text">Click anywhere on the radar scanner grid to update your GPS location coordinates.</p>
         </div>
 
         {/* Dynamic SVG Radar Map */}
@@ -231,19 +231,19 @@ export default function GeofenceManager({ onGeofenceStateChange, onSimulatedTrig
       <div className="lg:col-span-1 space-y-6">
         
         {/* Param edit card */}
-        <div className="rounded-3xl border border-slate-800 bg-[#18181B] p-6 shadow-xl">
-          <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider font-mono flex items-center gap-2 mb-4">
-            <Settings2 className="h-4 w-4 text-blue-400" />
+        <div className="rounded-3xl border border-main-border bg-card-bg p-6 shadow-xl">
+          <h3 className="text-xs font-semibold text-muted-text uppercase tracking-wider font-mono flex items-center gap-2 mb-4">
+            <Settings2 className="h-4 w-4 text-blue-500" />
             <span>Boundary Configuration</span>
           </h3>
 
           <div className="space-y-4">
             
             {/* Toggle Enable Geofence */}
-            <div className="flex items-center justify-between border-b border-slate-800/60 pb-3">
+            <div className="flex items-center justify-between border-b border-main-border/60 pb-3">
               <div>
-                <h4 className="text-xs font-semibold text-slate-200">Enable GPS Geofencing</h4>
-                <p className="text-[10px] text-slate-400">Track distance relative to center</p>
+                <h4 className="text-xs font-semibold text-main-text">Enable GPS Geofencing</h4>
+                <p className="text-[10px] text-muted-text">Track distance relative to center</p>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
                 <input 
@@ -258,20 +258,20 @@ export default function GeofenceManager({ onGeofenceStateChange, onSimulatedTrig
 
             {/* Geofence Name */}
             <div>
-              <label className="text-[10px] font-semibold text-slate-400 uppercase font-mono block mb-1">Geofence Outpost Name</label>
+              <label className="text-[10px] font-semibold text-muted-text uppercase font-mono block mb-1">Geofence Outpost Name</label>
               <input
                 type="text"
                 value={settings.name}
                 onChange={(e) => handleSaveSettings({ name: e.target.value })}
-                className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-100 placeholder-slate-600 focus:border-blue-500/50 focus:outline-none"
+                className="w-full rounded-xl border border-main-border bg-input-bg px-3 py-2 text-xs text-main-text placeholder-muted-text/50 focus:border-blue-500/50 focus:outline-none"
               />
             </div>
 
             {/* Radius slider */}
             <div>
               <div className="flex justify-between items-center mb-1">
-                <label className="text-[10px] font-semibold text-slate-400 uppercase font-mono">Geofence Radius</label>
-                <span className="text-xs font-mono font-bold text-blue-400">{settings.radius} meters</span>
+                <label className="text-[10px] font-semibold text-muted-text uppercase font-mono">Geofence Radius</label>
+                <span className="text-xs font-mono font-bold text-blue-500">{settings.radius} meters</span>
               </div>
               <input
                 type="range"
@@ -280,35 +280,35 @@ export default function GeofenceManager({ onGeofenceStateChange, onSimulatedTrig
                 step={25}
                 value={settings.radius}
                 onChange={(e) => handleSaveSettings({ radius: Number(e.target.value) })}
-                className="w-full accent-blue-600 cursor-pointer h-1.5 bg-slate-800 rounded-lg appearance-none"
+                className="w-full accent-blue-600 cursor-pointer h-1.5 bg-input-bg rounded-lg appearance-none"
               />
             </div>
 
             {/* Auto Clock triggers toggles */}
-            <div className="space-y-3 pt-3 border-t border-slate-800/60">
+            <div className="space-y-3 pt-3 border-t border-main-border/60">
               <div className="flex items-center justify-between">
                 <div>
-                  <h5 className="text-xs font-medium text-slate-300">Auto Clock-In</h5>
-                  <p className="text-[10px] text-slate-500">Initiate session instantly on breach</p>
+                  <h5 className="text-xs font-medium text-main-text">Auto Clock-In</h5>
+                  <p className="text-[10px] text-muted-text">Initiate session instantly on breach</p>
                 </div>
                 <input 
                   type="checkbox" 
                   checked={settings.autoClockIn} 
                   onChange={(e) => handleSaveSettings({ autoClockIn: e.target.checked })}
-                  className="rounded border-slate-800 bg-slate-950 text-blue-500 focus:ring-blue-500/50"
+                  className="rounded border-main-border bg-input-bg text-blue-600 focus:ring-blue-500/50"
                 />
               </div>
 
               <div className="flex items-center justify-between">
                 <div>
-                  <h5 className="text-xs font-medium text-slate-300">Auto Clock-Out</h5>
-                  <p className="text-[10px] text-slate-500">Finalize session instantly on egress</p>
+                  <h5 className="text-xs font-medium text-main-text">Auto Clock-Out</h5>
+                  <p className="text-[10px] text-muted-text">Finalize session instantly on egress</p>
                 </div>
                 <input 
                   type="checkbox" 
                   checked={settings.autoClockOut} 
                   onChange={(e) => handleSaveSettings({ autoClockOut: e.target.checked })}
-                  className="rounded border-slate-800 bg-slate-950 text-blue-500 focus:ring-blue-500/50"
+                  className="rounded border-main-border bg-input-bg text-blue-600 focus:ring-blue-500/50"
                 />
               </div>
             </div>
@@ -317,27 +317,27 @@ export default function GeofenceManager({ onGeofenceStateChange, onSimulatedTrig
         </div>
 
         {/* ACTUAL SATELLITE METRIC PANEL */}
-        <div className="rounded-3xl border border-slate-800 bg-[#18181B] p-6 shadow-xl">
-          <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider font-mono flex items-center gap-2 mb-4">
-            <Sliders className="h-4 w-4 text-blue-400" />
+        <div className="rounded-3xl border border-main-border bg-card-bg p-6 shadow-xl">
+          <h3 className="text-xs font-semibold text-muted-text uppercase tracking-wider font-mono flex items-center gap-2 mb-4">
+            <Sliders className="h-4 w-4 text-blue-500" />
             <span>Satellite Sync Check</span>
           </h3>
-          <p className="text-xs text-slate-400 mb-4 leading-relaxed">
+          <p className="text-xs text-muted-text mb-4 leading-relaxed">
             Acquire coordinates from local hardware device positioning. Coordinates will replace geofence center above.
           </p>
 
           <button
             onClick={handleRequestActualGPS}
-            className="w-full rounded-2xl bg-slate-800 border border-slate-700 py-3 text-xs font-semibold text-slate-200 hover:bg-slate-700 transition flex items-center justify-center gap-2 cursor-pointer"
+            className="w-full rounded-2xl bg-input-bg border border-main-border py-3 text-xs font-semibold text-main-text hover:bg-input-bg/80 transition flex items-center justify-center gap-2 cursor-pointer"
           >
-            <MapPin className="h-4 w-4 text-blue-400" />
+            <MapPin className="h-4 w-4 text-blue-500" />
             <span>Query Device GPS Sensor</span>
           </button>
 
           {/* GPS telemetry response */}
-          <div className="mt-4 p-3 rounded-xl bg-slate-950/60 border border-slate-800/80">
-            <span className="text-[10px] font-semibold text-slate-500 font-mono block">TELEMETRY STATE</span>
-            <p className="mt-1 text-xs text-slate-300 font-mono truncate">{actualLocationStatus}</p>
+          <div className="mt-4 p-3 rounded-xl bg-input-bg/60 border border-main-border/80">
+            <span className="text-[10px] font-semibold text-muted-text font-mono block">TELEMETRY STATE</span>
+            <p className="mt-1 text-xs text-main-text font-mono truncate">{actualLocationStatus}</p>
           </div>
         </div>
 

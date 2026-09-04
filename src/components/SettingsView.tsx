@@ -172,17 +172,17 @@ export default function SettingsView({ onSettingsChanged, privacyMode, onToggleP
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="fixed top-6 right-6 z-50 rounded-2xl bg-[#18181B] border border-slate-800 px-4 py-3 shadow-2xl flex items-center gap-2.5"
+            className="fixed top-6 right-6 z-50 rounded-2xl bg-card-bg border border-main-border px-4 py-3 shadow-2xl flex items-center gap-2.5"
           >
             <Check className="h-4 w-4 text-blue-400" />
-            <span className="text-xs font-semibold text-slate-100">{copiedNotification}</span>
+            <span className="text-xs font-semibold text-main-text">{copiedNotification}</span>
           </motion.div>
         )}
       </AnimatePresence>
 
       <div>
-        <h1 className="text-xl font-semibold text-slate-100">Preferences & Compliance</h1>
-        <p className="text-xs text-slate-400">Configure automatic alarms, export local assets, audit logs, and GDPR constraints.</p>
+        <h1 className="text-xl font-semibold text-main-text">Preferences & Compliance</h1>
+        <p className="text-xs text-muted-text">Configure automatic alarms, export local assets, audit logs, and GDPR constraints.</p>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -191,12 +191,12 @@ export default function SettingsView({ onSettingsChanged, privacyMode, onToggleP
         <div className="lg:col-span-2 space-y-6">
           
           {/* Section 1: Automatic Reminder Configuration */}
-          <div className="rounded-3xl border border-slate-800 bg-[#18181B] p-6 shadow-xl">
-            <h2 className="text-sm font-medium text-slate-200 flex items-center gap-2 mb-1">
+          <div className="rounded-3xl border border-main-border bg-card-bg p-6 shadow-xl">
+            <h2 className="text-sm font-medium text-main-text flex items-center gap-2 mb-1">
               <BellRing className="h-4 w-4 text-blue-400" />
               <span>Shift Alert Reminders</span>
             </h2>
-            <p className="text-xs text-slate-400 mb-6">Manage alert reminders for prompt clocking in/out segments.</p>
+            <p className="text-xs text-muted-text mb-6">Manage alert reminders for prompt clocking in/out segments.</p>
 
             <div className="space-y-4">
               
@@ -209,10 +209,10 @@ export default function SettingsView({ onSettingsChanged, privacyMode, onToggleP
                         <Sparkles className="h-3 w-3" />
                         Web Push & Service Worker
                       </span>
-                      <span className="text-[10px] font-mono text-slate-400">5:00 PM (Mon–Fri)</span>
+                      <span className="text-[10px] font-mono text-muted-text">5:00 PM (Mon–Fri)</span>
                     </div>
-                    <h4 className="text-sm font-bold text-slate-100">Daily Workday Shift Reminder</h4>
-                    <p className="text-xs text-slate-400 max-w-md leading-relaxed">
+                    <h4 className="text-sm font-bold text-main-text">Daily Workday Shift Reminder</h4>
+                    <p className="text-xs text-muted-text max-w-md leading-relaxed">
                       Sends a background push notification every workday at 5:00 PM. Tapping the notification opens the shift logger directly to record your hours.
                     </p>
                   </div>
@@ -262,7 +262,7 @@ export default function SettingsView({ onSettingsChanged, privacyMode, onToggleP
                 <div className="flex flex-wrap items-center justify-between gap-3 pt-2.5 border-t border-blue-500/20 text-xs">
                   <div className="flex items-center gap-2">
                     <span className={`w-2 h-2 rounded-full ${pushState.permission === 'granted' ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
-                    <span className="text-[11px] font-mono text-slate-300">
+                    <span className="text-[11px] font-mono text-muted-text">
                       SW: <code className="text-blue-400">public/sw.js</code>
                       {pushState.permission === 'granted' ? ' • Push Alerts Active' : ' • Permission Required'}
                     </span>
@@ -300,10 +300,10 @@ export default function SettingsView({ onSettingsChanged, privacyMode, onToggleP
               </div>
               
               {/* Reminder 1: Clock-In */}
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-800/40 pb-4">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-main-border/40 pb-4">
                 <div>
-                  <h4 className="text-xs font-semibold text-slate-200">Daily Clock-In Alarm</h4>
-                  <p className="text-[10px] text-slate-500">Alert if not clocked in by scheduled start</p>
+                  <h4 className="text-xs font-semibold text-main-text">Daily Clock-In Alarm</h4>
+                  <p className="text-[10px] text-muted-text">Alert if not clocked in by scheduled start</p>
                 </div>
                 <div className="flex items-center gap-3">
                   <input
@@ -311,7 +311,7 @@ export default function SettingsView({ onSettingsChanged, privacyMode, onToggleP
                     disabled={!reminders.clockInReminder}
                     value={reminders.clockInTime}
                     onChange={(e) => handleSaveReminders({ clockInTime: e.target.value })}
-                    className="rounded-xl border border-slate-800 bg-slate-950 px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-blue-500/50 disabled:opacity-40"
+                    className="rounded-xl border border-main-border bg-input-bg px-2 py-1.5 text-xs text-main-text focus:outline-none focus:border-blue-500/50 disabled:opacity-40"
                   />
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input 
@@ -326,10 +326,10 @@ export default function SettingsView({ onSettingsChanged, privacyMode, onToggleP
               </div>
 
               {/* Reminder 2: Clock-Out */}
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-800/40 pb-4">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-main-border/40 pb-4">
                 <div>
-                  <h4 className="text-xs font-semibold text-slate-200">Daily Clock-Out Alarm</h4>
-                  <p className="text-[10px] text-slate-500">Alert if shift exceeds scheduled threshold</p>
+                  <h4 className="text-xs font-semibold text-main-text">Daily Clock-Out Alarm</h4>
+                  <p className="text-[10px] text-muted-text">Alert if shift exceeds scheduled threshold</p>
                 </div>
                 <div className="flex items-center gap-3">
                   <input
@@ -337,7 +337,7 @@ export default function SettingsView({ onSettingsChanged, privacyMode, onToggleP
                     disabled={!reminders.clockOutReminder}
                     value={reminders.clockOutTime}
                     onChange={(e) => handleSaveReminders({ clockOutTime: e.target.value })}
-                    className="rounded-xl border border-slate-800 bg-slate-950 px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-blue-500/50 disabled:opacity-40"
+                    className="rounded-xl border border-main-border bg-input-bg px-2 py-1.5 text-xs text-main-text focus:outline-none focus:border-blue-500/50 disabled:opacity-40"
                   />
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input 
@@ -354,8 +354,8 @@ export default function SettingsView({ onSettingsChanged, privacyMode, onToggleP
               {/* Reminder 3: GPS alerts */}
               <div className="flex items-center justify-between">
                 <div>
-                  <h4 className="text-xs font-semibold text-slate-200">Boundary Breach Alerts</h4>
-                  <p className="text-[10px] text-slate-500">Alert on geofence border ingress / egress</p>
+                  <h4 className="text-xs font-semibold text-main-text">Boundary Breach Alerts</h4>
+                  <p className="text-[10px] text-muted-text">Alert on geofence border ingress / egress</p>
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer">
                   <input 
@@ -372,26 +372,26 @@ export default function SettingsView({ onSettingsChanged, privacyMode, onToggleP
           </div>
 
           {/* Section 2: GDPR & Industry Data Portability Controls */}
-          <div className="rounded-3xl border border-slate-800 bg-[#18181B] p-6 shadow-xl">
-            <h2 className="text-sm font-medium text-slate-200 flex items-center gap-2 mb-1">
+          <div className="rounded-3xl border border-main-border bg-card-bg p-6 shadow-xl">
+            <h2 className="text-sm font-medium text-main-text flex items-center gap-2 mb-1">
               <ShieldCheck className="h-4 w-4 text-blue-400" />
               <span>GDPR Data Portability Exporter</span>
             </h2>
-            <p className="text-xs text-slate-400 mb-6">Download your locally compiled database records for transparency and backup audits.</p>
+            <p className="text-xs text-muted-text mb-6">Download your locally compiled database records for transparency and backup audits.</p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               
               {/* CSV button */}
-              <div className="rounded-2xl border border-slate-800 bg-zinc-950/40 p-4 space-y-3 flex flex-col justify-between">
+              <div className="rounded-2xl border border-main-border bg-input-bg/40 p-4 space-y-3 flex flex-col justify-between">
                 <div>
-                  <h4 className="text-xs font-semibold text-slate-200">Timesheets Ledger (.CSV)</h4>
-                  <p className="text-[10px] text-slate-500 leading-relaxed">
+                  <h4 className="text-xs font-semibold text-main-text">Timesheets Ledger (.CSV)</h4>
+                  <p className="text-[10px] text-muted-text leading-relaxed">
                     Download full timesheet tables grouped dynamically into column segments ready for import to Microsoft Excel, Google Sheets, or corporate ERP ledgers.
                   </p>
                 </div>
                 <button
                   onClick={triggerCSVDownload}
-                  className="w-full rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 py-2.5 text-xs font-semibold text-slate-200 transition flex items-center justify-center gap-2 cursor-pointer"
+                  className="w-full rounded-xl bg-input-bg border border-main-border hover:bg-input-bg/80 py-2.5 text-xs font-semibold text-main-text transition flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <Download className="h-3.5 w-3.5 text-blue-400" />
                   <span>Export Spreadsheet CSV</span>
@@ -399,16 +399,16 @@ export default function SettingsView({ onSettingsChanged, privacyMode, onToggleP
               </div>
 
               {/* JSON button */}
-              <div className="rounded-2xl border border-slate-800 bg-zinc-950/40 p-4 space-y-3 flex flex-col justify-between">
+              <div className="rounded-2xl border border-main-border bg-input-bg/40 p-4 space-y-3 flex flex-col justify-between">
                 <div>
-                  <h4 className="text-xs font-semibold text-slate-200">Complete Vault Backup (.JSON)</h4>
-                  <p className="text-[10px] text-slate-500 leading-relaxed">
+                  <h4 className="text-xs font-semibold text-main-text">Complete Vault Backup (.JSON)</h4>
+                  <p className="text-[10px] text-muted-text leading-relaxed">
                     Download your fully encrypted private keys, geofences, reminders, timesheet entries, and security audit logs as a serialized portable structural object.
                   </p>
                 </div>
                 <button
                   onClick={triggerJSONDownload}
-                  className="w-full rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 py-2.5 text-xs font-semibold text-slate-200 transition flex items-center justify-center gap-2 cursor-pointer"
+                  className="w-full rounded-xl bg-input-bg border border-main-border hover:bg-input-bg/80 py-2.5 text-xs font-semibold text-main-text transition flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <Download className="h-3.5 w-3.5 text-blue-400" />
                   <span>Download Complete Backup</span>
@@ -449,7 +449,7 @@ export default function SettingsView({ onSettingsChanged, privacyMode, onToggleP
                   </button>
                   <button
                     onClick={() => setShowWipeConfirm(false)}
-                    className="rounded-xl border border-slate-800 bg-[#18181B] px-4 py-2 text-xs font-semibold text-slate-300 hover:bg-slate-800 transition cursor-pointer"
+                    className="rounded-xl border border-main-border bg-card-bg px-4 py-2 text-xs font-semibold text-muted-text hover:bg-input-bg transition cursor-pointer"
                   >
                     Cancel
                   </button>
@@ -464,47 +464,47 @@ export default function SettingsView({ onSettingsChanged, privacyMode, onToggleP
         <div className="lg:col-span-1 space-y-6">
 
           {/* Standard Work Shift Card */}
-          <div className="rounded-3xl border border-slate-800 bg-[#18181B] p-6 shadow-xl">
-            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider font-mono flex items-center gap-2 mb-4">
+          <div className="rounded-3xl border border-main-border bg-card-bg p-6 shadow-xl">
+            <h3 className="text-xs font-semibold text-muted-text uppercase tracking-wider font-mono flex items-center gap-2 mb-4">
               <Clock className="h-4 w-4 text-blue-400" />
               <span>Standard Shift Hours</span>
             </h3>
 
-            <p className="text-[11px] text-slate-400 mb-4 leading-relaxed">
+            <p className="text-[11px] text-muted-text mb-4 leading-relaxed">
               Define your regular daily shift bounds. These values prepopulate the manual shift logger automatically.
             </p>
 
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] font-bold text-slate-400 block mb-1 uppercase font-mono">Start Time</label>
+                  <label className="text-[10px] font-bold text-muted-text block mb-1 uppercase font-mono">Start Time</label>
                   <input
                     type="time"
                     value={appSettings.defaultStartTime || '07:30'}
                     onChange={(e) => handleSaveAppSettings({ defaultStartTime: e.target.value })}
-                    className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-semibold text-slate-100 focus:outline-none focus:border-blue-500/50"
+                    className="w-full rounded-xl border border-main-border bg-input-bg px-3 py-2 text-xs font-semibold text-main-text focus:outline-none focus:border-blue-500/50"
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold text-slate-400 block mb-1 uppercase font-mono">End Time</label>
+                  <label className="text-[10px] font-bold text-muted-text block mb-1 uppercase font-mono">End Time</label>
                   <input
                     type="time"
                     value={appSettings.defaultEndTime || '16:00'}
                     onChange={(e) => handleSaveAppSettings({ defaultEndTime: e.target.value })}
-                    className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-semibold text-slate-100 focus:outline-none focus:border-blue-500/50"
+                    className="w-full rounded-xl border border-main-border bg-input-bg px-3 py-2 text-xs font-semibold text-main-text focus:outline-none focus:border-blue-500/50"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-[10px] font-bold text-slate-400 block mb-1 uppercase font-mono">Standard Unpaid Break (Minutes)</label>
+                <label className="text-[10px] font-bold text-muted-text block mb-1 uppercase font-mono">Standard Unpaid Break (Minutes)</label>
                 <input
                   type="number"
                   min="0"
                   max="240"
                   value={appSettings.defaultBreakMinutes !== undefined ? appSettings.defaultBreakMinutes : 30}
                   onChange={(e) => handleSaveAppSettings({ defaultBreakMinutes: Number(e.target.value) })}
-                  className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-semibold text-slate-100 focus:outline-none focus:border-blue-500/50 font-mono"
+                  className="w-full rounded-xl border border-main-border bg-input-bg px-3 py-2 text-xs font-semibold text-main-text focus:outline-none focus:border-blue-500/50 font-mono"
                 />
               </div>
 
@@ -522,18 +522,18 @@ export default function SettingsView({ onSettingsChanged, privacyMode, onToggleP
           </div>
           
           {/* Biometrics Toggle box */}
-          <div className="rounded-3xl border border-slate-800 bg-[#18181B] p-6 shadow-xl">
-            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider font-mono flex items-center gap-2 mb-4">
+          <div className="rounded-3xl border border-main-border bg-card-bg p-6 shadow-xl">
+            <h3 className="text-xs font-semibold text-muted-text uppercase tracking-wider font-mono flex items-center gap-2 mb-4">
               <KeySquare className="h-4 w-4 text-blue-400" />
               <span>Security Handshake</span>
             </h3>
 
             <div className="space-y-4">
               {/* Toggle Biometrics */}
-              <div className="flex items-center justify-between border-b border-slate-800/60 pb-3">
+              <div className="flex items-center justify-between border-b border-main-border/60 pb-3">
                 <div>
-                  <h4 className="text-xs font-semibold text-slate-200 font-sans">Biometric lock screen</h4>
-                  <p className="text-[10px] text-slate-500">Require fingerprint/face lock on launch</p>
+                  <h4 className="text-xs font-semibold text-main-text font-sans">Biometric lock screen</h4>
+                  <p className="text-[10px] text-muted-text">Require fingerprint/face lock on launch</p>
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer">
                   <input 
@@ -549,8 +549,8 @@ export default function SettingsView({ onSettingsChanged, privacyMode, onToggleP
               {/* Toggle Privacy Mode (Mask Earnings) */}
               <div className="flex items-center justify-between">
                 <div>
-                  <h4 className="text-xs font-semibold text-slate-200">Earnings Shield</h4>
-                  <p className="text-[10px] text-slate-500">Hide earnings figures in simple screens</p>
+                  <h4 className="text-xs font-semibold text-main-text">Earnings Shield</h4>
+                  <p className="text-[10px] text-muted-text">Hide earnings figures in simple screens</p>
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer">
                   <input 
@@ -566,16 +566,16 @@ export default function SettingsView({ onSettingsChanged, privacyMode, onToggleP
           </div>
 
           {/* Security Logs Audit trail card */}
-          <div className="rounded-3xl border border-slate-800 bg-[#18181B] p-6 shadow-xl flex flex-col justify-between">
+          <div className="rounded-3xl border border-main-border bg-card-bg p-6 shadow-xl flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xs font-semibold text-slate-400 tracking-wider font-mono flex items-center gap-2">
+                <h3 className="text-xs font-semibold text-muted-text tracking-wider font-mono flex items-center gap-2">
                   <History className="h-4 w-4 text-blue-400" />
                   <span>Compliance Audit Trail</span>
                 </h3>
                 <button
                   onClick={() => { clearSecurityLogs(); onSettingsChanged(); }}
-                  className="text-[9px] font-mono text-slate-500 hover:text-slate-300 transition uppercase cursor-pointer"
+                  className="text-[9px] font-mono text-muted-text hover:text-main-text transition uppercase cursor-pointer"
                 >
                   Clear logs
                 </button>
@@ -584,21 +584,21 @@ export default function SettingsView({ onSettingsChanged, privacyMode, onToggleP
               {/* Logs loop */}
               <div className="space-y-3.5 max-h-72 overflow-y-auto pr-1 scrollbar-thin">
                 {logs.length === 0 ? (
-                  <p className="text-[11px] text-slate-500 font-mono">No audit trail logs recorded yet.</p>
+                  <p className="text-[11px] text-muted-text font-mono">No audit trail logs recorded yet.</p>
                 ) : (
                   logs.map((log) => (
-                    <div key={log.id} className="text-[10px] border-b border-slate-800/40 pb-2.5">
+                    <div key={log.id} className="text-[10px] border-b border-main-border/40 pb-2.5">
                       <div className="flex items-center justify-between gap-2 font-mono">
                         <span className={`font-bold ${
                           log.category === 'auth' ? 'text-indigo-400' :
                           log.category === 'geofence' ? 'text-blue-400' :
                           log.category === 'sync' ? 'text-sky-400' : 'text-blue-400'
                         }`}>{log.event}</span>
-                        <span className="text-slate-600 flex-shrink-0">
+                        <span className="text-muted-text/60 flex-shrink-0">
                           {new Date(log.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second: '2-digit'})}
                         </span>
                       </div>
-                      <p className="mt-0.5 text-slate-400 text-[10px] leading-relaxed">
+                      <p className="mt-0.5 text-muted-text text-[10px] leading-relaxed">
                         {log.details}
                       </p>
                     </div>
@@ -608,9 +608,9 @@ export default function SettingsView({ onSettingsChanged, privacyMode, onToggleP
             </div>
 
             {/* Regulatory ISO and GDPR declaration */}
-            <div className="mt-6 rounded-xl bg-zinc-950/60 border border-slate-800/60 p-3 flex gap-2">
+            <div className="mt-6 rounded-xl bg-input-bg/60 border border-main-border/60 p-3 flex gap-2">
               <Info className="h-4 w-4 text-blue-400 flex-shrink-0 mt-0.5" />
-              <p className="text-[9px] leading-relaxed text-slate-500 font-mono">
+              <p className="text-[9px] leading-relaxed text-muted-text font-mono">
                 REGULATORY STANDARD: ISO-27001 LOG FORWARDER MATCHES CRITICAL COMPLIANCE METADATA. LOCAL HOST ENVELOPE SECURES TRACE PARAMETERS FROM DISCLOSURE.
               </p>
             </div>

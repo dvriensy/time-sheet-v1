@@ -148,7 +148,7 @@ export const HeaderTimer: React.FC<HeaderTimerProps> = ({ currentUser, onShiftLo
 
       {/* Floating toast notification */}
       {toastMessage && (
-        <div className="absolute top-full right-0 mt-2 z-50 flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 text-white text-xs font-medium rounded-xl shadow-lg border border-slate-700 animate-in fade-in slide-in-from-top-1 whitespace-nowrap">
+        <div className="absolute top-full right-0 mt-2 z-50 flex items-center gap-1.5 px-3 py-1.5 bg-card-bg text-main-text text-xs font-medium rounded-xl shadow-xl border border-main-border animate-in fade-in slide-in-from-top-1 whitespace-nowrap">
           <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
           <span>{toastMessage}</span>
         </div>

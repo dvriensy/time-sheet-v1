@@ -110,23 +110,23 @@ export default function DashboardView({ entries, privacyMode, onTogglePrivacy }:
       {/* Top Welcome Title */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-slate-100">Analytics Dashboard</h1>
-          <p className="text-xs text-slate-400">Data compiled from secure local sandboxed time log structures.</p>
+          <h1 className="text-xl font-semibold text-main-text">Analytics Dashboard</h1>
+          <p className="text-xs text-muted-text">Data compiled from secure local sandboxed time log structures.</p>
         </div>
         
         {/* Privacy Shield Trigger */}
         <button
           onClick={onTogglePrivacy}
-          className="flex self-start items-center gap-2 rounded-xl border border-slate-800 bg-[#18181B] px-4 py-2 text-xs font-medium text-slate-300 hover:bg-slate-800 transition cursor-pointer"
+          className="flex self-start items-center gap-2 rounded-xl border border-main-border bg-card-bg px-4 py-2 text-xs font-medium text-main-text hover:bg-input-bg transition cursor-pointer"
         >
           {privacyMode ? (
             <>
-              <Eye className="h-4 w-4 text-blue-400 animate-pulse" />
+              <Eye className="h-4 w-4 text-blue-500 animate-pulse" />
               <span>Disable Privacy Shield</span>
             </>
           ) : (
             <>
-              <EyeOff className="h-4 w-4 text-slate-400" />
+              <EyeOff className="h-4 w-4 text-muted-text" />
               <span>Enable Privacy Shield</span>
             </>
           )}
@@ -136,68 +136,68 @@ export default function DashboardView({ entries, privacyMode, onTogglePrivacy }:
       {/* Metrics Cards Grid */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {/* Metric 1 */}
-        <div className="rounded-3xl border border-slate-800 bg-[#18181B] p-5 shadow-lg">
+        <div className="rounded-3xl border border-main-border bg-card-bg p-5 shadow-lg">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-400">Total Hours</span>
-            <div className="rounded-xl bg-blue-600/10 p-2 text-blue-400">
+            <span className="text-xs font-medium text-muted-text">Total Hours</span>
+            <div className="rounded-xl bg-blue-600/10 p-2 text-blue-500">
               <Clock className="h-4 w-4" />
             </div>
           </div>
           <div className="mt-4">
-            <h3 className="text-2xl font-semibold text-white tracking-tight">
-              {stats.totalHours} <span className="text-xs font-normal text-slate-400">hrs</span>
+            <h3 className="text-2xl font-semibold text-main-text tracking-tight">
+              {stats.totalHours} <span className="text-xs font-normal text-muted-text">hrs</span>
             </h3>
-            <p className="mt-1 text-[10px] text-slate-500 font-mono">ALL SECURE RECORDED SESSIONS</p>
+            <p className="mt-1 text-[10px] text-muted-text font-mono">ALL SECURE RECORDED SESSIONS</p>
           </div>
         </div>
 
         {/* Metric 2 */}
-        <div className="rounded-3xl border border-slate-800 bg-[#18181B] p-5 shadow-lg">
+        <div className="rounded-3xl border border-main-border bg-card-bg p-5 shadow-lg">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-400">Gross Earnings</span>
-            <div className="rounded-xl bg-blue-600/10 p-2 text-blue-400">
+            <span className="text-xs font-medium text-muted-text">Gross Earnings</span>
+            <div className="rounded-xl bg-blue-600/10 p-2 text-blue-500">
               <DollarSign className="h-4 w-4" />
             </div>
           </div>
           <div className="mt-4">
-            <h3 className="text-2xl font-semibold text-white tracking-tight">
+            <h3 className="text-2xl font-semibold text-main-text tracking-tight">
               {formatCurrency(stats.totalEarnings)}
             </h3>
-            <p className="mt-1 text-[10px] text-slate-500 font-mono">
+            <p className="mt-1 text-[10px] text-muted-text font-mono">
               {privacyMode ? 'ENCRYPTED FROM DISPLAY' : 'ACCUMULATED NET PAY'}
             </p>
           </div>
         </div>
 
         {/* Metric 3 */}
-        <div className="rounded-3xl border border-slate-800 bg-[#18181B] p-5 shadow-lg">
+        <div className="rounded-3xl border border-main-border bg-card-bg p-5 shadow-lg">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-400">Avg Hourly Rate</span>
-            <div className="rounded-xl bg-blue-600/10 p-2 text-indigo-400">
+            <span className="text-xs font-medium text-muted-text">Avg Hourly Rate</span>
+            <div className="rounded-xl bg-blue-600/10 p-2 text-indigo-500">
               <TrendingUp className="h-4 w-4" />
             </div>
           </div>
           <div className="mt-4">
-            <h3 className="text-2xl font-semibold text-white tracking-tight">
-              {formatCurrency(stats.avgRate)}<span className="text-xs font-normal text-slate-400">/hr</span>
+            <h3 className="text-2xl font-semibold text-main-text tracking-tight">
+              {formatCurrency(stats.avgRate)}<span className="text-xs font-normal text-muted-text">/hr</span>
             </h3>
-            <p className="mt-1 text-[10px] text-slate-500 font-mono">AGGREGATE CONTRACT WEIGHT</p>
+            <p className="mt-1 text-[10px] text-muted-text font-mono">AGGREGATE CONTRACT WEIGHT</p>
           </div>
         </div>
 
         {/* Metric 4 */}
-        <div className="rounded-3xl border border-slate-800 bg-[#18181B] p-5 shadow-lg">
+        <div className="rounded-3xl border border-main-border bg-card-bg p-5 shadow-lg">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-400">Workspaces/Projects</span>
-            <div className="rounded-xl bg-blue-600/10 p-2 text-blue-400">
+            <span className="text-xs font-medium text-muted-text">Workspaces/Projects</span>
+            <div className="rounded-xl bg-blue-600/10 p-2 text-blue-500">
               <Briefcase className="h-4 w-4" />
             </div>
           </div>
           <div className="mt-4">
-            <h3 className="text-2xl font-semibold text-white tracking-tight">
-              {stats.projectCount} <span className="text-xs font-normal text-slate-400">active</span>
+            <h3 className="text-2xl font-semibold text-main-text tracking-tight">
+              {stats.projectCount} <span className="text-xs font-normal text-muted-text">active</span>
             </h3>
-            <p className="mt-1 text-[10px] text-slate-500 font-mono">UNIQUE WORK SEGMENTS</p>
+            <p className="mt-1 text-[10px] text-muted-text font-mono">UNIQUE WORK SEGMENTS</p>
           </div>
         </div>
       </div>
@@ -206,8 +206,8 @@ export default function DashboardView({ entries, privacyMode, onTogglePrivacy }:
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         
         {/* Weekly Hours Workload (Bar Chart) */}
-        <div className="lg:col-span-2 rounded-3xl border border-slate-800 bg-[#18181B] p-6 shadow-xl">
-          <h2 className="mb-4 text-sm font-medium text-slate-200">Weekly Hours Workload</h2>
+        <div className="lg:col-span-2 rounded-3xl border border-main-border bg-card-bg p-6 shadow-xl">
+          <h2 className="mb-4 text-sm font-medium text-main-text">Weekly Hours Workload</h2>
           <div className="h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={weeklyData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
@@ -232,10 +232,10 @@ export default function DashboardView({ entries, privacyMode, onTogglePrivacy }:
         </div>
 
         {/* Project Workload Allocation (Pie Chart) */}
-        <div className="rounded-3xl border border-slate-800 bg-[#18181B] p-6 shadow-xl flex flex-col justify-between">
+        <div className="rounded-3xl border border-main-border bg-card-bg p-6 shadow-xl flex flex-col justify-between">
           <div>
-            <h2 className="text-sm font-medium text-slate-200">Workforce Project Share</h2>
-            <p className="text-[11px] text-slate-500">Distribution of total logged hours</p>
+            <h2 className="text-sm font-medium text-main-text">Workforce Project Share</h2>
+            <p className="text-[11px] text-muted-text">Distribution of total logged hours</p>
           </div>
           <div className="h-48 w-full flex items-center justify-center relative my-4">
             {projectData.length > 0 ? (
@@ -255,18 +255,18 @@ export default function DashboardView({ entries, privacyMode, onTogglePrivacy }:
                     ))}
                   </Pie>
                   <Tooltip 
-                    contentStyle={{ backgroundColor: '#09090b', borderColor: '#1e293b', borderRadius: '16px' }}
-                    itemStyle={{ fontSize: '11px', color: '#f8fafc' }}
+                    contentStyle={{ backgroundColor: 'var(--color-card-bg)', borderColor: 'var(--color-main-border)', borderRadius: '16px' }}
+                    itemStyle={{ fontSize: '11px', color: 'var(--color-main-text)' }}
                   />
                 </PieChart>
               </ResponsiveContainer>
             ) : (
-              <p className="text-xs text-slate-500">No projects to display.</p>
+              <p className="text-xs text-muted-text">No projects to display.</p>
             )}
             {/* Center label */}
             <div className="absolute flex flex-col items-center">
-              <span className="text-[10px] font-mono text-slate-500">PROJECTS</span>
-              <span className="text-lg font-bold text-slate-200">{stats.projectCount}</span>
+              <span className="text-[10px] font-mono text-muted-text">PROJECTS</span>
+              <span className="text-lg font-bold text-main-text">{stats.projectCount}</span>
             </div>
           </div>
           {/* Custom Legends */}
@@ -275,9 +275,9 @@ export default function DashboardView({ entries, privacyMode, onTogglePrivacy }:
               <div key={item.name} className="flex items-center justify-between text-[11px]">
                 <div className="flex items-center gap-1.5 truncate">
                   <div className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: COLORS[index % COLORS.length] }} />
-                  <span className="text-slate-300 truncate">{item.name}</span>
+                  <span className="text-main-text truncate">{item.name}</span>
                 </div>
-                <span className="text-slate-400 font-mono ml-2">{item.value} hrs</span>
+                <span className="text-muted-text font-mono ml-2">{item.value} hrs</span>
               </div>
             ))}
           </div>
@@ -286,8 +286,8 @@ export default function DashboardView({ entries, privacyMode, onTogglePrivacy }:
       </div>
 
       {/* Cumulative Earnings Over Time (Area Chart) */}
-      <div className="rounded-3xl border border-slate-800 bg-[#18181B] p-6 shadow-xl">
-        <h2 className="mb-4 text-sm font-medium text-slate-200">Chronological Session Log</h2>
+      <div className="rounded-3xl border border-main-border bg-card-bg p-6 shadow-xl">
+        <h2 className="mb-4 text-sm font-medium text-main-text">Chronological Session Log</h2>
         <div className="h-64 w-full">
           {chronologicalData.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
@@ -298,12 +298,12 @@ export default function DashboardView({ entries, privacyMode, onTogglePrivacy }:
                     <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.0}/>
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                <XAxis dataKey="date" stroke="#64748b" fontSize={11} tickLine={false} />
-                <YAxis stroke="#64748b" fontSize={11} tickLine={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-main-border)" opacity={0.5} />
+                <XAxis dataKey="date" stroke="var(--color-muted-text)" fontSize={11} tickLine={false} />
+                <YAxis stroke="var(--color-muted-text)" fontSize={11} tickLine={false} />
                 <Tooltip
-                  contentStyle={{ backgroundColor: '#09090b', borderColor: '#1e293b', borderRadius: '16px' }}
-                  labelClassName="text-slate-200 font-semibold text-xs"
+                  contentStyle={{ backgroundColor: 'var(--color-card-bg)', borderColor: 'var(--color-main-border)', borderRadius: '16px' }}
+                  labelClassName="text-main-text font-semibold text-xs"
                   itemStyle={{ fontSize: '11px' }}
                   formatter={(value: any, name: string) => {
                     if (name === 'Earnings') return [formatCurrency(Number(value)), 'Earnings'];
@@ -315,7 +315,7 @@ export default function DashboardView({ entries, privacyMode, onTogglePrivacy }:
             </ResponsiveContainer>
           ) : (
             <div className="flex h-full items-center justify-center">
-              <p className="text-xs text-slate-500">No historical sessions recorded.</p>
+              <p className="text-xs text-muted-text">No historical sessions recorded.</p>
             </div>
           )}
         </div>

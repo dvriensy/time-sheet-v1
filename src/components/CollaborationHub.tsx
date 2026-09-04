@@ -94,35 +94,35 @@ export default function CollaborationHub({ onSyncComplete }: CollaborationHubPro
     <div id="collaboration-hub" className="grid grid-cols-1 gap-6 lg:grid-cols-3">
       
       {/* COWORKERS COLLABORATION STATUS BOARD */}
-      <div className="lg:col-span-2 rounded-3xl border border-slate-800 bg-[#18181B] p-6 shadow-xl flex flex-col justify-between">
+      <div className="lg:col-span-2 rounded-3xl border border-main-border bg-card-bg p-6 shadow-xl flex flex-col justify-between">
         <div>
           <div className="flex items-center justify-between mb-1">
-            <h2 className="text-sm font-medium text-slate-200 flex items-center gap-2">
-              <Users className="h-4 w-4 text-blue-400" />
+            <h2 className="text-sm font-medium text-main-text flex items-center gap-2">
+              <Users className="h-4 w-4 text-blue-500" />
               <span>Real-Time Team Workstation Board</span>
             </h2>
-            <span className="text-[10px] font-mono text-slate-500 uppercase">Synced Outpost Members</span>
+            <span className="text-[10px] font-mono text-muted-text uppercase">Synced Outpost Members</span>
           </div>
-          <p className="text-xs text-slate-400">Review coworkers logged in to shared workspaces across geofenced nodes.</p>
+          <p className="text-xs text-muted-text">Review coworkers logged in to shared workspaces across geofenced nodes.</p>
         </div>
 
         {/* Members Status Cards Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 my-6">
           {teamMembers.map((member) => (
-            <div key={member.id} className="rounded-2xl border border-slate-800/60 bg-zinc-950/40 p-4 flex items-center justify-between gap-3 relative overflow-hidden">
+            <div key={member.id} className="rounded-2xl border border-main-border/60 bg-input-bg/40 p-4 flex items-center justify-between gap-3 relative overflow-hidden">
               <div className="flex items-center gap-3">
                 {/* Avatar Initials Placeholder */}
-                <div className="h-9 w-9 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-xs font-semibold text-slate-300">
+                <div className="h-9 w-9 rounded-full bg-app-bg border border-main-border flex items-center justify-center text-xs font-semibold text-main-text">
                   {member.name.split(' ').map(n=>n[0]).join('')}
                 </div>
 
                 <div>
-                  <h4 className="text-xs font-semibold text-slate-200">{member.name}</h4>
+                  <h4 className="text-xs font-semibold text-main-text">{member.name}</h4>
                   {member.status === 'clocked_out' ? (
-                    <p className="text-[10px] text-slate-500 font-mono">Offline</p>
+                    <p className="text-[10px] text-muted-text font-mono">Offline</p>
                   ) : (
-                    <p className="text-[10px] text-slate-400 font-mono truncate max-w-[120px]">
-                      Working on: <strong className="text-slate-300">{member.currentProject}</strong>
+                    <p className="text-[10px] text-muted-text font-mono truncate max-w-[120px]">
+                      Working on: <strong className="text-main-text">{member.currentProject}</strong>
                     </p>
                   )}
                 </div>
@@ -131,17 +131,17 @@ export default function CollaborationHub({ onSyncComplete }: CollaborationHubPro
               {/* Status Indicator */}
               <div className="text-right">
                 <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-semibold ${
-                  member.status === 'clocked_in' ? 'bg-blue-500/10 text-blue-400' :
-                  member.status === 'on_break' ? 'bg-amber-500/10 text-amber-400' : 'bg-slate-800 text-slate-500'
+                  member.status === 'clocked_in' ? 'bg-blue-500/10 text-blue-500 dark:text-blue-400' :
+                  member.status === 'on_break' ? 'bg-amber-500/10 text-amber-500 dark:text-amber-400' : 'bg-input-bg text-muted-text'
                 }`}>
                   <span className={`h-1.5 w-1.5 rounded-full ${
-                    member.status === 'clocked_in' ? 'bg-blue-400 animate-pulse' :
-                    member.status === 'on_break' ? 'bg-amber-400' : 'bg-slate-600'
+                    member.status === 'clocked_in' ? 'bg-blue-500 animate-pulse' :
+                    member.status === 'on_break' ? 'bg-amber-500' : 'bg-muted-text/60'
                   }`} />
                   {member.status === 'clocked_in' ? 'Shift Active' :
                    member.status === 'on_break' ? 'On Break' : 'Offline'}
                 </span>
-                <p className="text-[9px] text-slate-600 font-mono mt-1">
+                <p className="text-[9px] text-muted-text font-mono mt-1">
                   Active {new Date(member.lastActive).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}
                 </p>
               </div>
@@ -150,9 +150,9 @@ export default function CollaborationHub({ onSyncComplete }: CollaborationHubPro
         </div>
 
         {/* Realtime Socket Sync Status Bar */}
-        <div className="rounded-xl bg-zinc-950/80 border border-slate-800 p-3 flex justify-between items-center text-[10px] font-mono text-slate-400">
+        <div className="rounded-xl bg-input-bg/80 border border-main-border p-3 flex justify-between items-center text-[10px] font-mono text-muted-text">
           <div className="flex items-center gap-2">
-            <div className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-ping" />
+            <div className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-ping" />
             <span>SOCKET CHANNEL: #COLLAB-WS-ACTIVE</span>
           </div>
           <div>
@@ -166,21 +166,21 @@ export default function CollaborationHub({ onSyncComplete }: CollaborationHubPro
       <div className="lg:col-span-1 space-y-6">
         
         {/* Sync Controls card */}
-        <div className="rounded-3xl border border-slate-800 bg-[#18181B] p-6 shadow-xl flex flex-col justify-between">
+        <div className="rounded-3xl border border-main-border bg-card-bg p-6 shadow-xl flex flex-col justify-between">
           
           <div>
-            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider font-mono flex items-center gap-2 mb-4">
-              <Cloud className="h-4 w-4 text-blue-400" />
+            <h3 className="text-xs font-semibold text-muted-text uppercase tracking-wider font-mono flex items-center gap-2 mb-4">
+              <Cloud className="h-4 w-4 text-blue-500" />
               <span>Team Sync Preferences</span>
             </h3>
 
             <div className="space-y-4">
               
               {/* Toggle Sync Enabled */}
-              <div className="flex items-center justify-between border-b border-slate-800/60 pb-3">
+              <div className="flex items-center justify-between border-b border-main-border/60 pb-3">
                 <div>
-                  <h4 className="text-xs font-semibold text-slate-200">Cloud Synchronization</h4>
-                  <p className="text-[10px] text-slate-400">Upload to multi-user server node</p>
+                  <h4 className="text-xs font-semibold text-main-text">Cloud Synchronization</h4>
+                  <p className="text-[10px] text-muted-text">Upload to multi-user server node</p>
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer">
                   <input 
@@ -195,38 +195,38 @@ export default function CollaborationHub({ onSyncComplete }: CollaborationHubPro
 
               {/* Org ID */}
               <div>
-                <label className="text-[10px] font-semibold text-slate-400 uppercase font-mono block mb-1">Organization ID</label>
+                <label className="text-[10px] font-semibold text-muted-text uppercase font-mono block mb-1">Organization ID</label>
                 <input
                   type="text"
                   placeholder="e.g. ORG-DESIGN-TECH-500"
                   disabled={!syncSettings.enabled}
                   value={syncSettings.orgId}
                   onChange={(e) => handleSaveTextSettings({ orgId: e.target.value })}
-                  className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-100 placeholder-slate-700 focus:border-blue-500/50 focus:outline-none disabled:opacity-50"
+                  className="w-full rounded-xl border border-main-border bg-input-bg px-3 py-2 text-xs text-main-text placeholder-muted-text/50 focus:border-blue-500/50 focus:outline-none disabled:opacity-50"
                 />
               </div>
 
               {/* Workspace Name */}
               <div>
-                <label className="text-[10px] font-semibold text-slate-400 uppercase font-mono block mb-1">Workspace Node Name</label>
+                <label className="text-[10px] font-semibold text-muted-text uppercase font-mono block mb-1">Workspace Node Name</label>
                 <input
                   type="text"
                   placeholder="e.g. San Francisco HQ"
                   disabled={!syncSettings.enabled}
                   value={syncSettings.workspaceName}
                   onChange={(e) => handleSaveTextSettings({ workspaceName: e.target.value })}
-                  className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-100 placeholder-slate-700 focus:border-blue-500/50 focus:outline-none disabled:opacity-50"
+                  className="w-full rounded-xl border border-main-border bg-input-bg px-3 py-2 text-xs text-main-text placeholder-muted-text/50 focus:border-blue-500/50 focus:outline-none disabled:opacity-50"
                 />
               </div>
 
               {/* Conflict resolution policy */}
               <div>
-                <label className="text-[10px] font-semibold text-slate-400 uppercase font-mono block mb-1">Conflict Policy</label>
+                <label className="text-[10px] font-semibold text-muted-text uppercase font-mono block mb-1">Conflict Policy</label>
                 <select
                   disabled={!syncSettings.enabled}
                   value={syncSettings.conflictPolicy}
                   onChange={(e) => handleSaveTextSettings({ conflictPolicy: e.target.value as any })}
-                  className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-medium text-slate-100 focus:border-blue-500/50 focus:outline-none disabled:opacity-50"
+                  className="w-full rounded-xl border border-main-border bg-input-bg px-3 py-2 text-xs font-medium text-main-text focus:border-blue-500/50 focus:outline-none disabled:opacity-50"
                 >
                   <option value="client_wins">Client wins (Local state master)</option>
                   <option value="server_wins">Server wins (Relational state master)</option>
@@ -238,7 +238,7 @@ export default function CollaborationHub({ onSyncComplete }: CollaborationHubPro
 
           {/* Sync Button & Info block */}
           {syncSettings.enabled && (
-            <div className="mt-6 pt-5 border-t border-slate-800/60 space-y-4">
+            <div className="mt-6 pt-5 border-t border-main-border/60 space-y-4">
               
               {/* Force sync button */}
               <button
@@ -260,10 +260,10 @@ export default function CollaborationHub({ onSyncComplete }: CollaborationHubPro
                     exit={{ opacity: 0, height: 0 }}
                     className="rounded-xl border border-blue-500/15 bg-blue-500/5 p-3 flex items-start gap-2.5"
                   >
-                    <CheckCircle2 className="h-4 w-4 text-blue-400 flex-shrink-0 mt-0.5" />
+                    <CheckCircle2 className="h-4 w-4 text-blue-500 flex-shrink-0 mt-0.5" />
                     <div>
-                      <h4 className="text-[11px] font-semibold text-blue-400">Handshake Complete</h4>
-                      <p className="text-[10px] text-slate-400 mt-0.5 leading-relaxed">
+                      <h4 className="text-[11px] font-semibold text-blue-500">Handshake Complete</h4>
+                      <p className="text-[10px] text-muted-text mt-0.5 leading-relaxed">
                         Database tables converged successfully. Broadcasted local segments to Org Node.
                       </p>
                     </div>
@@ -272,7 +272,7 @@ export default function CollaborationHub({ onSyncComplete }: CollaborationHubPro
               </AnimatePresence>
 
               {/* Last synced timestamp display */}
-              <div className="text-center font-mono text-[9px] text-slate-500">
+              <div className="text-center font-mono text-[9px] text-muted-text">
                 LAST HANDSHAKE: <strong>{formatLastSync(syncSettings.lastSyncTime)}</strong>
               </div>
 
