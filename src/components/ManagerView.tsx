@@ -12,7 +12,7 @@ import {
   Activity, Coffee, ChevronDown, ChevronRight, ChevronLeft, CheckCircle2, 
   PlusCircle, ShieldAlert, Landmark, HelpCircle, ArrowRight, User, Trash2,
   CalendarDays, Check, X, AlertTriangle, Bell, Lock, Edit, Inbox, Printer,
-  Calendar, ExternalLink, RefreshCw
+  Calendar, ExternalLink, RefreshCw, Eye, ShieldCheck, Download
 } from 'lucide-react';
 import { 
   getAllUsers, 
@@ -44,13 +44,6 @@ import { getAlbertaHoliday } from '../utils/albertaHolidays';
 import TimeOffCalendar from './TimeOffCalendar';
 import WorkDispatchChat from './WorkDispatchChat';
 import JobTimeSheetPrintout from './JobTimeSheetPrintout';
-import GoogleCalendarIntegrationCard from './GoogleCalendarIntegrationCard';
-import { 
-  syncFutureShiftToGoogleCalendar, 
-  deleteGoogleCalendarEvent, 
-  getStoredGoogleCalendarAuth, 
-  isGoogleTokenValid 
-} from '../utils/googleCalendar';
 
 interface ManagerViewProps {
   currentUser: UserAccount;
@@ -79,6 +72,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
   const [popupCalDate, setPopupCalDate] = useState<Date | null>(null);
   const [selectedManagerPrint, setSelectedManagerPrint] = useState<SubmittedTimesheet | null>(null);
   const [managerPrintMode, setManagerPrintMode] = useState<'job_timesheet' | 'summary'>('job_timesheet');
+  const [selectedManagerFlhaEntry, setSelectedManagerFlhaEntry] = useState<TimesheetEntry | null>(null);
 
   useEffect(() => {
     if (activeReplyRequest) {
@@ -158,7 +152,6 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
   const [assignEndTime, setAssignEndTime] = useState('17:00');
   const [assignNotes, setAssignNotes] = useState('');
   const [assignLocation, setAssignLocation] = useState('General Site');
-  const [syncingShiftId, setSyncingShiftId] = useState<string | null>(null);
 
   const refreshFutureShifts = () => {
     setFutureShiftsList(getFutureShifts());
@@ -411,74 +404,15 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
       setAssignLocation('General Site');
       refreshFutureShifts();
       setTimeout(() => setSuccessMessage(null), 4000);
-
-      // Attempt auto-sync to Google Calendar if manager or employee has connected account
-      try {
-        const mgrAuth = getStoredGoogleCalendarAuth(currentUser?.username);
-        const userAuth = getStoredGoogleCalendarAuth(assignUsername);
-        const activeAuth = (userAuth.isConnected && isGoogleTokenValid(userAuth) && userAuth.autoSyncShifts)
-          ? userAuth
-          : (mgrAuth.isConnected && isGoogleTokenValid(mgrAuth) && mgrAuth.autoSyncShifts)
-          ? mgrAuth
-          : null;
-
-        if (activeAuth) {
-          await syncFutureShiftToGoogleCalendar(newShift, activeAuth);
-          refreshFutureShifts();
-        }
-      } catch (syncErr) {
-        console.warn("Could not auto-sync newly assigned shift to Google Calendar:", syncErr);
-      }
     }
   };
 
   const handleDeleteShift = async (id: string) => {
-    const shiftToDelete = futureShiftsList.find(s => s.id === id);
     const success = deleteFutureShift(id);
     if (success) {
-      // If synced to Google Calendar, remove the remote calendar event
-      if (shiftToDelete?.googleCalendarEventId) {
-        const mgrAuth = getStoredGoogleCalendarAuth(currentUser?.username);
-        const userAuth = shiftToDelete.username ? getStoredGoogleCalendarAuth(shiftToDelete.username) : null;
-        const activeToken = (userAuth && isGoogleTokenValid(userAuth)) 
-          ? userAuth.accessToken 
-          : (mgrAuth && isGoogleTokenValid(mgrAuth)) 
-          ? mgrAuth.accessToken 
-          : null;
-
-        if (activeToken) {
-          deleteGoogleCalendarEvent(activeToken, shiftToDelete.googleCalendarEventId).catch(console.warn);
-        }
-      }
       setSuccessMessage(`Successfully deleted scheduled shift.`);
       refreshFutureShifts();
       setTimeout(() => setSuccessMessage(null), 4000);
-    }
-  };
-
-  const handleSyncShift = async (shift: FutureShift) => {
-    const mgrAuth = getStoredGoogleCalendarAuth(currentUser?.username);
-    const userAuth = shift.username ? getStoredGoogleCalendarAuth(shift.username) : null;
-    const activeAuth = (mgrAuth.isConnected && isGoogleTokenValid(mgrAuth))
-      ? mgrAuth
-      : (userAuth && userAuth.isConnected && isGoogleTokenValid(userAuth))
-      ? userAuth
-      : null;
-
-    if (!activeAuth || !activeAuth.accessToken) {
-      alert("Please connect Google Calendar first via the Google Calendar Sync card.");
-      return;
-    }
-
-    setSyncingShiftId(shift.id);
-    try {
-      await syncFutureShiftToGoogleCalendar(shift, activeAuth);
-      refreshFutureShifts();
-    } catch (err: any) {
-      console.error("Failed to sync shift:", err);
-      alert(`Could not sync shift to Google Calendar: ${err.message || 'Unknown error'}`);
-    } finally {
-      setSyncingShiftId(null);
     }
   };
 
@@ -1345,6 +1279,25 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                                           <MapPin className="h-3 w-3 text-blue-500" />
                                           Site: {entry.locationName}
                                         </span>
+                                        {entry.flhaImageUrl && (
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setSelectedManagerFlhaEntry(entry);
+                                            }}
+                                            className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider transition cursor-pointer shadow-xs"
+                                            title="View full-size FLHA Safety Card"
+                                          >
+                                            <img 
+                                              src={entry.flhaImageUrl} 
+                                              alt="FLHA" 
+                                              className="w-3.5 h-3.5 rounded object-cover border border-emerald-500/40" 
+                                            />
+                                            <span>FLHA Card</span>
+                                            <Eye className="h-2.5 w-2.5 opacity-70" />
+                                          </button>
+                                        )}
                                       </div>
                                       
                                       {entry.notes && (
@@ -1668,12 +1621,6 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
 
       {managerTab === 'schedule' && (
         <div className="space-y-6">
-          <GoogleCalendarIntegrationCard
-            currentUsername={currentUser?.username}
-            shifts={futureShiftsList}
-            onShiftsUpdated={refreshFutureShifts}
-          />
-
           <div className="bg-card-bg border border-main-border rounded-2xl p-5 shadow-xl">
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-6 pb-4 border-b border-main-border/40">
               <div className="text-left">
@@ -1706,59 +1653,63 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Calendar Grid (left 2 cols) */}
               <div className="lg:col-span-2 space-y-4">
-                <div className="grid grid-cols-7 gap-1 text-center font-bold text-xs text-muted-text uppercase font-mono tracking-wider">
-                  <span>Sun</span>
-                  <span>Mon</span>
-                  <span>Tue</span>
-                  <span>Wed</span>
-                  <span>Thu</span>
-                  <span>Fri</span>
-                  <span>Sat</span>
-                </div>
+                <div className="overflow-x-auto pb-2">
+                  <div className="min-w-[500px]">
+                    <div className="grid grid-cols-7 gap-1 text-center font-bold text-xs text-muted-text uppercase font-mono tracking-wider">
+                      <span>Sun</span>
+                      <span>Mon</span>
+                      <span>Tue</span>
+                      <span>Wed</span>
+                      <span>Thu</span>
+                      <span>Fri</span>
+                      <span>Sat</span>
+                    </div>
 
-                <div className="grid grid-cols-7 gap-1">
-                  {calendarDays.map((day, idx) => {
-                    const dateStr = day.dateStr;
-                    const isCurrentMonth = day.isCurrentMonth;
-                    const isSelected = selectedDate === dateStr;
-                    const dayShifts = futureShiftsList.filter(s => s.date === dateStr);
-                    
-                    return (
-                      <div
-                        key={idx}
-                        onClick={() => setSelectedDate(dateStr)}
-                        className={`min-h-[100px] border rounded-xl p-2 text-left flex flex-col justify-between transition cursor-pointer ${
-                          !isCurrentMonth 
-                            ? 'bg-app-bg/20 border-main-border/30 text-muted-text/30' 
-                            : isSelected
-                            ? 'bg-blue-600/10 border-blue-500 text-main-text'
-                            : 'bg-app-bg/50 border-main-border hover:bg-main-border/20 text-main-text'
-                        }`}
-                      >
-                        <span className={`text-xs font-bold font-mono ${isSelected ? 'text-blue-500 font-extrabold' : ''}`}>
-                          {day.dayNum}
-                        </span>
+                    <div className="grid grid-cols-7 gap-1 mt-2">
+                      {calendarDays.map((day, idx) => {
+                        const dateStr = day.dateStr;
+                        const isCurrentMonth = day.isCurrentMonth;
+                        const isSelected = selectedDate === dateStr;
+                        const dayShifts = futureShiftsList.filter(s => s.date === dateStr);
                         
-                        {/* Day's scheduled shifts list */}
-                        <div className="mt-1 space-y-1 overflow-y-auto max-h-[70px] pr-0.5">
-                          {dayShifts.map(s => {
-                            const sName = s.fullName || 'Employee';
-                            const sProj = s.project || 'General Shift';
-                            const sStart = s.startTime || '09:00';
-                            return (
-                              <div
-                                key={s.id}
-                                className="text-[9px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 font-semibold truncate"
-                                title={`${sName}: ${sProj} (${sStart}-${s.endTime})`}
-                              >
-                                {sName.split(' ')[0]}: {sProj}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })}
+                        return (
+                          <div
+                            key={idx}
+                            onClick={() => setSelectedDate(dateStr)}
+                            className={`min-h-[100px] border rounded-xl p-2 text-left flex flex-col justify-between transition cursor-pointer ${
+                              !isCurrentMonth 
+                                ? 'bg-app-bg/20 border-main-border/30 text-muted-text/30' 
+                                : isSelected
+                                ? 'bg-blue-600/10 border-blue-500 text-main-text'
+                                : 'bg-app-bg/50 border-main-border hover:bg-main-border/20 text-main-text'
+                            }`}
+                          >
+                            <span className={`text-xs font-bold font-mono ${isSelected ? 'text-blue-500 font-extrabold' : ''}`}>
+                              {day.dayNum}
+                            </span>
+                            
+                            {/* Day's scheduled shifts list */}
+                            <div className="mt-1 space-y-1 overflow-y-auto max-h-[70px] pr-0.5">
+                              {dayShifts.map(s => {
+                                const sName = s.fullName || 'Employee';
+                                const sProj = s.project || 'General Shift';
+                                const sStart = s.startTime || '09:00';
+                                return (
+                                  <div
+                                    key={s.id}
+                                    className="text-[9px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 font-semibold truncate"
+                                    title={`${sName}: ${sProj} (${sStart}-${s.endTime})`}
+                                  >
+                                    {sName.split(' ')[0]}: {sProj}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -1905,34 +1856,6 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                               <span className="truncate">{s.location || 'General Site'}</span>
                             </div>
 
-                            {/* Google Calendar sync status / button */}
-                            <div className="pt-0.5">
-                              {s.googleCalendarEventId ? (
-                                <a
-                                  href={s.googleCalendarHtmlLink || 'https://calendar.google.com'}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="inline-flex items-center gap-1 text-[9px] font-mono text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 px-2 py-0.5 rounded-full border border-blue-500/20 transition cursor-pointer"
-                                  title="View event in Google Calendar"
-                                >
-                                  <Calendar className="h-2.5 w-2.5" />
-                                  <span>Google Calendar</span>
-                                  <ExternalLink className="h-2 w-2 opacity-70" />
-                                </a>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => handleSyncShift(s)}
-                                  disabled={syncingShiftId === s.id}
-                                  className="inline-flex items-center gap-1 text-[9px] font-mono text-slate-400 hover:text-slate-200 bg-slate-800/60 hover:bg-slate-700/70 px-2 py-0.5 rounded-full border border-slate-700/80 transition cursor-pointer disabled:opacity-50"
-                                  title="Push to Google Calendar"
-                                >
-                                  <RefreshCw className={`h-2.5 w-2.5 ${syncingShiftId === s.id ? 'animate-spin text-blue-400' : ''}`} />
-                                  <span>{syncingShiftId === s.id ? 'Syncing...' : 'Sync to Calendar'}</span>
-                                </button>
-                              )}
-                            </div>
-
                             {s.notes && <p className="text-[10px] text-muted-text italic truncate mt-0.5">"{s.notes}"</p>}
                           </div>
                           
@@ -1982,7 +1905,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
               </div>
             ) : (
               <div className="overflow-x-auto rounded-xl border border-main-border/80">
-                <table className="w-full text-left border-collapse text-xs">
+                <table className="w-full min-w-[620px] text-left border-collapse text-xs">
                   <thead>
                     <tr className="bg-app-bg/80 border-b border-main-border text-muted-text font-mono uppercase tracking-wider">
                       <th className="p-4 font-semibold">Employee</th>
@@ -2097,7 +2020,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
             </div>
 
             <div className="overflow-x-auto rounded-xl border border-main-border/80">
-              <table className="w-full text-left border-collapse text-xs">
+              <table className="w-full min-w-[640px] text-left border-collapse text-xs">
                 <thead>
                   <tr className="bg-app-bg/80 border-b border-main-border text-muted-text font-mono uppercase tracking-wider">
                     <th className="p-4 font-semibold">User Details</th>
@@ -2232,7 +2155,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
 
           <div className="bg-card-bg border border-main-border rounded-2xl shadow-xl overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
+              <table className="w-full min-w-[680px] text-left border-collapse">
                 <thead>
                   <tr className="border-b border-main-border/50 bg-app-bg/50 text-[10px] uppercase font-mono font-bold text-muted-text">
                     <th className="p-3">Timestamp (UTC)</th>
@@ -2621,65 +2544,69 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                     </div>
                   </div>
 
-                  {/* Weekdays row */}
-                  <div className="grid grid-cols-7 gap-1 text-center font-bold text-[9px] text-muted-text uppercase font-mono tracking-wider">
-                    <span>Sun</span>
-                    <span>Mon</span>
-                    <span>Tue</span>
-                    <span>Wed</span>
-                    <span>Thu</span>
-                    <span>Fri</span>
-                    <span>Sat</span>
-                  </div>
+                  {/* Weekdays row & 42-day Calendar grid */}
+                  <div className="overflow-x-auto pb-1">
+                    <div className="min-w-[340px]">
+                      <div className="grid grid-cols-7 gap-1 text-center font-bold text-[9px] text-muted-text uppercase font-mono tracking-wider">
+                        <span>Sun</span>
+                        <span>Mon</span>
+                        <span>Tue</span>
+                        <span>Wed</span>
+                        <span>Thu</span>
+                        <span>Fri</span>
+                        <span>Sat</span>
+                      </div>
 
-                  {/* 42-day Calendar grid */}
-                  <div className="grid grid-cols-7 gap-1">
-                    {popupCalDays.map((day, idx) => {
-                      const dateStr = day.dateStr;
-                      const isCurrentMonth = day.isCurrentMonth;
-                      
-                      const requestStart = activeReplyRequest.startDate;
-                      const requestEnd = activeReplyRequest.endDate;
-                      const isRequestedVacation = dateStr >= requestStart && dateStr <= requestEnd;
-                      
-                      const dayShifts = futureShiftsList.filter(s => s.username === activeReplyRequest.username && s.date === dateStr);
-                      const hasShifts = dayShifts.length > 0;
-                      
-                      return (
-                        <div
-                          key={idx}
-                          className={`min-h-[55px] border rounded-xl p-1.5 text-left flex flex-col justify-between transition-all ${
-                            isRequestedVacation
-                              ? 'bg-amber-500/10 border-amber-500/40 text-amber-200'
-                              : !isCurrentMonth
-                              ? 'bg-app-bg/10 border-main-border/10 text-muted-text/20'
-                              : 'bg-app-bg/40 border-main-border/30 text-main-text'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className={`text-[10px] font-extrabold font-mono ${isRequestedVacation ? 'text-amber-500' : ''}`}>
-                              {day.dayNum}
-                            </span>
-                            {isRequestedVacation && (
-                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" title="Vacation requested date" />
-                            )}
-                          </div>
-
-                          {/* Shifts list inside calendar cells */}
-                          <div className="mt-1 space-y-0.5 overflow-y-auto max-h-[35px]">
-                            {dayShifts.map(s => (
-                              <div
-                                key={s.id}
-                                className="text-[7.5px] leading-tight px-1 py-0.5 rounded bg-blue-500/20 border border-blue-500/30 text-blue-400 font-bold truncate"
-                                title={`${s.project} (${s.startTime}-${s.endTime})`}
-                              >
-                                {s.startTime}
+                      {/* 42-day Calendar grid */}
+                      <div className="grid grid-cols-7 gap-1 mt-1">
+                        {popupCalDays.map((day, idx) => {
+                          const dateStr = day.dateStr;
+                          const isCurrentMonth = day.isCurrentMonth;
+                          
+                          const requestStart = activeReplyRequest.startDate;
+                          const requestEnd = activeReplyRequest.endDate;
+                          const isRequestedVacation = dateStr >= requestStart && dateStr <= requestEnd;
+                          
+                          const dayShifts = futureShiftsList.filter(s => s.username === activeReplyRequest.username && s.date === dateStr);
+                          const hasShifts = dayShifts.length > 0;
+                          
+                          return (
+                            <div
+                              key={idx}
+                              className={`min-h-[55px] border rounded-xl p-1.5 text-left flex flex-col justify-between transition-all ${
+                                isRequestedVacation
+                                  ? 'bg-amber-500/10 border-amber-500/40 text-amber-200'
+                                  : !isCurrentMonth
+                                  ? 'bg-app-bg/10 border-main-border/10 text-muted-text/20'
+                                  : 'bg-app-bg/40 border-main-border/30 text-main-text'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className={`text-[10px] font-extrabold font-mono ${isRequestedVacation ? 'text-amber-500' : ''}`}>
+                                  {day.dayNum}
+                                </span>
+                                {isRequestedVacation && (
+                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" title="Vacation requested date" />
+                                )}
                               </div>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })}
+
+                              {/* Shifts list inside calendar cells */}
+                              <div className="mt-1 space-y-0.5 overflow-y-auto max-h-[35px]">
+                                {dayShifts.map(s => (
+                                  <div
+                                    key={s.id}
+                                    className="text-[7.5px] leading-tight px-1 py-0.5 rounded bg-blue-500/20 border border-blue-500/30 text-blue-400 font-bold truncate"
+                                    title={`${s.project} (${s.startTime}-${s.endTime})`}
+                                  >
+                                    {s.startTime}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -2808,7 +2735,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
 
               {/* Table of shifts */}
               <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
+                <table className="w-full min-w-[560px] text-left border-collapse">
                   <thead>
                     <tr className="border-b-2 border-slate-300 font-mono text-slate-500 text-[10px] uppercase tracking-wider print-border-slate-300">
                       <th className="py-2.5 px-3 font-semibold text-left">Date</th>
@@ -2904,6 +2831,123 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
 
             </div>
             )}
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* FULL-SIZE FLHA SAFETY CARD VIEWER MODAL (MANAGER AUDIT) */}
+      <AnimatePresence>
+        {selectedManagerFlhaEntry && selectedManagerFlhaEntry.flhaImageUrl && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelectedManagerFlhaEntry(null)}
+              className="absolute inset-0 bg-black/75 backdrop-blur-md"
+            />
+
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="relative w-full max-w-2xl max-h-[92dvh] flex flex-col overflow-hidden rounded-3xl border border-main-border bg-card-bg shadow-2xl z-10 pb-safe"
+            >
+              {/* Modal Header */}
+              <div className="flex items-center justify-between px-5 py-4 border-b border-main-border bg-card-bg shrink-0">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-emerald-500/15 text-emerald-500 border border-emerald-500/25">
+                    <ShieldCheck className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-main-text leading-tight flex items-center gap-2">
+                      <span>FLHA Safety Card</span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 font-bold uppercase">
+                        Audit Record
+                      </span>
+                    </h3>
+                    <p className="text-xs text-muted-text mt-0.5">Field Level Hazard Assessment inspection</p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedManagerFlhaEntry(null)}
+                  className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl p-2 text-muted-text hover:text-main-text hover:bg-app-bg transition cursor-pointer"
+                  title="Close viewer"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {/* Auto-filled Metadata Panel */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-4 bg-app-bg/50 border-b border-main-border shrink-0 text-xs">
+                <div className="p-2.5 rounded-xl bg-card-bg border border-main-border">
+                  <span className="text-[10px] uppercase font-mono text-muted-text block">Shift Date</span>
+                  <span className="font-semibold text-main-text mt-0.5 block truncate">
+                    {new Date(selectedManagerFlhaEntry.date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                  </span>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-card-bg border border-main-border">
+                  <span className="text-[10px] uppercase font-mono text-muted-text block">Shift Time</span>
+                  <span className="font-semibold text-main-text mt-0.5 block truncate">
+                    {selectedManagerFlhaEntry.startTime} – {selectedManagerFlhaEntry.endTime}
+                  </span>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-card-bg border border-main-border">
+                  <span className="text-[10px] uppercase font-mono text-muted-text block">Site / Location</span>
+                  <span className="font-semibold text-main-text mt-0.5 block truncate" title={selectedManagerFlhaEntry.flhaLocation || selectedManagerFlhaEntry.locationName}>
+                    {selectedManagerFlhaEntry.flhaLocation || selectedManagerFlhaEntry.locationName || 'General Site'}
+                  </span>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-card-bg border border-main-border">
+                  <span className="text-[10px] uppercase font-mono text-muted-text block">Active Task</span>
+                  <span className="font-semibold text-main-text mt-0.5 block truncate" title={selectedManagerFlhaEntry.project}>
+                    {selectedManagerFlhaEntry.project || 'General Task'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Full-Size Photo Display */}
+              <div className="flex-grow overflow-auto p-4 flex items-center justify-center bg-black/20 min-h-0">
+                <div className="relative max-h-[55dvh] w-full flex items-center justify-center rounded-2xl overflow-hidden border border-main-border bg-black/40 shadow-inner">
+                  <img
+                    src={selectedManagerFlhaEntry.flhaImageUrl}
+                    alt="FLHA Card Full Size"
+                    className="max-h-[52dvh] w-auto max-w-full object-contain rounded-xl select-none"
+                  />
+                </div>
+              </div>
+
+              {/* Modal Action Footer */}
+              <div className="flex items-center justify-between p-4 border-t border-main-border bg-card-bg shrink-0">
+                <div className="text-[10px] text-muted-text font-mono truncate max-w-[200px] sm:max-w-xs">
+                  Captured: {selectedManagerFlhaEntry.flhaTimestamp ? new Date(selectedManagerFlhaEntry.flhaTimestamp).toLocaleString() : selectedManagerFlhaEntry.date}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <a
+                    href={selectedManagerFlhaEntry.flhaImageUrl}
+                    download={`FLHA-${selectedManagerFlhaEntry.date}-${(selectedManagerFlhaEntry.project || 'Card').replace(/[^a-zA-Z0-9]/g, '_')}.jpg`}
+                    className="min-h-[44px] flex items-center gap-1.5 px-4 py-2 rounded-xl bg-app-bg text-main-text hover:bg-input-bg border border-main-border text-xs font-semibold transition cursor-pointer"
+                  >
+                    <Download className="h-4 w-4 text-blue-500" />
+                    <span>Download</span>
+                  </a>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedManagerFlhaEntry(null)}
+                    className="min-h-[44px] px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition cursor-pointer shadow-sm"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </motion.div>
           </div>
         )}
       </AnimatePresence>

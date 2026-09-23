@@ -53,30 +53,6 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
-  // Google OAuth Configuration endpoint for Workspace & Google Calendar Integration
-  serverApp.get("/api/oauth/config", (req, res) => {
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
-    const clientId = process.env.GOOGLE_CLIENT_ID;
-    if (!clientId) {
-      return res.status(200).json({
-        configured: false,
-        clientId: "",
-        scopes: [
-          "https://www.googleapis.com/auth/calendar.events"
-        ],
-        message: "GOOGLE_CLIENT_ID environment variable not set. Please configure in Settings."
-      });
-    }
-
-    return res.json({
-      configured: true,
-      clientId,
-      scopes: [
-        "https://www.googleapis.com/auth/calendar.events"
-      ]
-    });
-  });
-
   // --- Web Push Notifications API ---
   // Return VAPID Public Key for browser pushManager.subscribe()
   serverApp.get("/api/push/vapid-public-key", (req, res) => {

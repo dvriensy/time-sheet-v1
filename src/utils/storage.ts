@@ -58,6 +58,17 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   throw new Error(JSON.stringify(errInfo));
 }
 
+// Safe localStorage helper to guard against QuotaExceededError and private-mode issues
+export function safeSetItem(key: string, value: string): boolean {
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch (error) {
+    console.warn('[storage] LocalStorage write failed for key "' + key + '" (QuotaExceededError):', error);
+    return false;
+  }
+}
+
 // Storage keys
 const KEY_TIMESHEETS = 'timesheets_tracker_records';
 const KEY_GEOFENCE = 'timesheets_tracker_geofence';
@@ -93,7 +104,7 @@ export function enqueueOfflineOp(
     payload,
     timestamp: new Date().toISOString()
   });
-  localStorage.setItem(KEY_OFFLINE_QUEUE, JSON.stringify(filtered));
+  safeSetItem(KEY_OFFLINE_QUEUE, JSON.stringify(filtered));
   window.dispatchEvent(new Event('offline-queue-changed'));
 }
 
@@ -118,7 +129,7 @@ export async function flushOfflineQueue() {
     }
   }
 
-  localStorage.setItem(KEY_OFFLINE_QUEUE, JSON.stringify(remaining));
+  safeSetItem(KEY_OFFLINE_QUEUE, JSON.stringify(remaining));
   window.dispatchEvent(new Event('offline-queue-changed'));
   window.dispatchEvent(new Event('storage-sync'));
 }
@@ -163,7 +174,7 @@ export function addAuditRecord(
   const logs = getAuditTrail();
   logs.unshift(record);
   if (logs.length > 500) logs.pop(); // Keep last 500 audit logs
-  localStorage.setItem(KEY_AUDIT_TRAIL, JSON.stringify(logs));
+  safeSetItem(KEY_AUDIT_TRAIL, JSON.stringify(logs));
 
   syncAuditRecordToFirestore(record);
   window.dispatchEvent(new Event('storage-sync'));
@@ -360,7 +371,7 @@ export async function refetchFromFirestore(onSyncCallback?: () => void) {
       usersSnap.forEach(docSnap => {
         firestoreUsers.push(docSnap.data() as UserAccount);
       });
-      localStorage.setItem(KEY_USERS_LIST, JSON.stringify(firestoreUsers));
+      safeSetItem(KEY_USERS_LIST, JSON.stringify(firestoreUsers));
     }
 
     // 2. Sync Timesheets
@@ -370,7 +381,7 @@ export async function refetchFromFirestore(onSyncCallback?: () => void) {
       timesheetsSnap.forEach(docSnap => {
         firestoreTimesheets.push(docSnap.data() as TimesheetEntry);
       });
-      localStorage.setItem(KEY_TIMESHEETS, JSON.stringify(firestoreTimesheets));
+      safeSetItem(KEY_TIMESHEETS, JSON.stringify(firestoreTimesheets));
     }
 
     // 3. Sync Active Sessions
@@ -379,7 +390,7 @@ export async function refetchFromFirestore(onSyncCallback?: () => void) {
     sessionsSnap.forEach(docSnap => {
       firestoreSessions[docSnap.id] = docSnap.data() as ActiveSession;
     });
-    localStorage.setItem('timesheets_tracker_active_sessions', JSON.stringify(firestoreSessions));
+    safeSetItem('timesheets_tracker_active_sessions', JSON.stringify(firestoreSessions));
 
     // 4. Sync Time-Off Requests
     const timeOffSnap = await getDocs(collection(db, 'timeOffRequests'));
@@ -388,7 +399,7 @@ export async function refetchFromFirestore(onSyncCallback?: () => void) {
       timeOffSnap.forEach(docSnap => {
         firestoreTimeOff.push(docSnap.data() as TimeOffRequest);
       });
-      localStorage.setItem(KEY_TIME_OFF_REQUESTS, JSON.stringify(firestoreTimeOff));
+      safeSetItem(KEY_TIME_OFF_REQUESTS, JSON.stringify(firestoreTimeOff));
     }
 
     // 5. Sync Future Shifts
@@ -398,7 +409,7 @@ export async function refetchFromFirestore(onSyncCallback?: () => void) {
       futureShiftsSnap.forEach(docSnap => {
         firestoreFutureShifts.push(docSnap.data() as FutureShift);
       });
-      localStorage.setItem(KEY_FUTURE_SHIFTS, JSON.stringify(firestoreFutureShifts));
+      safeSetItem(KEY_FUTURE_SHIFTS, JSON.stringify(firestoreFutureShifts));
     }
 
     // 6. Sync Submitted Timesheets
@@ -408,7 +419,7 @@ export async function refetchFromFirestore(onSyncCallback?: () => void) {
       submittedTimesheetsSnap.forEach(docSnap => {
         firestoreSubmitted.push(docSnap.data() as SubmittedTimesheet);
       });
-      localStorage.setItem(KEY_SUBMITTED_TIMESHEETS, JSON.stringify(firestoreSubmitted));
+      safeSetItem(KEY_SUBMITTED_TIMESHEETS, JSON.stringify(firestoreSubmitted));
     }
 
     // 7. Sync Work Dispatches
@@ -419,7 +430,7 @@ export async function refetchFromFirestore(onSyncCallback?: () => void) {
         firestoreDispatches.push(docSnap.data() as WorkDispatch);
       });
       firestoreDispatches.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      localStorage.setItem(KEY_WORK_DISPATCHES, JSON.stringify(firestoreDispatches));
+      safeSetItem(KEY_WORK_DISPATCHES, JSON.stringify(firestoreDispatches));
     }
 
     if (onSyncCallback) onSyncCallback();
@@ -445,7 +456,7 @@ export async function initializeFirebaseSync(onSyncCallback?: () => void) {
       usersSnap.forEach(docSnap => {
         firestoreUsers.push(docSnap.data() as UserAccount);
       });
-      localStorage.setItem(KEY_USERS_LIST, JSON.stringify(firestoreUsers));
+      safeSetItem(KEY_USERS_LIST, JSON.stringify(firestoreUsers));
     }
 
     // 2. Sync Timesheets
@@ -460,7 +471,7 @@ export async function initializeFirebaseSync(onSyncCallback?: () => void) {
       timesheetsSnap.forEach(docSnap => {
         firestoreTimesheets.push(docSnap.data() as TimesheetEntry);
       });
-      localStorage.setItem(KEY_TIMESHEETS, JSON.stringify(firestoreTimesheets));
+      safeSetItem(KEY_TIMESHEETS, JSON.stringify(firestoreTimesheets));
     }
 
     // 3. Sync Active Sessions
@@ -469,7 +480,7 @@ export async function initializeFirebaseSync(onSyncCallback?: () => void) {
     sessionsSnap.forEach(docSnap => {
       firestoreSessions[docSnap.id] = docSnap.data() as ActiveSession;
     });
-    localStorage.setItem('timesheets_tracker_active_sessions', JSON.stringify(firestoreSessions));
+    safeSetItem('timesheets_tracker_active_sessions', JSON.stringify(firestoreSessions));
 
     // 4. Sync Time-Off Requests
     const timeOffSnap = await getDocs(collection(db, 'timeOffRequests'));
@@ -483,7 +494,7 @@ export async function initializeFirebaseSync(onSyncCallback?: () => void) {
       timeOffSnap.forEach(docSnap => {
         firestoreTimeOff.push(docSnap.data() as TimeOffRequest);
       });
-      localStorage.setItem(KEY_TIME_OFF_REQUESTS, JSON.stringify(firestoreTimeOff));
+      safeSetItem(KEY_TIME_OFF_REQUESTS, JSON.stringify(firestoreTimeOff));
     }
 
     // 4.5 Sync Future Shifts
@@ -498,7 +509,7 @@ export async function initializeFirebaseSync(onSyncCallback?: () => void) {
       futureShiftsSnap.forEach(docSnap => {
         firestoreFutureShifts.push(docSnap.data() as FutureShift);
       });
-      localStorage.setItem(KEY_FUTURE_SHIFTS, JSON.stringify(firestoreFutureShifts));
+      safeSetItem(KEY_FUTURE_SHIFTS, JSON.stringify(firestoreFutureShifts));
     }
 
     // 4.6 Sync Submitted Timesheets
@@ -508,7 +519,7 @@ export async function initializeFirebaseSync(onSyncCallback?: () => void) {
       submittedTimesheetsSnap.forEach(docSnap => {
         firestoreSubmitted.push(docSnap.data() as SubmittedTimesheet);
       });
-      localStorage.setItem(KEY_SUBMITTED_TIMESHEETS, JSON.stringify(firestoreSubmitted));
+      safeSetItem(KEY_SUBMITTED_TIMESHEETS, JSON.stringify(firestoreSubmitted));
     }
 
     // 4.7 Sync Work Dispatches (Chat/Extra Work)
@@ -540,14 +551,14 @@ export async function initializeFirebaseSync(onSyncCallback?: () => void) {
       for (const d of initialDispatches) {
         await setDoc(doc(db, 'workDispatches', d.id), d);
       }
-      localStorage.setItem(KEY_WORK_DISPATCHES, JSON.stringify(initialDispatches));
+      safeSetItem(KEY_WORK_DISPATCHES, JSON.stringify(initialDispatches));
     } else {
       const firestoreDispatches: WorkDispatch[] = [];
       workDispatchesSnap.forEach(docSnap => {
         firestoreDispatches.push(docSnap.data() as WorkDispatch);
       });
       firestoreDispatches.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      localStorage.setItem(KEY_WORK_DISPATCHES, JSON.stringify(firestoreDispatches));
+      safeSetItem(KEY_WORK_DISPATCHES, JSON.stringify(firestoreDispatches));
     }
 
     if (onSyncCallback) onSyncCallback();
@@ -559,7 +570,7 @@ export async function initializeFirebaseSync(onSyncCallback?: () => void) {
         updatedUsers.push(docSnap.data() as UserAccount);
       });
       if (updatedUsers.length > 0) {
-        localStorage.setItem(KEY_USERS_LIST, JSON.stringify(updatedUsers));
+        safeSetItem(KEY_USERS_LIST, JSON.stringify(updatedUsers));
         if (onSyncCallback) onSyncCallback();
         window.dispatchEvent(new Event('storage-sync'));
       }
@@ -572,7 +583,7 @@ export async function initializeFirebaseSync(onSyncCallback?: () => void) {
       snap.forEach(docSnap => {
         updatedTimesheets.push(docSnap.data() as TimesheetEntry);
       });
-      localStorage.setItem(KEY_TIMESHEETS, JSON.stringify(updatedTimesheets));
+      safeSetItem(KEY_TIMESHEETS, JSON.stringify(updatedTimesheets));
       if (onSyncCallback) onSyncCallback();
       window.dispatchEvent(new Event('storage-sync'));
     }, (error) => {
@@ -584,7 +595,7 @@ export async function initializeFirebaseSync(onSyncCallback?: () => void) {
       snap.forEach(docSnap => {
         updatedSessions[docSnap.id] = docSnap.data() as ActiveSession;
       });
-      localStorage.setItem('timesheets_tracker_active_sessions', JSON.stringify(updatedSessions));
+      safeSetItem('timesheets_tracker_active_sessions', JSON.stringify(updatedSessions));
       if (onSyncCallback) onSyncCallback();
       window.dispatchEvent(new Event('storage-sync'));
     }, (error) => {
@@ -596,7 +607,7 @@ export async function initializeFirebaseSync(onSyncCallback?: () => void) {
       snap.forEach(docSnap => {
         updatedRequests.push(docSnap.data() as TimeOffRequest);
       });
-      localStorage.setItem(KEY_TIME_OFF_REQUESTS, JSON.stringify(updatedRequests));
+      safeSetItem(KEY_TIME_OFF_REQUESTS, JSON.stringify(updatedRequests));
       if (onSyncCallback) onSyncCallback();
       window.dispatchEvent(new Event('storage-sync'));
     }, (error) => {
@@ -608,7 +619,7 @@ export async function initializeFirebaseSync(onSyncCallback?: () => void) {
       snap.forEach(docSnap => {
         updatedShifts.push(docSnap.data() as FutureShift);
       });
-      localStorage.setItem(KEY_FUTURE_SHIFTS, JSON.stringify(updatedShifts));
+      safeSetItem(KEY_FUTURE_SHIFTS, JSON.stringify(updatedShifts));
       if (onSyncCallback) onSyncCallback();
       window.dispatchEvent(new Event('storage-sync'));
     }, (error) => {
@@ -620,7 +631,7 @@ export async function initializeFirebaseSync(onSyncCallback?: () => void) {
       snap.forEach(docSnap => {
         updatedSubmitted.push(docSnap.data() as SubmittedTimesheet);
       });
-      localStorage.setItem(KEY_SUBMITTED_TIMESHEETS, JSON.stringify(updatedSubmitted));
+      safeSetItem(KEY_SUBMITTED_TIMESHEETS, JSON.stringify(updatedSubmitted));
       if (onSyncCallback) onSyncCallback();
       window.dispatchEvent(new Event('storage-sync'));
     }, (error) => {
@@ -633,7 +644,7 @@ export async function initializeFirebaseSync(onSyncCallback?: () => void) {
         updatedDispatches.push(docSnap.data() as WorkDispatch);
       });
       updatedDispatches.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      localStorage.setItem(KEY_WORK_DISPATCHES, JSON.stringify(updatedDispatches));
+      safeSetItem(KEY_WORK_DISPATCHES, JSON.stringify(updatedDispatches));
       if (onSyncCallback) onSyncCallback();
       window.dispatchEvent(new Event('storage-sync'));
     }, (error) => {
@@ -649,10 +660,10 @@ export async function initializeFirebaseSync(onSyncCallback?: () => void) {
 // Initialize data if not already present
 export function initializeStorage() {
   if (!localStorage.getItem(KEY_TIMESHEETS)) {
-    localStorage.setItem(KEY_TIMESHEETS, JSON.stringify(MOCK_TIMESHEETS));
+    safeSetItem(KEY_TIMESHEETS, JSON.stringify(MOCK_TIMESHEETS));
   }
   if (!localStorage.getItem(KEY_GEOFENCE)) {
-    localStorage.setItem(KEY_GEOFENCE, JSON.stringify(DEFAULT_GEOFENCE));
+    safeSetItem(KEY_GEOFENCE, JSON.stringify(DEFAULT_GEOFENCE));
   }
   if (!localStorage.getItem(KEY_REMINDERS)) {
     const defaultReminders: ReminderSettings = {
@@ -665,10 +676,10 @@ export function initializeStorage() {
       dailyShiftReminderTime: '17:00',
       pushNotificationsEnabled: true
     };
-    localStorage.setItem(KEY_REMINDERS, JSON.stringify(defaultReminders));
+    safeSetItem(KEY_REMINDERS, JSON.stringify(defaultReminders));
   }
   if (!localStorage.getItem(KEY_SECURITY_LOGS)) {
-    localStorage.setItem(KEY_SECURITY_LOGS, JSON.stringify(MOCK_SECURITY_LOGS));
+    safeSetItem(KEY_SECURITY_LOGS, JSON.stringify(MOCK_SECURITY_LOGS));
   }
   if (!localStorage.getItem(KEY_SYNC)) {
     const defaultSync: SyncSettings = {
@@ -678,7 +689,7 @@ export function initializeStorage() {
       lastSyncTime: '',
       conflictPolicy: 'client_wins'
     };
-    localStorage.setItem(KEY_SYNC, JSON.stringify(defaultSync));
+    safeSetItem(KEY_SYNC, JSON.stringify(defaultSync));
   }
   if (!localStorage.getItem(KEY_APP_SETTINGS)) {
     const defaultAppSettings: AppSettings = {
@@ -686,7 +697,7 @@ export function initializeStorage() {
       privacyMode: false,
       hourlyRateDefault: 45
     };
-    localStorage.setItem(KEY_APP_SETTINGS, JSON.stringify(defaultAppSettings));
+    safeSetItem(KEY_APP_SETTINGS, JSON.stringify(defaultAppSettings));
   }
 }
 
@@ -738,7 +749,7 @@ export function updateUserAccount(updated: Partial<UserAccount>): UserAccount | 
   }
 
   users[index] = updatedUser;
-  localStorage.setItem(KEY_USERS_LIST, JSON.stringify(users));
+  safeSetItem(KEY_USERS_LIST, JSON.stringify(users));
   syncUserToFirestore(updatedUser);
   return updatedUser;
 }
@@ -764,7 +775,7 @@ export function managerUpdateUserAccount(username: string, updated: Partial<User
   }
 
   users[index] = updatedUser;
-  localStorage.setItem(KEY_USERS_LIST, JSON.stringify(users));
+  safeSetItem(KEY_USERS_LIST, JSON.stringify(users));
   syncUserToFirestore(updatedUser);
   return updatedUser;
 }
@@ -793,11 +804,11 @@ export function registerUser(fullName: string, username: string, password?: stri
   };
   
   users.push(newUser);
-  localStorage.setItem(KEY_USERS_LIST, JSON.stringify(users));
+  safeSetItem(KEY_USERS_LIST, JSON.stringify(users));
   
   if (autoLogin) {
     // Set current user
-    localStorage.setItem(KEY_CURRENT_USER, targetUsername);
+    safeSetItem(KEY_CURRENT_USER, targetUsername);
   }
   
   // Seed initial data
@@ -821,7 +832,7 @@ export function loginUser(usernameOrName: string, password?: string): boolean {
   if (found) {
     // Let derek_vriens in easily, or any user if password matches, or if no password is set/supplied
     if (!found.password || !password || found.password === password) {
-      localStorage.setItem(KEY_CURRENT_USER, found.username);
+      safeSetItem(KEY_CURRENT_USER, found.username);
       return true;
     }
   }
@@ -866,11 +877,11 @@ export async function registerUserClient(fullName: string, username: string, pas
     const users: UserAccount[] = usersRaw ? JSON.parse(usersRaw) : [];
     if (!users.some(u => u.username === targetUsername)) {
       users.push(newUser);
-      localStorage.setItem(KEY_USERS_LIST, JSON.stringify(users));
+      safeSetItem(KEY_USERS_LIST, JSON.stringify(users));
     }
 
     if (autoLogin) {
-      localStorage.setItem(KEY_CURRENT_USER, targetUsername);
+      safeSetItem(KEY_CURRENT_USER, targetUsername);
     }
 
     seedInitialDataForUser(targetUsername, hourlyRate || 45);
@@ -911,7 +922,7 @@ export async function loginUserClient(usernameOrName: string, password?: string)
 
       if (found) {
         users.push(found);
-        localStorage.setItem(KEY_USERS_LIST, JSON.stringify(users));
+        safeSetItem(KEY_USERS_LIST, JSON.stringify(users));
       }
     } catch (err: any) {
       console.error("Firestore client-side login query error:", err);
@@ -920,7 +931,7 @@ export async function loginUserClient(usernameOrName: string, password?: string)
 
   if (found) {
     if (!found.password || !password || found.password === password) {
-      localStorage.setItem(KEY_CURRENT_USER, found.username);
+      safeSetItem(KEY_CURRENT_USER, found.username);
       window.dispatchEvent(new Event('storage-sync'));
       return { success: true, user: found };
     } else {
@@ -1022,7 +1033,7 @@ export function getTimesheets(): TimesheetEntry[] {
   if (sandboxEntries.length > 0) {
     // Auto-remove sandbox entries from local storage
     const others = all.filter(e => e.username !== currentUser || !e.id.startsWith('ts-seed-'));
-    localStorage.setItem(KEY_TIMESHEETS, JSON.stringify(others));
+    safeSetItem(KEY_TIMESHEETS, JSON.stringify(others));
     
     // Auto-remove sandbox entries from firestore in the background
     sandboxEntries.forEach(entry => {
@@ -1043,7 +1054,7 @@ export function saveTimesheets(entries: TimesheetEntry[]) {
   const others = all.filter(e => e.username !== currentUser);
   const marked = entries.map(e => ({ ...e, username: currentUser }));
   
-  localStorage.setItem(KEY_TIMESHEETS, JSON.stringify([...marked, ...others]));
+  safeSetItem(KEY_TIMESHEETS, JSON.stringify([...marked, ...others]));
 }
 
 export function calculateHoursAndEarnings(startTime: string, endTime: string, breakMinutes: number, rate?: number) {
@@ -1224,7 +1235,7 @@ export function getGeofenceSettings(): GeofenceSettings {
 }
 
 export function saveGeofenceSettings(settings: GeofenceSettings) {
-  localStorage.setItem(KEY_GEOFENCE, JSON.stringify(settings));
+  safeSetItem(KEY_GEOFENCE, JSON.stringify(settings));
   addSecurityLog(
     'GPS tracking geofence breached',
     `Geofence parameter re-configured. Center: [${settings.latitude.toFixed(4)}, ${settings.longitude.toFixed(4)}], Radius: ${settings.radius}m.`,
@@ -1262,7 +1273,7 @@ export function getReminderSettings(): ReminderSettings {
 }
 
 export function saveReminderSettings(settings: ReminderSettings) {
-  localStorage.setItem(KEY_REMINDERS, JSON.stringify(settings));
+  safeSetItem(KEY_REMINDERS, JSON.stringify(settings));
   addSecurityLog(
     'GDPR Right to Be Forgotten Audit',
     `Automatic reminder notifications re-configured. Clock-In: ${settings.clockInReminder ? 'Active' : 'Disabled'}, Clock-Out: ${settings.clockOutReminder ? 'Active' : 'Disabled'}.`,
@@ -1284,7 +1295,7 @@ export function getSyncSettings(): SyncSettings {
 }
 
 export function saveSyncSettings(settings: SyncSettings) {
-  localStorage.setItem(KEY_SYNC, JSON.stringify(settings));
+  safeSetItem(KEY_SYNC, JSON.stringify(settings));
   addSecurityLog(
     'Sync status changed',
     `Workspace sync preferences modified. Workspace: "${settings.workspaceName || 'None'}", Synchronization: ${settings.enabled ? 'ONLINE' : 'OFFLINE'}.`,
@@ -1318,7 +1329,7 @@ export function getAppSettings(): AppSettings {
 }
 
 export function saveAppSettings(settings: AppSettings) {
-  localStorage.setItem(KEY_APP_SETTINGS, JSON.stringify(settings));
+  safeSetItem(KEY_APP_SETTINGS, JSON.stringify(settings));
   addSecurityLog(
     'App preferences adjusted',
     `App settings changed. Biometric lock enabled: ${settings.biometricLockEnabled}, Privacy masking: ${settings.privacyMode}, Default Shift Hours: ${settings.defaultStartTime || '07:30'} to ${settings.defaultEndTime || '16:00'}, Default Break: ${settings.defaultBreakMinutes || 30} mins`,
@@ -1347,11 +1358,11 @@ export function addSecurityLog(event: string, details: string, category: Securit
   if (logs.length > 100) {
     logs.pop();
   }
-  localStorage.setItem(KEY_SECURITY_LOGS, JSON.stringify(logs));
+  safeSetItem(KEY_SECURITY_LOGS, JSON.stringify(logs));
 }
 
 export function clearSecurityLogs() {
-  localStorage.setItem(KEY_SECURITY_LOGS, JSON.stringify([]));
+  safeSetItem(KEY_SECURITY_LOGS, JSON.stringify([]));
 }
 
 // Exporters for Industry Privacy Compliance
@@ -1509,7 +1520,7 @@ export function updateActiveSession(session: Partial<ActiveSession>) {
     lastActiveTimestamp: new Date().toISOString()
   };
   
-  localStorage.setItem('timesheets_tracker_active_sessions', JSON.stringify(all));
+  safeSetItem('timesheets_tracker_active_sessions', JSON.stringify(all));
   syncActiveSessionToFirestore(currentUsername, all[currentUsername]);
 }
 
@@ -1520,7 +1531,7 @@ export function clearActiveSessionLocally(username?: string) {
   const all = getActiveSessions();
   if (all[currentUsername]) {
     delete all[currentUsername];
-    localStorage.setItem('timesheets_tracker_active_sessions', JSON.stringify(all));
+    safeSetItem('timesheets_tracker_active_sessions', JSON.stringify(all));
   }
 }
 
@@ -1571,7 +1582,7 @@ export function startOneTapTimer(options?: {
 
   const all = getActiveSessions();
   all[currentUsername] = newSession;
-  localStorage.setItem('timesheets_tracker_active_sessions', JSON.stringify(all));
+  safeSetItem('timesheets_tracker_active_sessions', JSON.stringify(all));
   syncActiveSessionToFirestore(currentUsername, newSession);
 
   window.dispatchEvent(new Event('storage-sync'));
@@ -1649,14 +1660,14 @@ export async function deleteUserAccount(username: string): Promise<boolean> {
   
   // 3. Filter out user and write to local storage
   users = users.filter(u => u.username !== username);
-  localStorage.setItem(KEY_USERS_LIST, JSON.stringify(users));
+  safeSetItem(KEY_USERS_LIST, JSON.stringify(users));
   
   // 4. Clear local active session
   const sessionsRaw = localStorage.getItem('timesheets_tracker_active_sessions');
   if (sessionsRaw) {
     const sessions = JSON.parse(sessionsRaw);
     delete sessions[username];
-    localStorage.setItem('timesheets_tracker_active_sessions', JSON.stringify(sessions));
+    safeSetItem('timesheets_tracker_active_sessions', JSON.stringify(sessions));
   }
   
   // 5. Clear timesheets locally and in Firestore
@@ -1672,7 +1683,7 @@ export async function deleteUserAccount(username: string): Promise<boolean> {
       }
     }
     const filteredEntries = entries.filter(e => e.username !== username);
-    localStorage.setItem(KEY_TIMESHEETS, JSON.stringify(filteredEntries));
+    safeSetItem(KEY_TIMESHEETS, JSON.stringify(filteredEntries));
   }
 
   // 6. Clear future shifts locally and in Firestore
@@ -1688,7 +1699,7 @@ export async function deleteUserAccount(username: string): Promise<boolean> {
       }
     }
     const filteredShifts = shifts.filter(s => s.username !== username);
-    localStorage.setItem(KEY_FUTURE_SHIFTS, JSON.stringify(filteredShifts));
+    safeSetItem(KEY_FUTURE_SHIFTS, JSON.stringify(filteredShifts));
   }
 
   // 7. Clear time off requests locally and in Firestore
@@ -1704,7 +1715,7 @@ export async function deleteUserAccount(username: string): Promise<boolean> {
       }
     }
     const filteredRequests = requests.filter(r => r.username !== username);
-    localStorage.setItem('timesheets_tracker_time_off_requests', JSON.stringify(filteredRequests));
+    safeSetItem('timesheets_tracker_time_off_requests', JSON.stringify(filteredRequests));
   }
   
   window.dispatchEvent(new Event('storage-sync'));
@@ -1720,7 +1731,7 @@ export function resetUserPassword(username: string, fullName: string, newPasswor
   if (index === -1) return false;
   
   users[index].password = newPassword.trim();
-  localStorage.setItem(KEY_USERS_LIST, JSON.stringify(users));
+  safeSetItem(KEY_USERS_LIST, JSON.stringify(users));
   syncUserToFirestore(users[index]);
   window.dispatchEvent(new Event('storage-sync'));
   return true;
@@ -1810,7 +1821,7 @@ export function acknowledgeFutureShift(id: string): boolean {
   if (index === -1) return false;
   
   shifts[index].acknowledged = true;
-  localStorage.setItem(KEY_FUTURE_SHIFTS, JSON.stringify(shifts));
+  safeSetItem(KEY_FUTURE_SHIFTS, JSON.stringify(shifts));
   syncFutureShiftToFirestore(shifts[index]);
   window.dispatchEvent(new Event('storage-sync'));
   return true;
@@ -1855,7 +1866,7 @@ export function addTimeOffRequest(startDate: string, endDate: string, reason: st
   };
 
   requests.push(newRequest);
-  localStorage.setItem(KEY_TIME_OFF_REQUESTS, JSON.stringify(requests));
+  safeSetItem(KEY_TIME_OFF_REQUESTS, JSON.stringify(requests));
   syncTimeOffRequestToFirestore(newRequest);
   return newRequest;
 }
@@ -1870,7 +1881,7 @@ export function respondToTimeOffRequest(id: string, status: 'approved' | 'denied
   requests[idx].respondedAt = new Date().toISOString();
   requests[idx].acknowledgedByRequester = false; // reset so requester gets notified
 
-  localStorage.setItem(KEY_TIME_OFF_REQUESTS, JSON.stringify(requests));
+  safeSetItem(KEY_TIME_OFF_REQUESTS, JSON.stringify(requests));
   syncTimeOffRequestToFirestore(requests[idx]);
   return true;
 }
@@ -1881,7 +1892,7 @@ export function acknowledgeTimeOffResponse(id: string): boolean {
   if (idx === -1) return false;
 
   requests[idx].acknowledgedByRequester = true;
-  localStorage.setItem(KEY_TIME_OFF_REQUESTS, JSON.stringify(requests));
+  safeSetItem(KEY_TIME_OFF_REQUESTS, JSON.stringify(requests));
   syncTimeOffRequestToFirestore(requests[idx]);
   return true;
 }
@@ -1891,7 +1902,7 @@ export function deleteTimeOffRequest(id: string): boolean {
   const filtered = requests.filter(r => r.id !== id);
   if (requests.length === filtered.length) return false;
 
-  localStorage.setItem(KEY_TIME_OFF_REQUESTS, JSON.stringify(filtered));
+  safeSetItem(KEY_TIME_OFF_REQUESTS, JSON.stringify(filtered));
   
   // Async Firestore deletion
   try {
@@ -1931,7 +1942,7 @@ export function addFutureShift(username: string, date: string, startTime: string
   };
 
   shifts.push(newShift);
-  localStorage.setItem(KEY_FUTURE_SHIFTS, JSON.stringify(shifts));
+  safeSetItem(KEY_FUTURE_SHIFTS, JSON.stringify(shifts));
   syncFutureShiftToFirestore(newShift);
   
   window.dispatchEvent(new Event('storage-sync'));
@@ -1944,7 +1955,7 @@ export function updateFutureShift(updatedShift: FutureShift): boolean {
   if (index === -1) return false;
 
   shifts[index] = { ...shifts[index], ...updatedShift };
-  localStorage.setItem(KEY_FUTURE_SHIFTS, JSON.stringify(shifts));
+  safeSetItem(KEY_FUTURE_SHIFTS, JSON.stringify(shifts));
   syncFutureShiftToFirestore(shifts[index]);
 
   window.dispatchEvent(new Event('storage-sync'));
@@ -1956,7 +1967,7 @@ export function deleteFutureShift(id: string): boolean {
   const filtered = shifts.filter(s => s.id !== id);
   if (shifts.length === filtered.length) return false;
   
-  localStorage.setItem(KEY_FUTURE_SHIFTS, JSON.stringify(filtered));
+  safeSetItem(KEY_FUTURE_SHIFTS, JSON.stringify(filtered));
   deleteFutureShiftFromFirestore(id);
   
   window.dispatchEvent(new Event('storage-sync'));
@@ -2002,7 +2013,7 @@ export function addSubmittedTimesheet(
   const filtered = submissions.filter(s => s.id !== newSubmission.id);
   filtered.push(newSubmission);
   
-  localStorage.setItem(KEY_SUBMITTED_TIMESHEETS, JSON.stringify(filtered));
+  safeSetItem(KEY_SUBMITTED_TIMESHEETS, JSON.stringify(filtered));
   syncSubmittedTimesheetToFirestore(newSubmission);
 
   addAuditRecord(
@@ -2023,7 +2034,7 @@ export function respondToSubmittedTimesheet(id: string, status: 'approved' | 're
   if (index === -1) return false;
   
   submissions[index].status = status;
-  localStorage.setItem(KEY_SUBMITTED_TIMESHEETS, JSON.stringify(submissions));
+  safeSetItem(KEY_SUBMITTED_TIMESHEETS, JSON.stringify(submissions));
   syncSubmittedTimesheetToFirestore(submissions[index]);
 
   addAuditRecord(
@@ -2043,7 +2054,7 @@ export function deleteSubmittedTimesheet(id: string): boolean {
   const filtered = submissions.filter(s => s.id !== id);
   if (submissions.length === filtered.length) return false;
   
-  localStorage.setItem(KEY_SUBMITTED_TIMESHEETS, JSON.stringify(filtered));
+  safeSetItem(KEY_SUBMITTED_TIMESHEETS, JSON.stringify(filtered));
   deleteSubmittedTimesheetFromFirestore(id);
   
   window.dispatchEvent(new Event('storage-sync'));
@@ -2093,7 +2104,7 @@ export function addWorkDispatch(title: string, shiftDetails: string, description
   };
 
   dispatches.unshift(newDispatch);
-  localStorage.setItem(KEY_WORK_DISPATCHES, JSON.stringify(dispatches));
+  safeSetItem(KEY_WORK_DISPATCHES, JSON.stringify(dispatches));
   syncWorkDispatchToFirestore(newDispatch);
   
   window.dispatchEvent(new Event('storage-sync'));
@@ -2123,7 +2134,7 @@ export function addDispatchReply(dispatchId: string, message: string, isAvailabl
   };
 
   dispatches[index].replies.push(newReply);
-  localStorage.setItem(KEY_WORK_DISPATCHES, JSON.stringify(dispatches));
+  safeSetItem(KEY_WORK_DISPATCHES, JSON.stringify(dispatches));
   syncWorkDispatchToFirestore(dispatches[index]);
 
   window.dispatchEvent(new Event('storage-sync'));
@@ -2136,7 +2147,7 @@ export function toggleCloseWorkDispatch(dispatchId: string): boolean {
   if (index === -1) return false;
 
   dispatches[index].isClosed = !dispatches[index].isClosed;
-  localStorage.setItem(KEY_WORK_DISPATCHES, JSON.stringify(dispatches));
+  safeSetItem(KEY_WORK_DISPATCHES, JSON.stringify(dispatches));
   syncWorkDispatchToFirestore(dispatches[index]);
 
   window.dispatchEvent(new Event('storage-sync'));
@@ -2148,7 +2159,7 @@ export function deleteWorkDispatch(dispatchId: string): boolean {
   const filtered = dispatches.filter(d => d.id !== dispatchId);
   if (dispatches.length === filtered.length) return false;
 
-  localStorage.setItem(KEY_WORK_DISPATCHES, JSON.stringify(filtered));
+  safeSetItem(KEY_WORK_DISPATCHES, JSON.stringify(filtered));
   try {
     deleteDoc(doc(db, 'workDispatches', dispatchId));
   } catch (err) {

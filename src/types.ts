@@ -22,21 +22,9 @@ export interface TimesheetEntry {
   earnings?: number; // calculated
   isSynced: boolean;
   isOvertime?: boolean;
-  googleCalendarEventId?: string;
-  googleCalendarHtmlLink?: string;
-  lastSyncedToCalendar?: string;
-}
-
-export interface GoogleCalendarAuthState {
-  isConnected: boolean;
-  accessToken: string | null;
-  expiresAt: number | null;
-  email: string | null;
-  name: string | null;
-  picture: string | null;
-  calendarId: string;
-  autoSyncShifts: boolean;
-  lastSyncTime: string | null;
+  flhaImageUrl?: string; // Base64 data URL or photo of Field Level Hazard Assessment card
+  flhaTimestamp?: string; // Date & time when FLHA was captured
+  flhaLocation?: string; // Jobsite / location metadata for FLHA
 }
 
 export interface GeofenceSettings {
@@ -105,9 +93,6 @@ export interface FutureShift {
   notes?: string;
   createdAt: string;
   acknowledged?: boolean;
-  googleCalendarEventId?: string;
-  googleCalendarHtmlLink?: string;
-  lastSyncedToCalendar?: string;
 }
 
 export interface SubmittedTimesheet {

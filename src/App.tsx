@@ -395,40 +395,40 @@ export default function App() {
 
         {/* MOBILE NAVIGATION TABS (Segmented Control below header on mobile) */}
         {isMobileView && (
-          <div className="flex items-center bg-card-bg p-1 rounded-xl border border-main-border/60 mb-3 shrink-0 shadow-sm">
+          <div className="flex items-center bg-card-bg p-1 rounded-xl border border-main-border/60 mb-2 shrink-0 shadow-sm">
             <button
               onClick={() => setActiveTab('timesheets')}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${
+              className={`flex-1 flex items-center justify-center gap-1.5 min-h-[44px] py-2.5 px-3 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${
                 activeTab === 'timesheets' 
                   ? 'bg-blue-600 text-white shadow-sm' 
                   : 'text-muted-text hover:text-main-text'
               }`}
             >
-              <Clock className="h-3.5 w-3.5" />
+              <Clock className="h-4 w-4" />
               <span>Ledger</span>
             </button>
             {isManager && (
               <button
                 onClick={() => setActiveTab('manager')}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${
+                className={`flex-1 flex items-center justify-center gap-1.5 min-h-[44px] py-2.5 px-3 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${
                   activeTab === 'manager' 
                     ? 'bg-blue-600 text-white shadow-sm' 
                     : 'text-muted-text hover:text-main-text'
                 }`}
               >
-                <Users className="h-3.5 w-3.5" />
+                <Users className="h-4 w-4" />
                 <span>Management</span>
               </button>
             )}
             <button
               onClick={() => setActiveTab('account')}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${
+              className={`flex-1 flex items-center justify-center gap-1.5 min-h-[44px] py-2.5 px-3 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${
                 activeTab === 'account' 
                   ? 'bg-blue-600 text-white shadow-sm' 
                   : 'text-muted-text hover:text-main-text'
               }`}
             >
-              <User className="h-3.5 w-3.5" />
+              <User className="h-4 w-4" />
               <span>Account</span>
             </button>
           </div>
@@ -519,12 +519,12 @@ export default function App() {
   };
 
   return (
-    <div className="h-screen max-h-screen overflow-hidden bg-app-bg text-main-text flex flex-col font-sans selection:bg-blue-600 selection:text-white transition-colors duration-200">
+    <div className="h-dvh min-h-dvh max-h-dvh overflow-hidden bg-app-bg text-main-text flex flex-col font-sans selection:bg-blue-600 selection:text-white transition-colors duration-200 pb-safe">
       {/* Decorative radial lighting nodes */}
       <div className="fixed top-12 left-1/2 -translate-x-1/2 w-full max-w-7xl h-[400px] bg-gradient-to-b from-blue-500/5 to-transparent blur-3xl pointer-events-none" />
 
       {/* MAIN SYSTEM CONTAINER SHELL */}
-      <div className="relative z-10 flex-grow flex flex-col max-w-7xl w-full mx-auto px-4 py-3 md:px-6 md:py-4 h-full overflow-hidden min-h-0">
+      <div className="relative z-10 flex-grow flex flex-col max-w-7xl w-full mx-auto px-2.5 py-2 sm:px-4 sm:py-3 md:px-6 md:py-4 h-full overflow-hidden min-h-0">
         {renderAppContent(isMobile)}
       </div>
     </div>

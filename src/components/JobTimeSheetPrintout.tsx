@@ -48,7 +48,8 @@ export const JobTimeSheetPrintout: React.FC<JobTimeSheetPrintoutProps> = ({
       regHours: reg,
       otHours: ot,
       totalHours: entry.totalHours,
-      notes: entry.notes
+      notes: entry.notes,
+      hasFlha: !!entry.flhaImageUrl
     };
   });
 
@@ -92,7 +93,7 @@ export const JobTimeSheetPrintout: React.FC<JobTimeSheetPrintoutProps> = ({
 
       {/* MAIN TABLE */}
       <div className="overflow-x-auto mb-8">
-        <table className="w-full border-collapse border border-slate-600 text-xs text-black">
+        <table className="w-full min-w-[700px] border-collapse border border-slate-600 text-xs text-black">
           <thead>
             <tr className="bg-slate-200 border-b border-slate-600 font-bold text-center text-[11px]">
               <th className="border border-slate-500 py-2 px-1.5 w-[13%]">Date</th>
@@ -112,7 +113,14 @@ export const JobTimeSheetPrintout: React.FC<JobTimeSheetPrintoutProps> = ({
                 <td className="border border-slate-400 py-1.5 px-1.5 font-mono whitespace-nowrap">{row.startTime}</td>
                 <td className="border border-slate-400 py-1.5 px-1.5 font-mono whitespace-nowrap">{row.stopTime}</td>
                 <td className="border border-slate-400 py-1.5 px-1.5">{row.jobType}</td>
-                <td className="border border-slate-400 py-1.5 px-1.5 text-left font-medium truncate max-w-[170px]">{row.task}</td>
+                <td className="border border-slate-400 py-1.5 px-1.5 text-left font-medium truncate max-w-[170px]">
+                  {row.task}
+                  {row.hasFlha && (
+                    <span className="ml-1.5 inline-block text-[9px] font-bold text-emerald-800 bg-emerald-100 px-1 py-0.2 rounded border border-emerald-400 uppercase tracking-tighter">
+                      FLHA
+                    </span>
+                  )}
+                </td>
                 <td className="border border-slate-400 py-1.5 px-1.5 text-left truncate max-w-[130px]">{row.client}</td>
                 <td className="border border-slate-400 py-1.5 px-1.5 font-mono font-semibold">{row.directHours > 0 ? row.directHours.toFixed(2) : ''}</td>
                 <td className="border border-slate-400 py-1.5 px-1.5 font-mono font-semibold">{row.adminHours > 0 ? row.adminHours.toFixed(2) : ''}</td>

@@ -218,7 +218,9 @@ export default function TimeOffCalendar({ requests, onSelectRequest }: TimeOffCa
         </div>
 
         {/* Month Day-Grid */}
-        <div className="grid grid-cols-7 gap-1 sm:gap-1.5">
+        <div className="overflow-x-auto pb-2">
+          <div className="min-w-[500px]">
+            <div className="grid grid-cols-7 gap-1 sm:gap-1.5">
           {/* Weekday Labels */}
           {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
             <div 
@@ -302,6 +304,8 @@ export default function TimeOffCalendar({ requests, onSelectRequest }: TimeOffCa
               </button>
             );
           })}
+            </div>
+          </div>
         </div>
       </div>
 

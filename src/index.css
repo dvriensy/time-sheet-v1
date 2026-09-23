@@ -2,15 +2,15 @@
 @import "tailwindcss";
 
 :root {
-  --bg-app: #f7f4ee;
-  --bg-card: #fdfbf7;
-  --bg-input: #f1ebd9;
-  --bg-timer: #f9f2e4;
-  --border-main: #e5ddd0;
-  --text-main: #26221d;
-  --text-muted: #736b60;
-  --text-muted-darker: #453e35;
-  --card-shadow: 0 8px 24px -4px rgba(78, 69, 58, 0.05), 0 4px 12px -3px rgba(78, 69, 58, 0.03);
+  --bg-app: #f4f0e6;
+  --bg-card: #fcf9f2;
+  --bg-input: #eee6d6;
+  --bg-timer: #ebe3d2;
+  --border-main: #ded4c0;
+  --text-main: #141210;
+  --text-muted: #575046;
+  --text-muted-darker: #2f2a24;
+  --card-shadow: 0 6px 24px -4px rgba(60, 52, 42, 0.05), 0 2px 8px -2px rgba(60, 52, 42, 0.03);
 }
 
 .dark {
@@ -38,6 +38,199 @@
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Space Grotesk", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+/* Day Mode (Light Mode) Typography Tuning - scoped strictly to light mode */
+html:not(.dark) {
+  color-scheme: light;
+}
+
+html:not(.dark) body {
+  background-color: var(--bg-app);
+  color: var(--text-main);
+}
+
+html:not(.dark) .font-mono {
+  font-weight: 600;
+  color: #12100e;
+}
+
+html:not(.dark) .font-mono.text-white,
+html:not(.dark) .text-white {
+  color: #ffffff !important;
+}
+
+html:not(.dark) .font-mono.text-blue-100,
+html:not(.dark) .font-mono.text-blue-200,
+html:not(.dark) .text-blue-100,
+html:not(.dark) .text-blue-200 {
+  color: #dbeafe !important;
+}
+
+html:not(.dark) .font-mono.text-muted-text {
+  color: #4b453c;
+}
+
+html:not(.dark) .font-mono.text-blue-500,
+html:not(.dark) .font-mono.text-blue-600 {
+  color: #1d4ed8;
+  font-weight: 700;
+}
+
+html:not(.dark) .font-mono.text-emerald-500,
+html:not(.dark) .font-mono.text-emerald-600 {
+  color: #047857;
+  font-weight: 700;
+}
+
+/* Dark Mode High-Contrast Typography & Readability */
+html.dark {
+  color-scheme: dark;
+}
+
+html.dark body {
+  background-color: var(--bg-app);
+  color: #f8fafc;
+}
+
+/* Monospace numbers, live timers, ledger hours, and schedule text in dark mode */
+html.dark .font-mono {
+  color: #f8fafc;
+}
+
+html.dark .font-mono.text-main-text,
+html.dark .text-main-text {
+  color: #f8fafc;
+}
+
+html.dark .font-mono.text-muted-text,
+html.dark .text-muted-text {
+  color: #94a3b8;
+}
+
+html.dark .font-mono.text-muted-darker,
+html.dark .text-muted-darker {
+  color: #cbd5e1;
+}
+
+/* Explicit light text classes across dark mode */
+html.dark .text-white,
+html.dark .font-mono.text-white {
+  color: #ffffff !important;
+}
+
+html.dark .text-slate-100,
+html.dark .font-mono.text-slate-100 {
+  color: #f1f5f9 !important;
+}
+
+html.dark .text-amber-100,
+html.dark .font-mono.text-amber-100 {
+  color: #fef3c7 !important;
+}
+
+html.dark .font-mono.text-blue-100,
+html.dark .font-mono.text-blue-200,
+html.dark .text-blue-100,
+html.dark .text-blue-200 {
+  color: #dbeafe !important;
+}
+
+/* High-contrast color accents for badges, hours, and indicators in dark mode */
+html.dark .font-mono.text-blue-400,
+html.dark .font-mono.text-blue-500,
+html.dark .font-mono.text-blue-600 {
+  color: #60a5fa;
+  font-weight: 700;
+}
+
+html.dark .font-mono.text-emerald-400,
+html.dark .font-mono.text-emerald-500,
+html.dark .font-mono.text-emerald-600 {
+  color: #34d399;
+  font-weight: 700;
+}
+
+html.dark .font-mono.text-amber-400,
+html.dark .font-mono.text-amber-500 {
+  color: #fbbf24;
+  font-weight: 700;
+}
+
+html.dark .font-mono.text-rose-400,
+html.dark .font-mono.text-rose-500 {
+  color: #f87171;
+  font-weight: 700;
+}
+
+/* Headers switch to clean light text in dark mode */
+html.dark h1,
+html.dark h2,
+html.dark h3,
+html.dark h4,
+html.dark h5,
+html.dark h6 {
+  color: #f8fafc;
+}
+
+/* Form inputs, textareas, and select elements switch to dark surface with light text */
+html.dark input,
+html.dark textarea,
+html.dark select {
+  background-color: var(--bg-input);
+  color: #f8fafc;
+  border-color: var(--border-main);
+}
+
+html.dark input::placeholder,
+html.dark textarea::placeholder {
+  color: #64748b;
+}
+
+
+/* Mobile Polish: iOS Safari auto-zoom prevention (< 16px causes zoom) */
+@media (max-width: 768px) {
+  input, 
+  textarea, 
+  select {
+    font-size: 16px !important;
+  }
+}
+
+/* Touch Targets: minimum 44px for action elements on mobile */
+@media (max-width: 768px) {
+  button:not(.no-touch-target),
+  a[role="button"]:not(.no-touch-target),
+  input[type="button"],
+  input[type="submit"] {
+    min-height: 44px;
+    touch-action: manipulation;
+  }
+}
+
+/* Safe-area insets & dynamic viewport height utilities */
+.pb-safe {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom, 1rem));
+}
+
+.pt-safe {
+  padding-top: max(0.75rem, env(safe-area-inset-top, 0.75rem));
+}
+
+.mb-safe {
+  margin-bottom: max(0.5rem, env(safe-area-inset-bottom, 0.5rem));
+}
+
+.min-h-dvh {
+  min-height: 100dvh;
+}
+
+.h-dvh {
+  height: 100dvh;
+}
+
+.max-h-dvh {
+  max-height: 100dvh;
 }
 
 body {

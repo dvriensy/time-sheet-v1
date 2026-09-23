@@ -5,13 +5,13 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Play, Square, Plus, Trash2, FileOutput, Printer, X, MapPin, Briefcase, Calendar, CheckCircle2, Pencil, ClipboardList, Folder, FolderOpen, ChevronDown, ChevronRight, ChevronLeft, Archive, AlertTriangle, HelpCircle, Bell, Inbox, Send, Utensils, UtensilsCrossed, Clock, Sparkles, Zap, ExternalLink, RefreshCw } from 'lucide-react';
+import { Play, Square, Plus, Trash2, FileOutput, Printer, X, MapPin, Briefcase, Calendar, CheckCircle2, Pencil, ClipboardList, Folder, FolderOpen, ChevronDown, ChevronRight, ChevronLeft, Archive, AlertTriangle, HelpCircle, Bell, Inbox, Send, Utensils, UtensilsCrossed, Clock, Sparkles, Zap, ExternalLink, RefreshCw, Camera, Eye, Download, ShieldCheck, Image as ImageIcon } from 'lucide-react';
 import { 
   getPayPeriodsGrouped, 
   addTimesheetEntry, 
   updateTimesheetEntry, 
   deleteTimesheetEntry, 
-  getAppSettings,
+  getAppSettings, 
   calculateHoursAndEarnings,
   PayPeriodGroup,
   getCurrentUser,
@@ -29,7 +29,8 @@ import {
   addSubmittedTimesheet,
   getSubmittedTimesheets,
   enrichEntriesWithOvertime,
-  ActiveSession
+  ActiveSession,
+  safeSetItem
 } from '../utils/storage';
 import { db } from '../lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
@@ -37,12 +38,15 @@ import { TimesheetEntry, FutureShift, SubmittedTimesheet } from '../types';
 import JobTimeSheetPrintout from './JobTimeSheetPrintout';
 import { getAlbertaHoliday } from '../utils/albertaHolidays';
 import { SHIFT_PRESETS, ShiftPreset, roundTimeString, getCurrentRoundedTime, calculateEndTimeFromDuration } from '../utils/shiftPresets';
-import GoogleCalendarIntegrationCard from './GoogleCalendarIntegrationCard';
-import { 
-  syncFutureShiftToGoogleCalendar, 
-  getStoredGoogleCalendarAuth, 
-  isGoogleTokenValid 
-} from '../utils/googleCalendar';
+import { compressImageToDataUrl } from '../utils/imageCompressor';
+
+// Standardized local date string helper (YYYY-MM-DD) avoiding UTC day-shift errors
+export const formatLocalDate = (d: Date = new Date()): string => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
 
 interface TimesheetManagerProps {
   entries: TimesheetEntry[];
@@ -140,7 +144,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
 
   // Check if today is a holiday
   useEffect(() => {
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = formatLocalDate();
     const holiday = getAlbertaHoliday(todayStr);
     setTodayHoliday(holiday);
     if (holiday) {
@@ -237,13 +241,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
   const [currentMonthDate, setCurrentMonthDate] = useState<Date>(new Date());
   
   // Format today's date YYYY-MM-DD
-  const defaultSelectedDay = useMemo(() => {
-    const d = new Date();
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
-  }, []);
+  const defaultSelectedDay = useMemo(() => formatLocalDate(), []);
   const [selectedDateStr, setSelectedDateStr] = useState<string>(defaultSelectedDay);
   const [inboxFilter, setInboxFilter] = useState<'all' | 'pending'>('pending');
 
@@ -280,48 +278,12 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     };
   }, [user]);
 
-  // Google Calendar individual shift sync state
-  const [syncingShiftId, setSyncingShiftId] = useState<string | null>(null);
-
-  const handleSyncIndividualShift = async (shift: FutureShift) => {
-    const auth = getStoredGoogleCalendarAuth(user?.username);
-    if (!isGoogleTokenValid(auth) || !auth.accessToken) {
-      alert("Please connect your Google Calendar first using the Google Calendar Sync card.");
-      return;
-    }
-
-    setSyncingShiftId(shift.id);
-    try {
-      await syncFutureShiftToGoogleCalendar(shift, auth);
-      // Reload shifts to show updated calendar event link
-      const allShifts = getFutureShifts();
-      const userShifts = user ? allShifts.filter(s => s.username === user.username) : allShifts;
-      setFutureShifts(userShifts);
-    } catch (err: any) {
-      console.error("Failed to sync shift to Google Calendar:", err);
-      alert(`Could not sync shift to Google Calendar: ${err.message || 'Unknown error'}`);
-    } finally {
-      setSyncingShiftId(null);
-    }
-  };
-
-  const handleAcknowledgeWithSync = async (shiftId: string) => {
+  const handleAcknowledgeWithSync = (shiftId: string) => {
     acknowledgeFutureShift(shiftId);
-    const target = futureShifts.find(s => s.id === shiftId);
-    if (target) {
-      const auth = getStoredGoogleCalendarAuth(user?.username);
-      if (isGoogleTokenValid(auth) && auth.autoSyncShifts) {
-        try {
-          await syncFutureShiftToGoogleCalendar({ ...target, acknowledged: true }, auth);
-        } catch (e) {
-          console.warn("Could not sync shift acknowledge to Google Calendar:", e);
-        }
-      }
-    }
   };
 
   // Manual Form State
-  const [manualDate, setManualDate] = useState(new Date().toISOString().slice(0, 10));
+  const [manualDate, setManualDate] = useState(() => formatLocalDate());
   const [manualStart, setManualStart] = useState(() => {
     try {
       return getAppSettings().defaultStartTime || '07:30';
@@ -342,6 +304,34 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
   const [manualNotes, setManualNotes] = useState('');
   const [manualIsOvertime, setManualIsOvertime] = useState(false);
   const [selectedPresetId, setSelectedPresetId] = useState<string | null>('standard_8h');
+
+  // FLHA Safety Card State for Shift Logger Modal & Viewer
+  const [manualFlhaImage, setManualFlhaImage] = useState<string | null>(null);
+  const [manualFlhaTimestamp, setManualFlhaTimestamp] = useState<string | null>(null);
+  const [isCompressingFlha, setIsCompressingFlha] = useState<boolean>(false);
+  const [selectedFlhaEntry, setSelectedFlhaEntry] = useState<TimesheetEntry | null>(null);
+
+  const handleFlhaPhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setIsCompressingFlha(true);
+      const dataUrl = await compressImageToDataUrl(file, 1200, 1200, 0.82);
+      setManualFlhaImage(dataUrl);
+      setManualFlhaTimestamp(new Date().toISOString());
+    } catch (err) {
+      console.error('FLHA photo processing failed:', err);
+      setValidationError('Failed to process FLHA image. Please try another photo.');
+    } finally {
+      setIsCompressingFlha(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleRemoveFlhaPhoto = () => {
+    setManualFlhaImage(null);
+    setManualFlhaTimestamp(null);
+  };
 
   const handleApplyPreset = (preset: ShiftPreset) => {
     setSelectedPresetId(preset.id);
@@ -818,7 +808,10 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
           project: projectVal,
           locationName: locationVal,
           notes: notesVal,
-          isOvertime: manualIsOvertime
+          isOvertime: manualIsOvertime,
+          flhaImageUrl: manualFlhaImage || undefined,
+          flhaTimestamp: manualFlhaImage ? (manualFlhaTimestamp || editingEntry.flhaTimestamp || new Date().toISOString()) : undefined,
+          flhaLocation: manualFlhaImage ? (locationVal || 'General Site') : undefined
         });
       } else {
         addTimesheetEntry({
@@ -829,7 +822,10 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
           project: projectVal,
           locationName: locationVal,
           notes: notesVal,
-          isOvertime: manualIsOvertime
+          isOvertime: manualIsOvertime,
+          flhaImageUrl: manualFlhaImage || undefined,
+          flhaTimestamp: manualFlhaImage ? (manualFlhaTimestamp || new Date().toISOString()) : undefined,
+          flhaLocation: manualFlhaImage ? (locationVal || 'General Site') : undefined
         });
       }
       
@@ -840,6 +836,8 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
       setManualNotes('');
       setManualIsOvertime(false);
       setManualBypassLunch(false);
+      setManualFlhaImage(null);
+      setManualFlhaTimestamp(null);
       onRefreshEntries();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -857,6 +855,8 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     setManualLocation(entry.locationName);
     setManualNotes(entry.notes);
     setManualIsOvertime(!!entry.isOvertime);
+    setManualFlhaImage(entry.flhaImageUrl || null);
+    setManualFlhaTimestamp(entry.flhaTimestamp || null);
     
     // Auto-override for pre-saved entries on holidays
     const isHoliday = getAlbertaHoliday(entry.date);
@@ -877,6 +877,8 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
 
   const handleOpenNewManualForm = (preset?: ShiftPreset) => {
     setManualDate(new Date().toISOString().slice(0, 10));
+    setManualFlhaImage(null);
+    setManualFlhaTimestamp(null);
     if (preset) {
       handleApplyPreset(preset);
     } else {
@@ -1297,27 +1299,16 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
       {/* RIGHT COLUMN: WEEKLY LOGS */}
       <div className={`lg:col-span-2 ${isMobileView ? 'space-y-6' : 'space-y-6 h-full overflow-y-auto pr-1 pb-4'}`}>
         
-        {/* GOOGLE CALENDAR SYNC & OAUTH INTEGRATION CARD */}
-        <GoogleCalendarIntegrationCard
-          currentUsername={user?.username}
-          shifts={futureShifts}
-          onShiftsUpdated={() => {
-            const allShifts = getFutureShifts();
-            const userShifts = user ? allShifts.filter(s => s.username === user.username) : allShifts;
-            setFutureShifts(userShifts);
-          }}
-        />
-
         {/* FUTURE SCHEDULE & ABSENCES CALENDAR */}
-        <div className="rounded-3xl border border-blue-500/20 bg-[#1e3a8a]/5 p-6 shadow-xl space-y-5">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between pb-3 border-b border-slate-800">
+        <div className="rounded-3xl border border-main-border bg-card-bg p-4 sm:p-6 shadow-xl space-y-5">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between pb-3 border-b border-main-border">
             <div className="flex items-center gap-2.5">
-              <div className="rounded-xl bg-blue-500/10 p-2 text-blue-400">
+              <div className="rounded-xl bg-blue-500/10 p-2 text-blue-500">
                 <Calendar className="h-4.5 w-4.5" />
               </div>
               <div>
-                <h2 className="text-sm font-semibold text-slate-100">Your Schedule & Absences</h2>
-                <p className="text-[10px] text-slate-400 font-mono">Unified shifts and time-off tracker</p>
+                <h2 className="text-sm font-semibold text-main-text">Your Schedule & Absences</h2>
+                <p className="text-[10px] text-muted-text font-mono">Unified shifts and time-off tracker</p>
               </div>
             </div>
             
@@ -1325,17 +1316,17 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
             <div className="flex items-center gap-3">
               <button 
                 onClick={() => setCurrentMonthDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
-                className="p-1.5 rounded-lg border border-slate-800 hover:bg-slate-800/50 text-slate-400 hover:text-slate-200 transition cursor-pointer"
+                className="p-1.5 rounded-lg border border-main-border hover:bg-main-border/30 text-muted-text hover:text-main-text transition cursor-pointer"
                 title="Previous Month"
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
-              <span className="text-xs font-semibold font-mono text-slate-200 select-none min-w-[100px] text-center">
+              <span className="text-xs font-semibold font-mono text-main-text select-none min-w-[100px] text-center">
                 {currentMonthDate.toLocaleString(undefined, { month: 'long', year: 'numeric' })}
               </span>
               <button 
                 onClick={() => setCurrentMonthDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
-                className="p-1.5 rounded-lg border border-slate-800 hover:bg-slate-800/50 text-slate-400 hover:text-slate-200 transition cursor-pointer"
+                className="p-1.5 rounded-lg border border-main-border hover:bg-main-border/30 text-muted-text hover:text-main-text transition cursor-pointer"
                 title="Next Month"
               >
                 <ChevronRight className="h-4 w-4" />
@@ -1344,7 +1335,8 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
           </div>
 
           {/* Calendar Grid wrapper */}
-          <div>
+          <div className="overflow-x-auto pb-2">
+            <div className="min-w-[480px]">
             {/* Days of week header */}
             <div className="grid grid-cols-7 gap-1 text-center font-semibold text-[10px] sm:text-xs text-slate-400 py-1 border-b border-slate-800/40 font-mono uppercase tracking-widest">
               <span>Sun</span>
@@ -1438,11 +1430,12 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                 );
               })}
             </div>
+            </div>
           </div>
 
           {/* Selection Detail Panel */}
-          <div className="mt-4 p-4 rounded-2xl border border-slate-800/60 bg-[#09090B]/30 space-y-3">
-            <h3 className="text-xs font-semibold font-mono text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+          <div className="mt-4 p-4 rounded-2xl border border-main-border bg-app-bg/50 space-y-3">
+            <h3 className="text-xs font-semibold font-mono text-main-text uppercase tracking-wider flex items-center gap-1.5">
               <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
               Schedule for {new Date(selectedDateStr + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}
             </h3>
@@ -1453,7 +1446,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
 
               if (selectedShifts.length === 0 && selectedTimeOffs.length === 0) {
                 return (
-                  <p className="text-xs text-slate-400 font-mono">
+                  <p className="text-xs text-muted-text font-mono">
                     No scheduled shifts or active time-off requests on this day.
                   </p>
                 );
@@ -1467,8 +1460,8 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                       key={shift.id}
                       className={`p-3.5 rounded-xl border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 relative overflow-hidden transition-all duration-200 ${
                         shift.acknowledged 
-                          ? 'border-slate-800 bg-[#18181B]/40 text-slate-400' 
-                          : 'border-blue-500/40 bg-blue-500/5 text-slate-200'
+                          ? 'border-main-border bg-card-bg/60 text-muted-text' 
+                          : 'border-blue-500/40 bg-blue-500/10 text-main-text'
                       }`}
                     >
                       <div className="space-y-1.5 min-w-0">
@@ -1478,32 +1471,6 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                           </span>
                           {!shift.acknowledged && (
                             <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse" title="Requires Acknowledgment" />
-                          )}
-
-                          {/* Google Calendar Sync Indicator */}
-                          {shift.googleCalendarEventId ? (
-                            <a
-                              href={shift.googleCalendarHtmlLink || 'https://calendar.google.com'}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1 text-[9px] font-mono text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 px-2 py-0.5 rounded-full border border-blue-500/20 transition cursor-pointer"
-                              title="Event synced on Google Calendar. Click to view."
-                            >
-                              <Calendar className="h-2.5 w-2.5" />
-                              <span>Google Calendar Synced</span>
-                              <ExternalLink className="h-2 w-2 opacity-70" />
-                            </a>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => handleSyncIndividualShift(shift)}
-                              disabled={syncingShiftId === shift.id}
-                              className="inline-flex items-center gap-1 text-[9px] font-mono text-slate-400 hover:text-slate-200 bg-slate-800/60 hover:bg-slate-700/70 px-2 py-0.5 rounded-full border border-slate-700/80 transition cursor-pointer disabled:opacity-50"
-                              title="Sync this shift to your Google Calendar"
-                            >
-                              <RefreshCw className={`h-2.5 w-2.5 ${syncingShiftId === shift.id ? 'animate-spin text-blue-400' : ''}`} />
-                              <span>{syncingShiftId === shift.id ? 'Syncing...' : 'Sync to Calendar'}</span>
-                            </button>
                           )}
                         </div>
 
@@ -1589,36 +1556,36 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
         </div>
 
         {/* INBOX LEDGER FOR SCHEDULED EVENTS */}
-        <div className="rounded-3xl border border-blue-500/15 bg-blue-950/10 p-6 shadow-xl space-y-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-3 border-b border-slate-800">
+        <div className="rounded-3xl border border-main-border bg-card-bg p-4 sm:p-6 shadow-xl space-y-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-3 border-b border-main-border">
             <div className="flex items-center gap-2.5">
-              <div className="rounded-xl bg-blue-500/10 p-2 text-blue-400 relative">
+              <div className="rounded-xl bg-blue-500/10 p-2 text-blue-500 relative">
                 <Inbox className="h-4.5 w-4.5" />
                 {pendingInboxCount > 0 && (
-                  <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-blue-400 animate-ping" />
+                  <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-blue-500 animate-ping" />
                 )}
               </div>
               <div>
-                <h2 className="text-sm font-semibold text-slate-100 flex items-center gap-2">
+                <h2 className="text-sm font-semibold text-main-text flex items-center gap-2">
                   Inbox Ledger
                   {pendingInboxCount > 0 && (
-                    <span className="rounded-full bg-blue-500/20 px-2 py-0.5 text-[10px] font-extrabold text-blue-300 border border-blue-500/25 animate-pulse-subtle">
+                    <span className="rounded-full bg-blue-500/20 px-2 py-0.5 text-[10px] font-extrabold text-blue-500 border border-blue-500/25 animate-pulse-subtle">
                       {pendingInboxCount} New
                     </span>
                   )}
                 </h2>
-                <p className="text-[10px] text-slate-400 font-mono">Ledger of newly scheduled shift assignments</p>
+                <p className="text-[10px] text-muted-text font-mono">Ledger of newly scheduled shift assignments</p>
               </div>
             </div>
 
             {/* Toggle filter */}
-            <div className="flex bg-slate-900/60 p-0.5 rounded-lg border border-slate-800 self-start">
+            <div className="flex bg-app-bg p-0.5 rounded-lg border border-main-border self-start">
               <button
                 onClick={() => setInboxFilter('pending')}
                 className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md font-mono transition-all cursor-pointer ${
                   inboxFilter === 'pending'
                     ? 'bg-blue-600 text-white font-extrabold'
-                    : 'text-slate-400 hover:text-slate-200'
+                    : 'text-muted-text hover:text-main-text'
                 }`}
               >
                 New Shifts
@@ -1628,7 +1595,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                 className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md font-mono transition-all cursor-pointer ${
                   inboxFilter === 'all'
                     ? 'bg-blue-600 text-white font-extrabold'
-                    : 'text-slate-400 hover:text-slate-200'
+                    : 'text-muted-text hover:text-main-text'
                 }`}
               >
                 All History
@@ -1637,14 +1604,14 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
           </div>
 
           {filteredInboxShifts.length === 0 ? (
-            <div className="py-8 text-center bg-slate-900/10 rounded-2xl border border-dashed border-slate-800/40">
-              <div className="mx-auto w-10 h-10 rounded-full bg-slate-800/20 flex items-center justify-center text-slate-500 mb-2.5">
+            <div className="py-8 text-center bg-app-bg/50 rounded-2xl border border-dashed border-main-border">
+              <div className="mx-auto w-10 h-10 rounded-full bg-app-bg flex items-center justify-center text-muted-text mb-2.5">
                 <CheckCircle2 className="h-5 w-5 text-emerald-500/60" />
               </div>
-              <p className="text-xs font-semibold text-slate-300">
+              <p className="text-xs font-semibold text-main-text">
                 {inboxFilter === 'pending' ? "You're all caught up!" : "No shifts in your schedule."}
               </p>
-              <p className="text-[10px] text-slate-500 font-mono mt-0.5">
+              <p className="text-[10px] text-muted-text font-mono mt-0.5">
                 {inboxFilter === 'pending' ? "No unacknowledged scheduled events remaining." : "Ask your manager to assign a shift."}
               </p>
             </div>
@@ -1692,64 +1659,36 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                       exit={{ opacity: 0, scale: 0.95 }}
                       className={`p-4 rounded-2xl border transition duration-150 flex flex-col md:flex-row md:items-center justify-between gap-4 relative overflow-hidden ${
                         shift.acknowledged
-                          ? 'border-slate-800 bg-[#121214]/40 text-slate-400'
-                          : 'border-blue-500/30 bg-blue-600/5 text-slate-200 shadow-sm'
+                          ? 'border-main-border bg-card-bg/60 text-muted-text'
+                          : 'border-blue-500/30 bg-blue-500/5 text-main-text shadow-sm'
                       }`}
                     >
                       {/* Left Side: Shift Date, Time, and Status Indicator */}
                       <div className="space-y-2 flex-grow">
                         <div className="flex flex-wrap items-center gap-2">
                           {!shift.acknowledged && (
-                            <span className="h-2 w-2 rounded-full bg-blue-400 animate-pulse shrink-0" title="New Scheduled Event" />
+                            <span className="h-2 w-2 rounded-full bg-blue-500 animate-pulse shrink-0" title="New Scheduled Event" />
                           )}
-                          <span className="inline-flex items-center rounded bg-blue-500/10 px-1.5 py-0.5 text-[9px] font-bold text-blue-400 uppercase tracking-wider border border-blue-500/15 font-mono">
+                          <span className="inline-flex items-center rounded bg-blue-500/10 px-1.5 py-0.5 text-[9px] font-bold text-blue-500 uppercase tracking-wider border border-blue-500/15 font-mono">
                             {shift.project || 'General Shift'}
                           </span>
-                          <span className="text-[10px] text-slate-400 font-mono tracking-tight">
+                          <span className="text-[10px] text-muted-text font-mono tracking-tight">
                             {scheduledTimeStr}
                           </span>
                         </div>
 
                         <div className="space-y-1">
-                          <h4 className="text-xs font-bold text-slate-100 font-mono">
+                          <h4 className="text-xs font-bold text-main-text font-mono">
                             {formattedShiftDate}
                           </h4>
-                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-300 font-mono">
-                            <span className="flex items-center gap-1">
-                              <span className="text-blue-400 font-bold font-sans">●</span> {shift.startTime} – {shift.endTime}
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-text font-mono">
+                            <span className="flex items-center gap-1 text-main-text">
+                              <span className="text-blue-500 font-bold font-sans">●</span> {shift.startTime} – {shift.endTime}
                             </span>
-                            <span className="flex items-center gap-1 text-slate-300">
-                              <MapPin className="h-3 w-3 text-blue-400 shrink-0" />
+                            <span className="flex items-center gap-1 text-muted-text">
+                              <MapPin className="h-3 w-3 text-blue-500 shrink-0" />
                               <span>{shift.location || 'General Site'}</span>
                             </span>
-                          </div>
-
-                          {/* Google Calendar Sync Badge / Action */}
-                          <div className="pt-0.5">
-                            {shift.googleCalendarEventId ? (
-                              <a
-                                href={shift.googleCalendarHtmlLink || 'https://calendar.google.com'}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex items-center gap-1 text-[9px] font-mono text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 px-2 py-0.5 rounded-full border border-blue-500/20 transition cursor-pointer"
-                                title="Synced on Google Calendar. Click to open."
-                              >
-                                <Calendar className="h-2.5 w-2.5" />
-                                <span>Google Calendar Synced</span>
-                                <ExternalLink className="h-2 w-2 opacity-70" />
-                              </a>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => handleSyncIndividualShift(shift)}
-                                disabled={syncingShiftId === shift.id}
-                                className="inline-flex items-center gap-1 text-[9px] font-mono text-slate-400 hover:text-slate-200 bg-slate-800/60 hover:bg-slate-700/70 px-2 py-0.5 rounded-full border border-slate-700/80 transition cursor-pointer disabled:opacity-50"
-                                title="Sync this shift to your Google Calendar"
-                              >
-                                <RefreshCw className={`h-2.5 w-2.5 ${syncingShiftId === shift.id ? 'animate-spin text-blue-400' : ''}`} />
-                                <span>{syncingShiftId === shift.id ? 'Syncing...' : 'Sync to Google Calendar'}</span>
-                              </button>
-                            )}
                           </div>
                         </div>
 
@@ -1949,24 +1888,64 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                                   : hasMultipleTasks ? 'cursor-pointer hover:bg-app-bg/30' : ''
                               } transition-colors duration-150`}
                             >
-                              <div className="flex items-center gap-3">
-                                <span className="text-xs font-semibold text-main-text">
-                                  {new Date(dateStr + 'T00:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'})}
-                                </span>
-                                {isHoliday && (
-                                  <span className="inline-flex items-center gap-1 rounded bg-rose-500/10 px-2 py-0.5 text-[9px] font-bold text-rose-400 border border-rose-500/20 uppercase tracking-wider">
-                                    🍁 Stat Holiday: {isHoliday}
+                              <div className="flex flex-col gap-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-xs font-semibold text-main-text">
+                                    {new Date(dateStr + 'T00:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'})}
                                   </span>
-                                )}
-                                {hasMultipleTasks && (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-2.5 py-0.5 text-[9px] font-semibold text-blue-500 uppercase tracking-wider border border-blue-500/20">
-                                    {dayEntries.length} Tasks
-                                  </span>
-                                )}
-                                {!hasMultipleTasks && singleEntry.isOvertime && (
-                                  <span className="inline-flex items-center rounded bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-bold text-amber-500 border border-amber-500/20 uppercase tracking-wider">
-                                    Overtime
-                                  </span>
+                                  {isHoliday && (
+                                    <span className="inline-flex items-center gap-1 rounded bg-rose-500/10 px-2 py-0.5 text-[9px] font-bold text-rose-400 border border-rose-500/20 uppercase tracking-wider">
+                                      🍁 Stat Holiday: {isHoliday}
+                                    </span>
+                                  )}
+                                  {hasMultipleTasks && (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-2.5 py-0.5 text-[9px] font-semibold text-blue-500 uppercase tracking-wider border border-blue-500/20">
+                                      {dayEntries.length} Tasks
+                                    </span>
+                                  )}
+                                  {!hasMultipleTasks && singleEntry.isOvertime && (
+                                    <span className="inline-flex items-center rounded bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-bold text-amber-500 border border-amber-500/20 uppercase tracking-wider">
+                                      Overtime
+                                    </span>
+                                  )}
+                                  {!hasMultipleTasks && singleEntry.flhaImageUrl && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedFlhaEntry(singleEntry);
+                                      }}
+                                      className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider transition cursor-pointer shadow-xs"
+                                      title="Click to view full-size FLHA Safety Card"
+                                    >
+                                      <img 
+                                        src={singleEntry.flhaImageUrl} 
+                                        alt="FLHA" 
+                                        className="w-4 h-4 rounded object-cover border border-emerald-500/40" 
+                                      />
+                                      <span>FLHA Card</span>
+                                      <Eye className="h-3 w-3 opacity-70" />
+                                    </button>
+                                  )}
+                                  {hasMultipleTasks && dayEntries.some(e => e.flhaImageUrl) && (
+                                    <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
+                                      <ShieldCheck className="h-3 w-3 text-emerald-500" />
+                                      FLHA Attached
+                                    </span>
+                                  )}
+                                </div>
+                                {!hasMultipleTasks && (
+                                  <div className="flex items-center gap-2 text-[11px] text-muted-text font-mono flex-wrap">
+                                    <span>{singleEntry.startTime} – {singleEntry.endTime}</span>
+                                    <span>•</span>
+                                    <span className="truncate max-w-[180px] text-main-text font-medium">{singleEntry.project}</span>
+                                    {singleEntry.locationName && (
+                                      <>
+                                        <span>•</span>
+                                        <span className="truncate max-w-[140px]">{singleEntry.locationName}</span>
+                                      </>
+                                    )}
+                                  </div>
                                 )}
                               </div>
                               
@@ -2047,6 +2026,25 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                                           <span className="inline-flex items-center rounded bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-bold text-amber-500 border border-amber-500/20 uppercase tracking-wider">
                                             Overtime
                                           </span>
+                                        )}
+                                        {entry.flhaImageUrl && (
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setSelectedFlhaEntry(entry);
+                                            }}
+                                            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider transition cursor-pointer shadow-xs"
+                                            title="Click to view full-size FLHA Safety Card"
+                                          >
+                                            <img 
+                                              src={entry.flhaImageUrl} 
+                                              alt="FLHA" 
+                                              className="w-4 h-4 rounded object-cover border border-emerald-500/40" 
+                                            />
+                                            <span>FLHA Card</span>
+                                            <Eye className="h-3 w-3 opacity-70" />
+                                          </button>
                                         )}
                                       </div>
                                       
@@ -2178,7 +2176,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
               initial={{ scale: 0.95, opacity: 0 }} 
               animate={{ scale: 1, opacity: 1 }} 
               exit={{ scale: 0.95, opacity: 0 }}
-              className="relative w-full max-w-md overflow-hidden rounded-3xl border border-main-border bg-card-bg p-6 shadow-2xl z-10 transition-colors duration-200"
+              className="relative w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-3xl border border-main-border bg-card-bg p-5 sm:p-6 shadow-2xl z-10 transition-colors duration-200 pb-safe"
             >
               <div className="flex items-center justify-between mb-4 pb-3 border-b border-main-border">
                 <h3 className="text-base font-semibold text-main-text">
@@ -2188,8 +2186,11 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                   onClick={() => {
                     setShowManualForm(false);
                     setEditingEntry(null);
+                    setManualFlhaImage(null);
+                    setManualFlhaTimestamp(null);
                   }} 
-                  className="rounded-lg p-1 text-muted-text hover:bg-app-bg hover:text-main-text transition cursor-pointer"
+                  className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl p-2 text-muted-text hover:bg-app-bg hover:text-main-text transition cursor-pointer"
+                  title="Close logger"
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -2420,8 +2421,131 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                     value={manualNotes}
                     onChange={(e) => setManualNotes(e.target.value)}
                     placeholder="Add shift notes or comments (optional)..."
-                    className="w-full rounded-xl border border-main-border bg-input-bg px-3 py-2 text-xs text-main-text placeholder-muted-text/60 focus:border-blue-500/50 focus:outline-none h-20 resize-none transition-colors"
+                    className="w-full rounded-xl border border-main-border bg-input-bg px-3 py-2 text-base sm:text-xs text-main-text placeholder-muted-text/60 focus:border-blue-500/50 focus:outline-none h-20 resize-none transition-colors"
                   />
+                </div>
+
+                {/* FLHA SAFETY CARD (FIELD LEVEL HAZARD ASSESSMENT) PHOTO CAPTURE & UPLOAD */}
+                <div className="rounded-2xl border border-main-border bg-input-bg/70 p-3.5 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-semibold text-main-text uppercase font-mono flex items-center gap-1.5">
+                      <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
+                      <span>FLHA Safety Card</span>
+                    </label>
+                    <span className="text-[10px] text-muted-text font-mono">Safety Compliance</span>
+                  </div>
+
+                  {/* Hidden camera & file pickers */}
+                  <input 
+                    type="file" 
+                    accept="image/*" 
+                    capture="environment" 
+                    id="flha-camera-input" 
+                    onChange={handleFlhaPhotoSelect} 
+                    className="hidden" 
+                  />
+                  <input 
+                    type="file" 
+                    accept="image/*" 
+                    id="flha-file-input" 
+                    onChange={handleFlhaPhotoSelect} 
+                    className="hidden" 
+                  />
+
+                  {manualFlhaImage ? (
+                    <div className="flex items-center gap-3 bg-card-bg p-2.5 rounded-xl border border-emerald-500/30">
+                      <div 
+                        onClick={() => setSelectedFlhaEntry({
+                          id: editingEntry?.id || 'manual-preview',
+                          date: manualDate,
+                          startTime: manualStart,
+                          endTime: manualEnd,
+                          breakMinutes: manualBypassLunch ? 0 : 30,
+                          project: manualProject || 'General Work',
+                          locationName: manualLocation || 'Job Site',
+                          notes: manualNotes,
+                          totalHours: 8,
+                          isSynced: false,
+                          flhaImageUrl: manualFlhaImage,
+                          flhaTimestamp: manualFlhaTimestamp || new Date().toISOString(),
+                          flhaLocation: manualLocation || 'Job Site'
+                        })}
+                        className="relative group w-14 h-14 rounded-lg overflow-hidden border border-main-border shrink-0 cursor-pointer shadow-xs"
+                        title="Click to view full photo"
+                      >
+                        <img 
+                          src={manualFlhaImage} 
+                          alt="FLHA Card" 
+                          className="w-full h-full object-cover group-hover:scale-110 transition duration-200" 
+                        />
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
+                          <Eye className="h-4 w-4 text-white" />
+                        </div>
+                      </div>
+
+                      <div className="flex-grow min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20 uppercase tracking-wider font-mono">
+                            <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+                            FLHA Attached
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-muted-text mt-1 truncate font-mono">
+                          {manualFlhaTimestamp ? new Date(manualFlhaTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Ready'} • {manualLocation || 'Site'}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const el = document.getElementById('flha-camera-input');
+                            if (el) el.click();
+                          }}
+                          className="p-2 min-h-[44px] min-w-[44px] rounded-lg text-muted-text hover:text-blue-500 hover:bg-app-bg transition cursor-pointer flex items-center justify-center"
+                          title="Retake photo with camera"
+                        >
+                          <Camera className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleRemoveFlhaPhoto}
+                          className="p-2 min-h-[44px] min-w-[44px] rounded-lg text-muted-text hover:text-rose-500 hover:bg-app-bg transition cursor-pointer flex items-center justify-center"
+                          title="Remove photo"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        disabled={isCompressingFlha}
+                        onClick={() => {
+                          const el = document.getElementById('flha-camera-input');
+                          if (el) el.click();
+                        }}
+                        className="min-h-[44px] flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border border-main-border bg-card-bg hover:border-emerald-500/50 hover:bg-emerald-500/5 text-main-text text-xs font-semibold transition cursor-pointer shadow-xs active:scale-[0.98]"
+                      >
+                        <Camera className="h-4 w-4 text-emerald-500 shrink-0" />
+                        <span>{isCompressingFlha ? 'Processing...' : 'Take Photo'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={isCompressingFlha}
+                        onClick={() => {
+                          const el = document.getElementById('flha-file-input');
+                          if (el) el.click();
+                        }}
+                        className="min-h-[44px] flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border border-main-border bg-card-bg hover:border-blue-500/50 hover:bg-blue-500/5 text-main-text text-xs font-semibold transition cursor-pointer shadow-xs active:scale-[0.98]"
+                      >
+                        <ImageIcon className="h-4 w-4 text-blue-500 shrink-0" />
+                        <span>Upload Image</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {manualHoliday && (
@@ -2448,16 +2572,133 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                 <button
                   type="submit"
                   disabled={!!manualHoliday && !manualOverride}
-                  className={`w-full rounded-xl py-3 font-semibold transition ${
+                  className={`w-full min-h-[44px] rounded-xl py-3 font-semibold transition cursor-pointer ${
                     !!manualHoliday && !manualOverride
                       ? 'bg-slate-700/50 text-slate-400 border border-slate-600/30 cursor-not-allowed opacity-50'
-                      : 'bg-blue-600 hover:bg-blue-500 text-white cursor-pointer'
+                      : 'bg-blue-600 hover:bg-blue-500 text-white'
                   }`}
                 >
                   {editingEntry ? 'Update Ledger Entry' : 'Save Shift Entry'}
                 </button>
 
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* FULL-SIZE FLHA SAFETY CARD VIEWER MODAL */}
+      <AnimatePresence>
+        {selectedFlhaEntry && selectedFlhaEntry.flhaImageUrl && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelectedFlhaEntry(null)}
+              className="absolute inset-0 bg-black/75 backdrop-blur-md"
+            />
+
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="relative w-full max-w-2xl max-h-[92dvh] flex flex-col overflow-hidden rounded-3xl border border-main-border bg-card-bg shadow-2xl z-10 pb-safe"
+            >
+              {/* Modal Header */}
+              <div className="flex items-center justify-between px-5 py-4 border-b border-main-border bg-card-bg shrink-0">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-emerald-500/15 text-emerald-500 border border-emerald-500/25">
+                    <ShieldCheck className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-main-text leading-tight flex items-center gap-2">
+                      <span>FLHA Safety Card</span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 font-bold uppercase">
+                        Verified
+                      </span>
+                    </h3>
+                    <p className="text-xs text-muted-text mt-0.5">Field Level Hazard Assessment record</p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedFlhaEntry(null)}
+                  className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl p-2 text-muted-text hover:text-main-text hover:bg-app-bg transition cursor-pointer"
+                  title="Close viewer"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {/* Auto-filled Metadata Panel */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-4 bg-app-bg/50 border-b border-main-border shrink-0 text-xs">
+                <div className="p-2.5 rounded-xl bg-card-bg border border-main-border">
+                  <span className="text-[10px] uppercase font-mono text-muted-text block">Shift Date</span>
+                  <span className="font-semibold text-main-text mt-0.5 block truncate">
+                    {new Date(selectedFlhaEntry.date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                  </span>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-card-bg border border-main-border">
+                  <span className="text-[10px] uppercase font-mono text-muted-text block">Shift Time</span>
+                  <span className="font-semibold text-main-text mt-0.5 block truncate">
+                    {selectedFlhaEntry.startTime} – {selectedFlhaEntry.endTime}
+                  </span>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-card-bg border border-main-border">
+                  <span className="text-[10px] uppercase font-mono text-muted-text block">Site / Location</span>
+                  <span className="font-semibold text-main-text mt-0.5 block truncate" title={selectedFlhaEntry.flhaLocation || selectedFlhaEntry.locationName}>
+                    {selectedFlhaEntry.flhaLocation || selectedFlhaEntry.locationName || 'General Site'}
+                  </span>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-card-bg border border-main-border">
+                  <span className="text-[10px] uppercase font-mono text-muted-text block">Active Task</span>
+                  <span className="font-semibold text-main-text mt-0.5 block truncate" title={selectedFlhaEntry.project}>
+                    {selectedFlhaEntry.project || 'General Task'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Full-Size Photo Display */}
+              <div className="flex-grow overflow-auto p-4 flex items-center justify-center bg-black/20 min-h-0">
+                <div className="relative max-h-[55dvh] w-full flex items-center justify-center rounded-2xl overflow-hidden border border-main-border bg-black/40 shadow-inner">
+                  <img
+                    src={selectedFlhaEntry.flhaImageUrl}
+                    alt="FLHA Card Full Size"
+                    className="max-h-[52dvh] w-auto max-w-full object-contain rounded-xl select-none"
+                  />
+                </div>
+              </div>
+
+              {/* Modal Action Footer */}
+              <div className="flex items-center justify-between p-4 border-t border-main-border bg-card-bg shrink-0">
+                <div className="text-[10px] text-muted-text font-mono truncate max-w-[200px] sm:max-w-xs">
+                  Captured: {selectedFlhaEntry.flhaTimestamp ? new Date(selectedFlhaEntry.flhaTimestamp).toLocaleString() : selectedFlhaEntry.date}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <a
+                    href={selectedFlhaEntry.flhaImageUrl}
+                    download={`FLHA-${selectedFlhaEntry.date}-${(selectedFlhaEntry.project || 'Card').replace(/[^a-zA-Z0-9]/g, '_')}.jpg`}
+                    className="min-h-[44px] flex items-center gap-1.5 px-4 py-2 rounded-xl bg-app-bg text-main-text hover:bg-input-bg border border-main-border text-xs font-semibold transition cursor-pointer"
+                  >
+                    <Download className="h-4 w-4 text-blue-500" />
+                    <span>Download</span>
+                  </a>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedFlhaEntry(null)}
+                    className="min-h-[44px] px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition cursor-pointer shadow-sm"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
             </motion.div>
           </div>
         )}
@@ -2601,7 +2842,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
 
               {/* Data Table */}
               <div className="overflow-x-auto mb-6">
-                <table className="w-full text-left border-collapse text-xs table-fixed">
+                <table className="w-full min-w-[540px] text-left border-collapse text-xs table-fixed">
                   <thead>
                     <tr className="border-b border-slate-300 bg-slate-100 text-[10px] font-bold text-slate-500 uppercase tracking-wider print-bg-slate-100 print-border-slate-300">
                       <th className="py-2.5 px-3 w-[18%]">Date</th>
@@ -2876,6 +3117,25 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                                               <span className="inline-flex items-center gap-0.5 rounded-md bg-app-bg px-1.5 py-0.5 text-[9px] font-medium text-main-text border border-main-border">
                                                 Where: {entry.locationName}
                                               </span>
+                                              {entry.flhaImageUrl && (
+                                                <button
+                                                  type="button"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setSelectedFlhaEntry(entry);
+                                                  }}
+                                                  className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider transition cursor-pointer shadow-xs"
+                                                  title="Click to view full-size FLHA Safety Card"
+                                                >
+                                                  <img 
+                                                    src={entry.flhaImageUrl} 
+                                                    alt="FLHA" 
+                                                    className="w-3.5 h-3.5 rounded object-cover border border-emerald-500/40" 
+                                                  />
+                                                  <span>FLHA</span>
+                                                  <Eye className="h-2.5 w-2.5 opacity-70" />
+                                                </button>
+                                              )}
                                             </div>
 
                                             {entry.notes && (
@@ -2987,7 +3247,6 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
           </div>
         )}
       </AnimatePresence>
-
     </div>
   );
 }
