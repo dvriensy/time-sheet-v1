@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Play, Square, Plus, Trash2, FileOutput, Printer, X, MapPin, Briefcase, Calendar, CheckCircle2, Pencil, ClipboardList, Folder, FolderOpen, ChevronDown, ChevronRight, ChevronLeft, Archive, AlertTriangle, HelpCircle, Bell, Inbox, Send, Utensils, UtensilsCrossed, Clock, Sparkles, Zap, ExternalLink, RefreshCw, Camera, Eye, Download, ShieldCheck, Image as ImageIcon } from 'lucide-react';
+import { Play, Square, Plus, Trash2, FileOutput, Printer, X, MapPin, Briefcase, Calendar, CheckCircle2, Pencil, ClipboardList, Folder, FolderOpen, ChevronDown, ChevronRight, ChevronLeft, Archive, AlertTriangle, HelpCircle, Bell, Inbox, Send, Utensils, UtensilsCrossed, Clock, Sparkles, Zap, ExternalLink, RefreshCw, Camera, Eye, Download, ShieldCheck, Image as ImageIcon, Maximize2 } from 'lucide-react';
 import { 
   getPayPeriodsGrouped, 
   addTimesheetEntry, 
@@ -141,6 +141,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
   const [todayHoliday, setTodayHoliday] = useState<string | null>(null);
   const [timerOverride, setTimerOverride] = useState<boolean>(false);
   const [manualOverride, setManualOverride] = useState<boolean>(false);
+  const [mobileFitWidth, setMobileFitWidth] = useState<boolean>(true);
 
   // Check if today is a holiday
   useEffect(() => {
@@ -333,6 +334,30 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     setManualFlhaTimestamp(null);
   };
 
+  // Escape key listener to close FLHA viewer modal, manual shift logger dialog, and other dialogs
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (selectedFlhaEntry) {
+          setSelectedFlhaEntry(null);
+        } else if (showManualForm) {
+          setShowManualForm(false);
+          setEditingEntry(null);
+          setManualFlhaImage(null);
+          setManualFlhaTimestamp(null);
+        } else if (showPdfPreview) {
+          setShowPdfPreview(null);
+        } else if (deletingId) {
+          setDeletingId(null);
+        } else if (validationError) {
+          setValidationError(null);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedFlhaEntry, showManualForm, showPdfPreview, deletingId, validationError]);
+
   const handleApplyPreset = (preset: ShiftPreset) => {
     setSelectedPresetId(preset.id);
     setManualStart(preset.startTime);
@@ -425,7 +450,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
         // Update local storage active session cache
         const all = getActiveSessions();
         all[currentUser.username] = session;
-        localStorage.setItem('timesheets_tracker_active_sessions', JSON.stringify(all));
+        safeSetItem('timesheets_tracker_active_sessions', JSON.stringify(all));
 
         setIsClockedIn(true);
         setTimerStart(session.startTime || '');
@@ -587,7 +612,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
         clockInTimestamp: clockInTimestamp || undefined,
         lastActiveTimestamp: new Date().toISOString()
       };
-      localStorage.setItem('timesheets_tracker_active_sessions', JSON.stringify(all));
+      safeSetItem('timesheets_tracker_active_sessions', JSON.stringify(all));
 
       // Sync to Firestore only every 10 seconds to throttle writes
       if (secondsElapsed % 10 === 0) {
@@ -649,7 +674,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
   // Automated geofence entry effects
   useEffect(() => {
     if (simulatedGeoTrigger && !isClockedIn) {
-      const todayStr = new Date().toISOString().slice(0, 10);
+      const todayStr = formatLocalDate();
       const isHoliday = getAlbertaHoliday(todayStr);
       if (isHoliday && !timerOverride) {
         return; // Block automatic geofenced clock-in on holidays without override
@@ -671,7 +696,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
   };
 
   const handleClockIn = (geofenced = false) => {
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = formatLocalDate();
     const isHoliday = getAlbertaHoliday(todayStr);
     if (isHoliday && !timerOverride) {
       return; // Locked on holidays without override
@@ -711,9 +736,9 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     const breakMins = (bypassLunch || isUnder5Hours) ? 0 : 30;
 
     try {
-      // Save the entry
+      // Save the entry using local calendar date
       addTimesheetEntry({
-        date: now.toISOString().slice(0, 10),
+        date: formatLocalDate(now),
         startTime: timerStart,
         endTime: endStr,
         breakMinutes: breakMins,
@@ -759,7 +784,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     try {
       // Save current task segment without break deduction (deduction applied on end of shift)
       addTimesheetEntry({
-        date: now.toISOString().slice(0, 10),
+        date: formatLocalDate(now),
         startTime: timerStart,
         endTime: endStr,
         breakMinutes: 0,
@@ -799,7 +824,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
       const notesVal = manualNotes.trim();
 
       if (editingEntry) {
-        updateTimesheetEntry({
+        const updatedPayload: TimesheetEntry = {
           ...editingEntry,
           date: manualDate,
           startTime: manualStart,
@@ -808,13 +833,20 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
           project: projectVal,
           locationName: locationVal,
           notes: notesVal,
-          isOvertime: manualIsOvertime,
-          flhaImageUrl: manualFlhaImage || undefined,
-          flhaTimestamp: manualFlhaImage ? (manualFlhaTimestamp || editingEntry.flhaTimestamp || new Date().toISOString()) : undefined,
-          flhaLocation: manualFlhaImage ? (locationVal || 'General Site') : undefined
-        });
+          isOvertime: manualIsOvertime
+        };
+        if (manualFlhaImage) {
+          updatedPayload.flhaImageUrl = manualFlhaImage;
+          updatedPayload.flhaTimestamp = manualFlhaTimestamp || editingEntry.flhaTimestamp || new Date().toISOString();
+          updatedPayload.flhaLocation = locationVal || 'General Site';
+        } else {
+          delete updatedPayload.flhaImageUrl;
+          delete updatedPayload.flhaTimestamp;
+          delete updatedPayload.flhaLocation;
+        }
+        updateTimesheetEntry(updatedPayload);
       } else {
-        addTimesheetEntry({
+        const addPayload: any = {
           date: manualDate,
           startTime: manualStart,
           endTime: manualEnd,
@@ -822,11 +854,14 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
           project: projectVal,
           locationName: locationVal,
           notes: notesVal,
-          isOvertime: manualIsOvertime,
-          flhaImageUrl: manualFlhaImage || undefined,
-          flhaTimestamp: manualFlhaImage ? (manualFlhaTimestamp || new Date().toISOString()) : undefined,
-          flhaLocation: manualFlhaImage ? (locationVal || 'General Site') : undefined
-        });
+          isOvertime: manualIsOvertime
+        };
+        if (manualFlhaImage) {
+          addPayload.flhaImageUrl = manualFlhaImage;
+          addPayload.flhaTimestamp = manualFlhaTimestamp || new Date().toISOString();
+          addPayload.flhaLocation = locationVal || 'General Site';
+        }
+        addTimesheetEntry(addPayload);
       }
       
       setShowManualForm(false);
@@ -876,7 +911,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
   };
 
   const handleOpenNewManualForm = (preset?: ShiftPreset) => {
-    setManualDate(new Date().toISOString().slice(0, 10));
+    setManualDate(formatLocalDate());
     setManualFlhaImage(null);
     setManualFlhaTimestamp(null);
     if (preset) {
@@ -1061,13 +1096,13 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
               <div className="grid grid-cols-2 gap-4 border-b border-white/10 pb-4">
                 <div>
                   <span className="block text-[10px] font-mono text-blue-200/70 uppercase tracking-widest mb-1">Task Duration</span>
-                  <h2 className={`${isMobileView ? 'text-2xl' : 'text-3xl'} font-bold tracking-tight font-mono select-none text-white`}>
+                  <h2 className="text-2xl sm:text-3xl font-bold tracking-tight font-mono select-none text-white truncate">
                     {formatTimer(secondsElapsed)}
                   </h2>
                 </div>
                 <div className="border-l border-white/10">
                   <span className="block text-[10px] font-mono text-blue-200/70 uppercase tracking-widest mb-1">Day Duration</span>
-                  <h2 className={`${isMobileView ? 'text-2xl' : 'text-3xl'} font-bold tracking-tight font-mono select-none text-white`}>
+                  <h2 className="text-2xl sm:text-3xl font-bold tracking-tight font-mono select-none text-white truncate">
                     {formatTimer(daySecondsElapsed)}
                   </h2>
                 </div>
@@ -1075,7 +1110,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
             ) : (
               <div>
                 <span className="block text-[10px] font-mono text-muted-text uppercase tracking-widest mb-1">Shift Duration</span>
-                <h2 className={`${isMobileView ? 'text-4xl' : 'text-5xl'} font-bold tracking-tight font-mono select-none text-main-text`}>
+                <h2 className="text-3xl sm:text-5xl font-bold tracking-tight font-mono select-none text-main-text">
                   00:00:00
                 </h2>
               </div>
@@ -1113,7 +1148,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                   <p className="mt-0.5 text-slate-300">Timer interaction is disabled today to prevent accidental logging on statutory holidays.</p>
                 </div>
               </div>
-              <label className="flex items-center gap-2 mt-2 cursor-pointer font-semibold text-white select-none">
+              <label className="flex items-center gap-2 mt-2 cursor-pointer font-semibold text-white select-none min-h-[44px]">
                 <input 
                   type="checkbox" 
                   checked={timerOverride} 
@@ -1136,7 +1171,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                 value={activeProject}
                 onChange={(e) => setActiveProject(e.target.value)}
                 placeholder="What task or job are you doing? (optional)"
-                className={`w-full rounded-xl px-3 py-2 text-xs font-medium focus:outline-none transition ${
+                className={`w-full rounded-xl px-3 py-2 text-xs font-medium focus:outline-none transition min-h-[44px] ${
                   isClockedIn 
                     ? 'bg-blue-900/30 text-white border border-blue-400/30' 
                     : 'bg-input-bg text-main-text border border-main-border focus:border-blue-500/50'
@@ -1153,7 +1188,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                 value={activeLocation}
                 onChange={(e) => setActiveLocation(e.target.value)}
                 placeholder="e.g. Remote, HQ Office, Customer Site (optional)"
-                className={`w-full rounded-xl px-3 py-2 text-xs font-medium focus:outline-none transition ${
+                className={`w-full rounded-xl px-3 py-2 text-xs font-medium focus:outline-none transition min-h-[44px] ${
                   isClockedIn 
                     ? 'bg-blue-900/30 text-white border border-blue-400/30' 
                     : 'bg-input-bg text-main-text border border-main-border focus:border-blue-500/50'
@@ -1170,21 +1205,21 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                   value={activeNotes}
                   onChange={(e) => setActiveNotes(e.target.value)}
                   placeholder="Describe your current work segment (optional)..."
-                  className={`w-full rounded-xl border border-blue-400/30 bg-blue-900/30 px-3 py-2 text-xs text-white placeholder-blue-300/50 focus:outline-none ${isMobileView ? 'h-12' : 'h-16'} resize-none`}
+                  className={`w-full rounded-xl border border-blue-400/30 bg-blue-900/30 px-3 py-2 text-xs text-white placeholder-blue-300/50 focus:outline-none ${isMobileView ? 'h-16' : 'h-20'} resize-none`}
                 />
               </motion.div>
             )}
           </div>
 
           {isClockedIn && (
-            <div className={`grid grid-cols-2 gap-2 ${isMobileView ? 'mt-3' : 'mt-4'}`}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3 sm:mt-4 w-full">
               <motion.button
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 onClick={handleSwitchTask}
-                className="w-full py-2.5 flex items-center justify-center gap-1 px-1 rounded-2xl bg-[#09090B]/40 hover:bg-[#09090B]/60 text-blue-200 border border-blue-400/25 text-xs font-semibold uppercase tracking-wider transition active:scale-[0.98] cursor-pointer"
+                className="w-full min-h-[44px] py-2.5 flex items-center justify-center gap-1.5 px-3 rounded-2xl bg-[#09090B]/40 hover:bg-[#09090B]/60 text-blue-200 border border-blue-400/25 text-xs font-semibold uppercase tracking-wider transition active:scale-[0.98] cursor-pointer"
               >
-                <ClipboardList className="h-3.5 w-3.5 shrink-0" />
+                <ClipboardList className="h-4 w-4 shrink-0" />
                 <span className="truncate">Switch Task</span>
               </motion.button>
 
@@ -1192,29 +1227,29 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 onClick={() => setIsOvertime(!isOvertime)}
-                className={`w-full py-2.5 flex items-center justify-center gap-1.5 px-1 rounded-2xl border text-xs font-semibold uppercase tracking-wider transition active:scale-[0.98] cursor-pointer ${
+                className={`w-full min-h-[44px] py-2.5 flex items-center justify-center gap-1.5 px-3 rounded-2xl border text-xs font-semibold uppercase tracking-wider transition active:scale-[0.98] cursor-pointer ${
                   isOvertime 
                     ? 'bg-amber-500/20 text-amber-200 border-amber-400/50 shadow-[0_0_15px_rgba(245,158,11,0.25)]' 
                     : 'bg-[#09090B]/40 hover:bg-[#09090B]/60 text-blue-200 border-blue-400/25'
                 }`}
               >
-                <div className={`h-1.5 w-1.5 rounded-full ${isOvertime ? 'bg-amber-400 animate-pulse' : 'bg-blue-400'}`} />
+                <div className={`h-2 w-2 rounded-full ${isOvertime ? 'bg-amber-400 animate-pulse' : 'bg-blue-400'}`} />
                 <span className="truncate">Overtime: {isOvertime ? 'ON' : 'OFF'}</span>
               </motion.button>
             </div>
           )}
 
           {/* Action Trigger Buttons */}
-          <div className={`${isMobileView ? 'mt-4 gap-2' : 'mt-6 gap-3'} flex`}>
+          <div className="mt-4 sm:mt-6 flex flex-col sm:flex-row gap-2.5 sm:gap-3 w-full">
             {!isClockedIn ? (
               <button
                 onClick={() => handleClockIn(false)}
                 disabled={!!todayHoliday && !timerOverride}
-                className={`w-full flex items-center justify-center gap-2 rounded-2xl ${
+                className={`w-full min-h-[48px] flex items-center justify-center gap-2 rounded-2xl ${
                   !!todayHoliday && !timerOverride
                     ? 'bg-slate-700/50 text-slate-400 border border-slate-600/30 cursor-not-allowed opacity-50'
                     : 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/10 active:scale-[0.98] cursor-pointer'
-                } ${isMobileView ? 'py-2.5' : 'py-3'} font-semibold transition`}
+                } py-3 font-semibold transition`}
               >
                 <Play className={`h-4 w-4 stroke-none ${!!todayHoliday && !timerOverride ? 'fill-slate-400' : 'fill-white'}`} />
                 <span>Start Day</span>
@@ -1224,7 +1259,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                 <button
                   type="button"
                   onClick={() => setBypassLunch(!bypassLunch)}
-                  className={`w-1/2 flex items-center justify-center gap-1.5 rounded-2xl ${isMobileView ? 'py-2.5 text-xs' : 'py-3 text-xs'} font-semibold border transition active:scale-[0.98] cursor-pointer ${
+                  className={`w-full sm:w-1/2 min-h-[44px] flex items-center justify-center gap-1.5 rounded-2xl py-2.5 sm:py-3 text-xs font-semibold border transition active:scale-[0.98] cursor-pointer ${
                     bypassLunch 
                       ? 'text-amber-200 border-amber-400/50 bg-amber-500/20 shadow-sm' 
                       : 'text-blue-100 border-white/20 bg-blue-700/30 hover:bg-blue-700/50'
@@ -1236,7 +1271,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                 </button>
                 <button
                   onClick={handleClockOut}
-                  className={`w-1/2 flex items-center justify-center gap-1.5 rounded-2xl bg-white text-blue-700 font-semibold ${isMobileView ? 'py-2.5 text-xs' : 'py-3'} hover:bg-blue-50 shadow-lg transition active:scale-[0.98] cursor-pointer`}
+                  className="w-full sm:w-1/2 min-h-[44px] flex items-center justify-center gap-1.5 rounded-2xl bg-white text-blue-700 font-semibold py-2.5 sm:py-3 text-xs sm:text-sm hover:bg-blue-50 shadow-lg transition active:scale-[0.98] cursor-pointer"
                 >
                   <Square className="h-3.5 w-3.5 fill-blue-700 stroke-none shrink-0" />
                   <span>End Day</span>
@@ -1264,14 +1299,14 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
         {/* Manual Timesheet Card Injector Button */}
         <button
           onClick={() => handleOpenNewManualForm()}
-          className={`w-full flex items-center justify-center gap-2 rounded-2xl border border-main-border bg-card-bg ${isMobileView ? 'py-2.5 text-xs' : 'py-3.5 text-sm'} font-medium text-muted-text hover:bg-input-bg transition cursor-pointer`}
+          className="w-full min-h-[44px] flex items-center justify-center gap-2 rounded-2xl border border-main-border bg-card-bg py-3 px-4 text-xs sm:text-sm font-semibold text-muted-text hover:text-main-text hover:bg-input-bg transition cursor-pointer shadow-xs"
         >
           <Plus className="h-4 w-4 text-blue-500" />
           <span>Manual Shift Logger</span>
         </button>
 
         {/* One-Tap Quick Shift Presets */}
-        <div className="rounded-2xl border border-main-border bg-card-bg p-3 space-y-2">
+        <div className="rounded-2xl border border-main-border bg-card-bg p-3.5 space-y-2.5">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-bold text-muted-text uppercase font-mono tracking-wider flex items-center gap-1.5">
               <Sparkles className="h-3 w-3 text-blue-400" />
@@ -1279,16 +1314,16 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
             </span>
             <span className="text-[10px] text-muted-text/70 font-mono">One-tap logger</span>
           </div>
-          <div className="grid grid-cols-3 gap-1.5">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             {SHIFT_PRESETS.map((preset) => (
               <button
                 key={`dash-preset-${preset.id}`}
                 onClick={() => handleOpenNewManualForm(preset)}
-                className="flex flex-col items-center justify-center p-2 rounded-xl border border-main-border/70 bg-input-bg/60 hover:border-blue-500/50 hover:bg-blue-500/10 text-muted-text hover:text-main-text transition-all cursor-pointer text-center group"
+                className="min-h-[44px] flex flex-row sm:flex-col items-center justify-between sm:justify-center px-3 py-2.5 sm:p-2 rounded-xl border border-main-border/70 bg-input-bg/60 hover:border-blue-500/50 hover:bg-blue-500/10 text-muted-text hover:text-main-text transition-all cursor-pointer text-left sm:text-center group"
                 title={`Quick log: ${preset.name} (${preset.startTime} – ${preset.endTime})`}
               >
                 <span className="text-xs font-bold group-hover:text-blue-400 transition-colors">{preset.name}</span>
-                <span className="text-[9px] font-mono text-muted-text mt-0.5">{preset.badge}</span>
+                <span className="text-[10px] font-mono text-muted-text mt-0.5">{preset.badge}</span>
               </button>
             ))}
           </div>
@@ -1882,13 +1917,13 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                                   toggleDayExpanded(dateStr);
                                 }
                               }}
-                              className={`flex items-center justify-between ${isMobileView ? 'p-4' : 'p-5'} ${
+                              className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 ${isMobileView ? 'p-3.5 sm:p-4' : 'p-4 sm:p-5'} ${
                                 isHoliday 
                                   ? 'border-l-4 border-rose-500/60 cursor-pointer hover:bg-rose-500/[0.05]' 
                                   : hasMultipleTasks ? 'cursor-pointer hover:bg-app-bg/30' : ''
                               } transition-colors duration-150`}
                             >
-                              <div className="flex flex-col gap-1 min-w-0">
+                              <div className="flex flex-col gap-1.5 min-w-0 flex-1">
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <span className="text-xs font-semibold text-main-text">
                                     {new Date(dateStr + 'T00:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'})}
@@ -1915,7 +1950,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                                         e.stopPropagation();
                                         setSelectedFlhaEntry(singleEntry);
                                       }}
-                                      className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider transition cursor-pointer shadow-xs"
+                                      className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 px-2 py-1 text-[10px] font-bold uppercase tracking-wider transition cursor-pointer shadow-xs min-h-[36px]"
                                       title="Click to view full-size FLHA Safety Card"
                                     >
                                       <img 
@@ -1935,27 +1970,41 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                                   )}
                                 </div>
                                 {!hasMultipleTasks && (
-                                  <div className="flex items-center gap-2 text-[11px] text-muted-text font-mono flex-wrap">
-                                    <span>{singleEntry.startTime} – {singleEntry.endTime}</span>
-                                    <span>•</span>
-                                    <span className="truncate max-w-[180px] text-main-text font-medium">{singleEntry.project}</span>
+                                  <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-[11px] text-muted-text font-mono mt-1">
+                                    <div className="flex items-center gap-1.5">
+                                      <Clock className="h-3.5 w-3.5 text-blue-400 sm:hidden shrink-0" />
+                                      <span className="text-main-text font-medium">{singleEntry.startTime} – {singleEntry.endTime}</span>
+                                    </div>
+                                    <span className="hidden sm:inline text-muted-text/40">•</span>
+                                    <div className="flex items-center gap-1.5 truncate">
+                                      <Briefcase className="h-3.5 w-3.5 text-blue-400 sm:hidden shrink-0" />
+                                      <span className="text-[10px] uppercase font-bold text-muted-text/70 sm:hidden">Task:</span>
+                                      <span className="truncate text-main-text font-medium">{singleEntry.project || 'General'}</span>
+                                    </div>
                                     {singleEntry.locationName && (
                                       <>
-                                        <span>•</span>
-                                        <span className="truncate max-w-[140px]">{singleEntry.locationName}</span>
+                                        <span className="hidden sm:inline text-muted-text/40">•</span>
+                                        <div className="flex items-center gap-1.5 truncate">
+                                          <MapPin className="h-3.5 w-3.5 text-blue-400 sm:hidden shrink-0" />
+                                          <span className="text-[10px] uppercase font-bold text-muted-text/70 sm:hidden">Client/Site:</span>
+                                          <span className="truncate text-muted-text">{singleEntry.locationName}</span>
+                                        </div>
                                       </>
                                     )}
                                   </div>
                                 )}
                               </div>
                               
-                              <div className="flex items-center gap-3">
-                                <span className="text-sm font-semibold font-mono text-main-text">
-                                  {dayTotalHours.toFixed(2)} hrs
-                                </span>
+                              <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t border-main-border/30 sm:border-t-0">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[10px] uppercase font-bold text-muted-text/70 sm:hidden">Total:</span>
+                                  <span className="text-sm font-semibold font-mono text-main-text">
+                                    {dayTotalHours.toFixed(2)} hrs
+                                  </span>
+                                </div>
                                 
                                 {hasMultipleTasks ? (
-                                  <div className="text-muted-text/60">
+                                  <div className="text-muted-text/60 min-h-[44px] min-w-[44px] flex items-center justify-center">
                                     {isExpanded ? (
                                       <ChevronDown className="h-4 w-4" />
                                     ) : (
@@ -1964,22 +2013,22 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                                   </div>
                                 ) : (
                                   /* Inline Edit/Delete for single entry */
-                                  <div className="flex items-center gap-1.5 animate-fade-in" onClick={(e) => e.stopPropagation()}>
+                                  <div className="flex items-center gap-1 animate-fade-in" onClick={(e) => e.stopPropagation()}>
                                     {deletingId === singleEntry.id ? (
-                                      <div className="flex items-center gap-1 bg-rose-500/10 px-2 py-1 rounded-lg border border-rose-500/20 animate-pulse shrink-0">
+                                      <div className="flex items-center gap-1 bg-rose-500/10 px-2.5 py-1.5 rounded-xl border border-rose-500/20 animate-pulse shrink-0 min-h-[44px]">
                                         <span className="text-[9px] font-mono text-rose-500 font-bold uppercase">Delete?</span>
                                         <button
                                           onClick={() => {
                                             handleDelete(singleEntry.id);
                                             setDeletingId(null);
                                           }}
-                                          className="px-1.5 py-0.5 text-[9px] font-bold bg-rose-600 hover:bg-rose-500 text-white rounded transition cursor-pointer"
+                                          className="px-2 py-1 text-[10px] font-bold bg-rose-600 hover:bg-rose-500 text-white rounded-lg transition cursor-pointer min-h-[36px]"
                                         >
                                           Yes
                                         </button>
                                         <button
                                           onClick={() => setDeletingId(null)}
-                                          className="px-1.5 py-0.5 text-[9px] font-bold bg-app-bg hover:bg-input-bg text-muted-text border border-main-border rounded transition cursor-pointer"
+                                          className="px-2 py-1 text-[10px] font-bold bg-app-bg hover:bg-input-bg text-muted-text border border-main-border rounded-lg transition cursor-pointer min-h-[36px]"
                                         >
                                           No
                                         </button>
@@ -1989,16 +2038,16 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                                         <button
                                           onClick={() => handleEditClick(singleEntry)}
                                           title="Edit Entry"
-                                          className="p-1 rounded-lg text-muted-text hover:text-blue-500 hover:bg-app-bg transition cursor-pointer"
+                                          className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-muted-text hover:text-blue-500 hover:bg-app-bg transition cursor-pointer"
                                         >
-                                          <Pencil className="h-3.5 w-3.5" />
+                                          <Pencil className="h-4 w-4" />
                                         </button>
                                         <button
                                           onClick={() => setDeletingId(singleEntry.id)}
                                           title="Delete Entry"
-                                          className="p-1 rounded-lg text-muted-text hover:text-rose-500 hover:bg-app-bg transition cursor-pointer"
+                                          className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-muted-text hover:text-rose-500 hover:bg-app-bg transition cursor-pointer"
                                         >
-                                          <Trash2 className="h-3.5 w-3.5" />
+                                          <Trash2 className="h-4 w-4" />
                                         </button>
                                       </>
                                     )}
@@ -2009,7 +2058,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                             
                             {/* Expandable Dropdown List of Tasks (for days with multiple tasks) */}
                             {hasMultipleTasks && isExpanded && (
-                              <div className="bg-app-bg/20 border-t border-main-border/30 px-5 py-3.5 space-y-3.5 divide-y divide-main-border/10">
+                              <div className="bg-app-bg/20 border-t border-main-border/30 px-4 sm:px-5 py-3.5 space-y-3.5 divide-y divide-main-border/10">
                                 {dayEntries.map((entry) => (
                                   <div key={entry.id} className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 pt-3.5 first:pt-0">
                                     <div className="space-y-1.5 max-w-xl">
@@ -2034,7 +2083,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                                               e.stopPropagation();
                                               setSelectedFlhaEntry(entry);
                                             }}
-                                            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider transition cursor-pointer shadow-xs"
+                                            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 px-2 py-1 text-[10px] font-bold uppercase tracking-wider transition cursor-pointer shadow-xs min-h-[36px]"
                                             title="Click to view full-size FLHA Safety Card"
                                           >
                                             <img 
@@ -2059,45 +2108,48 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                                       </p>
                                     </div>
                                     
-                                    <div className="flex items-center justify-between sm:flex-col sm:items-end gap-2 shrink-0">
-                                      <span className="text-xs font-semibold font-mono text-main-text">
-                                        {entry.totalHours.toFixed(2)} hrs
-                                      </span>
+                                    <div className="flex items-center justify-between sm:flex-col sm:items-end gap-2 shrink-0 pt-2 sm:pt-0 border-t border-main-border/20 sm:border-t-0">
+                                      <div className="flex items-center gap-1 font-mono">
+                                        <span className="text-[10px] uppercase font-bold text-muted-text/70 sm:hidden">Hours:</span>
+                                        <span className="text-xs font-semibold text-main-text">
+                                          {entry.totalHours.toFixed(2)} hrs
+                                        </span>
+                                      </div>
                                       
                                       {deletingId === entry.id ? (
-                                        <div className="flex items-center gap-1 bg-rose-500/10 px-2 py-1 rounded-lg border border-rose-500/20 animate-pulse">
+                                        <div className="flex items-center gap-1 bg-rose-500/10 px-2 py-1 rounded-xl border border-rose-500/20 animate-pulse min-h-[44px]">
                                           <span className="text-[9px] font-mono text-rose-500 font-bold uppercase">Delete?</span>
                                           <button
                                             onClick={() => {
                                               handleDelete(entry.id);
                                               setDeletingId(null);
                                             }}
-                                            className="px-1.5 py-0.5 text-[9px] font-bold bg-rose-600 hover:bg-rose-500 text-white rounded transition cursor-pointer"
+                                            className="px-2 py-1 text-[10px] font-bold bg-rose-600 hover:bg-rose-500 text-white rounded-lg transition cursor-pointer min-h-[36px]"
                                           >
                                             Yes
                                           </button>
                                           <button
                                             onClick={() => setDeletingId(null)}
-                                            className="px-1.5 py-0.5 text-[9px] font-bold bg-app-bg hover:bg-input-bg text-muted-text border border-main-border rounded transition cursor-pointer"
+                                            className="px-2 py-1 text-[10px] font-bold bg-app-bg hover:bg-input-bg text-muted-text border border-main-border rounded-lg transition cursor-pointer min-h-[36px]"
                                           >
                                             No
                                           </button>
                                         </div>
                                       ) : (
-                                        <div className="flex items-center gap-1.5">
+                                        <div className="flex items-center gap-1">
                                           <button
                                             onClick={() => handleEditClick(entry)}
                                             title="Edit Task"
-                                            className="p-1 rounded-lg text-muted-text hover:text-blue-500 hover:bg-app-bg transition cursor-pointer"
+                                            className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-muted-text hover:text-blue-500 hover:bg-app-bg transition cursor-pointer"
                                           >
-                                            <Pencil className="h-3 w-3" />
+                                            <Pencil className="h-3.5 w-3.5" />
                                           </button>
                                           <button
                                             onClick={() => setDeletingId(entry.id)}
                                             title="Delete Task"
-                                            className="p-1 rounded-lg text-muted-text hover:text-rose-500 hover:bg-app-bg transition cursor-pointer"
+                                            className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-muted-text hover:text-rose-500 hover:bg-app-bg transition cursor-pointer"
                                           >
-                                            <Trash2 className="h-3 w-3" />
+                                            <Trash2 className="h-3.5 w-3.5" />
                                           </button>
                                         </div>
                                       )}
@@ -2163,7 +2215,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
       {/* MODAL 1: MANUAL ADD TIMESHEET FORM */}
       <AnimatePresence>
         {showManualForm && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6">
             <motion.div 
               initial={{ opacity: 0 }} 
               animate={{ opacity: 1 }} 
@@ -2176,7 +2228,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
               initial={{ scale: 0.95, opacity: 0 }} 
               animate={{ scale: 1, opacity: 1 }} 
               exit={{ scale: 0.95, opacity: 0 }}
-              className="relative w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-3xl border border-main-border bg-card-bg p-5 sm:p-6 shadow-2xl z-10 transition-colors duration-200 pb-safe"
+              className="relative w-full max-w-md max-h-[90vh] overflow-y-auto rounded-3xl border border-main-border bg-card-bg p-4 sm:p-6 shadow-2xl z-10 transition-colors duration-200 pb-safe"
             >
               <div className="flex items-center justify-between mb-4 pb-3 border-b border-main-border">
                 <h3 className="text-base font-semibold text-main-text">
@@ -2590,7 +2642,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
       {/* FULL-SIZE FLHA SAFETY CARD VIEWER MODAL */}
       <AnimatePresence>
         {selectedFlhaEntry && selectedFlhaEntry.flhaImageUrl && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -2603,7 +2655,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="relative w-full max-w-2xl max-h-[92dvh] flex flex-col overflow-hidden rounded-3xl border border-main-border bg-card-bg shadow-2xl z-10 pb-safe"
+              className="relative w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden rounded-3xl border border-main-border bg-card-bg shadow-2xl z-10 pb-safe"
             >
               {/* Modal Header */}
               <div className="flex items-center justify-between px-5 py-4 border-b border-main-border bg-card-bg shrink-0">
@@ -2707,40 +2759,53 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
       {/* MODAL 2: VECTOR PRINT PREVIEW OVERLAY (Supervisor Pay Period PDF Export) */}
       <AnimatePresence>
         {showPdfPreview && (
-          <div className="fixed inset-0 z-50 flex flex-col bg-app-bg/98 backdrop-blur overflow-y-auto p-4 md:p-8 transition-colors duration-200">
+          <div className="fixed inset-0 z-50 flex flex-col bg-app-bg/98 backdrop-blur overflow-y-auto p-3 sm:p-6 md:p-8 transition-colors duration-200">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between w-full max-w-4xl mx-auto mb-4 text-main-text pb-3 border-b border-main-border print:hidden gap-3">
               <div>
                 <h3 className="text-base font-semibold">Pay Period Report Export Portal</h3>
                 <p className="text-xs text-muted-text">Print-ready standard timesheet layout and detailed summary breakdown.</p>
               </div>
 
-              {/* Template Mode Switcher */}
-              <div className="flex items-center gap-1.5 bg-card-bg p-1 border border-main-border rounded-xl">
+              {/* Template Mode & Mobile Scale Switchers */}
+              <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto justify-between sm:justify-end">
+                <div className="flex items-center gap-1 bg-card-bg p-1 border border-main-border rounded-xl">
+                  <button
+                    type="button"
+                    onClick={() => setPrintTemplateMode('job_timesheet')}
+                    className={`min-h-[38px] px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                      printTemplateMode === 'job_timesheet'
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'text-muted-text hover:text-main-text hover:bg-main-border/20'
+                    }`}
+                  >
+                    Job Time Sheet
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPrintTemplateMode('summary')}
+                    className={`min-h-[38px] px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                      printTemplateMode === 'summary'
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'text-muted-text hover:text-main-text hover:bg-main-border/20'
+                    }`}
+                  >
+                    Breakdown
+                  </button>
+                </div>
+
+                {/* Mobile Fit Width / 100% Zoom Toggle */}
                 <button
                   type="button"
-                  onClick={() => setPrintTemplateMode('job_timesheet')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                    printTemplateMode === 'job_timesheet'
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'text-muted-text hover:text-main-text hover:bg-main-border/20'
-                  }`}
+                  onClick={() => setMobileFitWidth(!mobileFitWidth)}
+                  className="sm:hidden min-h-[38px] px-3 py-1.5 rounded-xl border border-main-border bg-card-bg text-main-text text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  title="Toggle fit-to-screen vs full pinch-and-zoom preview"
                 >
-                  Job Time Sheet Form
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPrintTemplateMode('summary')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                    printTemplateMode === 'summary'
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'text-muted-text hover:text-main-text hover:bg-main-border/20'
-                  }`}
-                >
-                  Detailed Breakdown
+                  <Maximize2 className="h-3.5 w-3.5 text-blue-500" />
+                  <span>{mobileFitWidth ? '100% Size' : 'Fit Width'}</span>
                 </button>
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto justify-end">
                 {/* Submit to Manager Button / Badge */}
                 {(() => {
                   const submissionId = `sub_${user?.username || ''}_${showPdfPreview.start}_${showPdfPreview.end}`;
@@ -2758,7 +2823,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                       rejected: 'Rejected by Manager'
                     };
                     return (
-                      <div className={`flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold ${statusColors[activeSubmission.status] || statusColors.submitted}`}>
+                      <div className={`min-h-[44px] flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold ${statusColors[activeSubmission.status] || statusColors.submitted}`}>
                         <CheckCircle2 className="h-3.5 w-3.5" />
                         <span>{statusLabels[activeSubmission.status] || 'Submitted'}</span>
                       </div>
@@ -2769,7 +2834,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                     <button
                       onClick={() => handleSubmitTimesheet(showPdfPreview)}
                       disabled={isSubmitting}
-                      className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50 transition cursor-pointer"
+                      className="min-h-[44px] flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs sm:text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50 transition cursor-pointer"
                     >
                       <Send className="h-4 w-4" />
                       <span>{isSubmitting ? 'Submitting...' : 'Submit to Manager'}</span>
@@ -2779,14 +2844,14 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
 
                 <button
                   onClick={() => window.print()}
-                  className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 transition cursor-pointer"
+                  className="min-h-[44px] flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs sm:text-sm font-semibold text-white hover:bg-blue-500 transition cursor-pointer"
                 >
                   <Printer className="h-4 w-4" />
-                  <span>Print / Save PDF</span>
+                  <span>Print / PDF</span>
                 </button>
                 <button
                   onClick={() => setShowPdfPreview(null)}
-                  className="rounded-xl border border-main-border bg-card-bg p-2 text-muted-text hover:text-main-text transition cursor-pointer"
+                  className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl border border-main-border bg-card-bg p-2 text-muted-text hover:text-main-text transition cursor-pointer"
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -2806,14 +2871,34 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
             )}
 
             {/* Printable Document Core */}
-            {printTemplateMode === 'job_timesheet' ? (
-              <JobTimeSheetPrintout
-                employeeName={getCurrentUser()?.fullName || getCurrentUser()?.username || 'Employee'}
-                dateRange={`${showPdfPreview.start} to ${showPdfPreview.end}`}
-                entries={showPdfPreview.entries}
-              />
-            ) : (
-            <div id="payperiod-printout" className="w-full max-w-4xl mx-auto bg-white text-slate-950 p-8 md:p-12 rounded-2xl shadow-2xl print:shadow-none print:p-0 print:m-0 print:bg-white print:text-black">
+            <div 
+              className="w-full max-w-4xl mx-auto overflow-x-auto pb-8 touch-pan-x"
+              style={{ touchAction: 'pan-x pan-y pinch-zoom', WebkitOverflowScrolling: 'touch' }}
+            >
+              <div 
+                className={`transition-all duration-200 ${
+                  mobileFitWidth 
+                    ? 'w-[720px] max-w-none origin-top-left sm:w-full sm:origin-top' 
+                    : 'min-w-[700px] sm:min-w-0'
+                }`}
+                style={
+                  mobileFitWidth && isMobileView
+                    ? {
+                        transform: `scale(calc((100vw - 28px) / 720))`,
+                        transformOrigin: 'top left',
+                        marginBottom: `calc((100vw - 28px) - 720px)`
+                      }
+                    : undefined
+                }
+              >
+                {printTemplateMode === 'job_timesheet' ? (
+                  <JobTimeSheetPrintout
+                    employeeName={getCurrentUser()?.fullName || getCurrentUser()?.username || 'Employee'}
+                    dateRange={`${showPdfPreview.start} to ${showPdfPreview.end}`}
+                    entries={showPdfPreview.entries}
+                  />
+                ) : (
+                <div id="payperiod-printout" className="print-sheet w-full max-w-4xl mx-auto bg-white text-slate-950 p-4 sm:p-8 md:p-12 rounded-2xl shadow-2xl print:shadow-none print:p-0 print:m-0 print:bg-white print:text-black">
               
               {/* Report Header */}
               <div className="flex flex-col md:flex-row justify-between items-start border-b-2 border-slate-300 pb-6 mb-6 print-border-slate-300">
@@ -2952,6 +3037,8 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
 
             </div>
             )}
+              </div>
+            </div>
           </div>
         )}
       </AnimatePresence>
@@ -3216,12 +3303,12 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
       {/* Validation Error / Compliance Alert Modal */}
       <AnimatePresence>
         {validationError && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/60 backdrop-blur-sm">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-card-bg border border-rose-500/30 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 text-main-text"
+              className="bg-card-bg border border-rose-500/30 rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto p-4 sm:p-6 shadow-2xl space-y-4 text-main-text"
             >
               <div className="flex items-start gap-3">
                 <div className="p-3 rounded-full bg-rose-500/20 text-rose-500 shrink-0">
@@ -3238,7 +3325,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
               <div className="flex justify-end pt-2 border-t border-main-border/40">
                 <button
                   onClick={() => setValidationError(null)}
-                  className="px-4 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-xs font-semibold transition cursor-pointer shadow-md"
+                  className="min-h-[44px] px-5 py-2.5 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-xs font-semibold transition cursor-pointer shadow-md flex items-center justify-center"
                 >
                   Understand & Dismiss
                 </button>

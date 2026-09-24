@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User, UserPlus, Clock, ArrowRight, ShieldCheck, Sun, Moon, Lock } from 'lucide-react';
-import { registerUser, loginUser, getCurrentUser, UserAccount, getAllUsers, resetUserPassword, registerUserClient, loginUserClient } from '../utils/storage';
+import { registerUser, loginUser, getCurrentUser, UserAccount, getAllUsers, resetUserPassword, registerUserClient, loginUserClient, safeSetItem } from '../utils/storage';
 
 interface UserAuthGateProps {
   onAuthSuccess: (user: UserAccount) => void;
@@ -51,7 +51,7 @@ export default function UserAuthGate({ onAuthSuccess, isMobileView = false }: Us
     } else {
       root.classList.remove('dark');
     }
-    localStorage.setItem('timesheets_tracker_theme', localTheme);
+    safeSetItem('timesheets_tracker_theme', localTheme);
   }, [localTheme]);
 
   const handleForgotSubmit = (e: React.FormEvent) => {

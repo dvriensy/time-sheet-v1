@@ -109,7 +109,7 @@ export const HeaderTimer: React.FC<HeaderTimerProps> = ({ currentUser, onShiftLo
         // Active Running State: live timer + 1-tap stop button
         <div
           id="header-active-timer-pill"
-          className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-emerald-500/10 dark:bg-emerald-500/15 border border-emerald-500/30 text-main-text shadow-sm"
+          className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 sm:py-1.5 min-h-[44px] rounded-xl bg-emerald-500/10 dark:bg-emerald-500/15 border border-emerald-500/30 text-main-text shadow-sm"
           title={`Active Shift: Started at ${activeSession.startTime || 'now'}`}
         >
           <span className="relative flex h-2 w-2">
@@ -124,7 +124,7 @@ export const HeaderTimer: React.FC<HeaderTimerProps> = ({ currentUser, onShiftLo
           <button
             id="header-stop-timer-btn"
             onClick={handleStop}
-            className="flex items-center gap-1 ml-0.5 sm:ml-1 px-2 py-0.5 sm:py-1 rounded-lg bg-rose-500 hover:bg-rose-600 active:scale-95 text-white text-[10px] sm:text-xs font-semibold shadow-xs transition-all cursor-pointer"
+            className="flex items-center gap-1 ml-0.5 sm:ml-1 px-2.5 py-1.5 min-h-[36px] rounded-lg bg-rose-500 hover:bg-rose-600 active:scale-95 text-white text-xs font-semibold shadow-xs transition-all cursor-pointer"
             title="Stop Timer & Save Shift"
           >
             <Square className="h-2.5 w-2.5 fill-current" />
@@ -136,12 +136,10 @@ export const HeaderTimer: React.FC<HeaderTimerProps> = ({ currentUser, onShiftLo
         <button
           id="header-start-timer-btn"
           onClick={handleStart}
-          className={`flex items-center gap-1.5 cursor-pointer font-medium border border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-600 hover:text-white hover:border-emerald-600 shadow-sm transition-all duration-200 active:scale-95 ${
-            isMobileView ? 'px-2.5 py-1.5 rounded-xl text-xs' : 'px-3 py-1.5 rounded-xl text-xs'
-          }`}
+          className={`min-h-[44px] flex items-center gap-1.5 cursor-pointer font-medium border border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-600 hover:text-white hover:border-emerald-600 shadow-sm transition-all duration-200 active:scale-95 px-3 py-2 rounded-xl text-xs`}
           title="Start Shift Timer (1-tap, no task required)"
         >
-          <Play className="h-3 w-3 fill-current" />
+          <Play className="h-3.5 w-3.5 fill-current" />
           <span>Start Timer</span>
         </button>
       )}

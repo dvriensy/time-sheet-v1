@@ -17,7 +17,8 @@ import {
   getTimeOffRequests,
   initializeFirebaseSync,
   refetchFromFirestore,
-  enrichEntriesWithOvertime
+  enrichEntriesWithOvertime,
+  safeSetItem
 } from './utils/storage';
 import { 
   registerServiceWorker, 
@@ -194,7 +195,7 @@ export default function App() {
     } else {
       root.classList.remove('dark');
     }
-    localStorage.setItem('timesheets_tracker_theme', theme);
+    safeSetItem('timesheets_tracker_theme', theme);
   }, [theme]);
 
   // Core Data source states
@@ -226,7 +227,7 @@ export default function App() {
     // Update local preferences
     const settings = getAppSettings();
     settings.privacyMode = nextPrivacy;
-    localStorage.setItem('timesheets_tracker_app_settings', JSON.stringify(settings));
+    safeSetItem('timesheets_tracker_app_settings', JSON.stringify(settings));
   };
 
   const renderAppContent = (isMobileView = false) => {
@@ -466,7 +467,7 @@ export default function App() {
                   currentUser={currentUser}
                   isMobileView={isMobileView}
                   onLoginAsUser={(user) => {
-                    localStorage.setItem('timesheets_tracker_current_user', user.username);
+                    safeSetItem('timesheets_tracker_current_user', user.username);
                     setCurrentUser(user);
                     setActiveTab('timesheets');
                     handleRefreshAll();

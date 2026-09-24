@@ -12,7 +12,7 @@ import {
   Activity, Coffee, ChevronDown, ChevronRight, ChevronLeft, CheckCircle2, 
   PlusCircle, ShieldAlert, Landmark, HelpCircle, ArrowRight, User, Trash2,
   CalendarDays, Check, X, AlertTriangle, Bell, Lock, Edit, Inbox, Printer,
-  Calendar, ExternalLink, RefreshCw, Eye, ShieldCheck, Download
+  Calendar, ExternalLink, RefreshCw, Eye, ShieldCheck, Download, Maximize2
 } from 'lucide-react';
 import { 
   getAllUsers, 
@@ -37,7 +37,8 @@ import {
   syncUserToFirestore,
   syncActiveSessionToFirestore,
   syncTimeOffRequestToFirestore,
-  getAuditTrail
+  getAuditTrail,
+  safeSetItem
 } from '../utils/storage';
 import { TimesheetEntry, FutureShift, SubmittedTimesheet, AuditRecord } from '../types';
 import { getAlbertaHoliday } from '../utils/albertaHolidays';
@@ -73,6 +74,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
   const [selectedManagerPrint, setSelectedManagerPrint] = useState<SubmittedTimesheet | null>(null);
   const [managerPrintMode, setManagerPrintMode] = useState<'job_timesheet' | 'summary'>('job_timesheet');
   const [selectedManagerFlhaEntry, setSelectedManagerFlhaEntry] = useState<TimesheetEntry | null>(null);
+  const [mobileFitWidth, setMobileFitWidth] = useState<boolean>(true);
 
   useEffect(() => {
     if (activeReplyRequest) {
@@ -81,6 +83,25 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
       setPopupCalDate(null);
     }
   }, [activeReplyRequest]);
+
+  // Escape key listener to close manager modals (FLHA viewer, print preview, reply popup)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (selectedManagerFlhaEntry) {
+          setSelectedManagerFlhaEntry(null);
+        } else if (selectedManagerPrint) {
+          setSelectedManagerPrint(null);
+        } else if (activeReplyRequest) {
+          setActiveReplyRequest(null);
+        } else if (isDropdownOpen) {
+          setIsDropdownOpen(false);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedManagerFlhaEntry, selectedManagerPrint, activeReplyRequest, isDropdownOpen]);
 
   const popupCalDays = useMemo(() => {
     if (!popupCalDate) return [];
@@ -213,7 +234,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
       });
 
       if (usersData.length > 0) {
-        localStorage.setItem('timesheets_tracker_users_list', JSON.stringify(usersData));
+        safeSetItem('timesheets_tracker_users_list', JSON.stringify(usersData));
         
         // Check for newly registered user accounts
         if (knownUsernamesRef.current.size > 0) {
@@ -605,7 +626,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
         users[idx].bio = 'Contractor account for workspace auditing.';
         users[idx].email = `${username}@ledger-demo.com`;
         users[idx].phone = `+1 (555) 01${Math.floor(Math.random() * 90) + 10}-${Math.floor(Math.random() * 9000) + 1000}`;
-        localStorage.setItem('timesheets_tracker_users_list', JSON.stringify(users));
+        safeSetItem('timesheets_tracker_users_list', JSON.stringify(users));
         syncUserToFirestore(users[idx]);
       }
 
@@ -622,7 +643,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
         notes: notesList[Math.floor(Math.random() * notesList.length)],
         lastActiveTimestamp: new Date().toISOString()
       };
-      localStorage.setItem('timesheets_tracker_active_sessions', JSON.stringify(sessions));
+      safeSetItem('timesheets_tracker_active_sessions', JSON.stringify(sessions));
       syncActiveSessionToFirestore(username, sessions[username]);
 
       setSuccessMessage(`Successfully created contractor "${fName} ${lName}" and clocked them in.`);
@@ -677,7 +698,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
     };
 
     requests.push(newRequest);
-    localStorage.setItem('timesheets_tracker_time_off_requests', JSON.stringify(requests));
+    safeSetItem('timesheets_tracker_time_off_requests', JSON.stringify(requests));
     syncTimeOffRequestToFirestore(newRequest);
     refreshTimeOffRequests();
     setSuccessMessage(`Created new pending time-off request for ${randUser.fullName}.`);
@@ -2252,16 +2273,16 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/85 backdrop-blur-sm"
           >
             <motion.div
               initial={{ scale: 0.95, y: 15, opacity: 0 }}
               animate={{ scale: 1, y: 0, opacity: 1 }}
               exit={{ scale: 0.95, y: 15, opacity: 0 }}
-              className="bg-card-bg border border-main-border rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col text-left"
+              className="bg-card-bg border border-main-border rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto shadow-2xl flex flex-col text-left"
             >
               {/* Header */}
-              <div className="p-5 border-b border-main-border/40 flex items-center justify-between bg-app-bg/50">
+              <div className="p-4 sm:p-5 border-b border-main-border/40 flex items-center justify-between bg-app-bg/50">
                 <div className="flex items-center gap-2">
                   <Edit className="h-4 w-4 text-blue-500" />
                   <h3 className="text-sm font-bold text-main-text uppercase tracking-wide font-mono">
@@ -2271,14 +2292,14 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                 <button
                   type="button"
                   onClick={() => setEditingUser(null)}
-                  className="text-muted-text hover:text-main-text p-1.5 rounded-xl hover:bg-main-border/30 transition cursor-pointer"
+                  className="min-h-[44px] min-w-[44px] flex items-center justify-center text-muted-text hover:text-main-text p-1.5 rounded-xl hover:bg-main-border/30 transition cursor-pointer"
                 >
                   <X className="h-4 w-4" />
                 </button>
               </div>
 
               {/* Form */}
-              <form onSubmit={handleSaveChanges} className="p-5 space-y-4">
+              <form onSubmit={handleSaveChanges} className="p-4 sm:p-5 space-y-4">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-muted-text uppercase font-mono">First Name</label>
@@ -2378,13 +2399,13 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                   <button
                     type="button"
                     onClick={() => setEditingUser(null)}
-                    className="bg-app-bg hover:bg-main-border/30 border border-main-border text-muted-text font-bold text-xs py-2 px-4 rounded-xl cursor-pointer transition"
+                    className="bg-app-bg hover:bg-main-border/30 border border-main-border text-muted-text font-bold text-xs py-2 px-4 rounded-xl cursor-pointer transition min-h-[44px] flex items-center justify-center"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2 px-5 rounded-xl cursor-pointer transition shadow-md flex items-center gap-1.5"
+                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2 px-5 rounded-xl cursor-pointer transition shadow-md flex items-center justify-center gap-1.5 min-h-[44px]"
                   >
                     <Check className="h-3.5 w-3.5" />
                     <span>Save Changes</span>
@@ -2400,13 +2421,13 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[100] flex items-center justify-center p-4 animate-fade-in"
+            className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[100] flex items-center justify-center p-3 sm:p-6 animate-fade-in"
           >
             <motion.div
               initial={{ scale: 0.95, y: 20 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.95, y: 20 }}
-              className="bg-card-bg border border-blue-500/40 w-full max-w-4xl rounded-3xl p-6 shadow-2xl relative grid grid-cols-1 md:grid-cols-2 gap-6 overflow-y-auto max-h-[90vh] text-left"
+              className="bg-card-bg border border-blue-500/40 w-full max-w-4xl rounded-3xl p-4 sm:p-6 shadow-2xl relative grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 overflow-y-auto max-h-[90vh] text-left"
             >
               {/* Left Column: Form & Decision Details */}
               <div className="space-y-4 flex flex-col justify-between">
@@ -2630,53 +2651,66 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
       {/* MANAGER PRINT PREVIEW MODAL */}
       <AnimatePresence>
         {selectedManagerPrint && (
-          <div className="fixed inset-0 z-50 flex flex-col bg-app-bg/98 backdrop-blur overflow-y-auto p-4 md:p-8 transition-colors duration-200 text-left">
+          <div className="fixed inset-0 z-50 flex flex-col bg-app-bg/98 backdrop-blur overflow-y-auto p-3 sm:p-6 md:p-8 transition-colors duration-200 text-left">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between w-full max-w-4xl mx-auto mb-4 text-main-text pb-3 border-b border-main-border print:hidden gap-3">
               <div>
                 <h3 className="text-base font-semibold">Supervisor Timesheet Document Review</h3>
                 <p className="text-xs text-muted-text">Verified digital ledger report submitted by employee.</p>
               </div>
 
-              {/* Template Mode Switcher */}
-              <div className="flex items-center gap-1.5 bg-card-bg p-1 border border-main-border rounded-xl">
+              {/* Template Mode & Mobile Scale Switchers */}
+              <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto justify-between sm:justify-end">
+                <div className="flex items-center gap-1 bg-card-bg p-1 border border-main-border rounded-xl">
+                  <button
+                    type="button"
+                    onClick={() => setManagerPrintMode('job_timesheet')}
+                    className={`min-h-[38px] px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                      managerPrintMode === 'job_timesheet'
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'text-muted-text hover:text-main-text hover:bg-main-border/20'
+                    }`}
+                  >
+                    Job Time Sheet
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setManagerPrintMode('summary')}
+                    className={`min-h-[38px] px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                      managerPrintMode === 'summary'
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'text-muted-text hover:text-main-text hover:bg-main-border/20'
+                    }`}
+                  >
+                    Breakdown
+                  </button>
+                </div>
+
+                {/* Mobile Fit Width / 100% Zoom Toggle */}
                 <button
                   type="button"
-                  onClick={() => setManagerPrintMode('job_timesheet')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                    managerPrintMode === 'job_timesheet'
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'text-muted-text hover:text-main-text hover:bg-main-border/20'
-                  }`}
+                  onClick={() => setMobileFitWidth(!mobileFitWidth)}
+                  className="sm:hidden min-h-[38px] px-3 py-1.5 rounded-xl border border-main-border bg-card-bg text-main-text text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  title="Toggle fit-to-screen vs full pinch-and-zoom preview"
                 >
-                  Job Time Sheet Form
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setManagerPrintMode('summary')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                    managerPrintMode === 'summary'
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'text-muted-text hover:text-main-text hover:bg-main-border/20'
-                  }`}
-                >
-                  Detailed Breakdown
+                  <Maximize2 className="h-3.5 w-3.5 text-blue-500" />
+                  <span>{mobileFitWidth ? '100% Size' : 'Fit Width'}</span>
                 </button>
               </div>
 
-              <div className="flex items-center gap-3">
-                <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs px-3 py-1.5 rounded-xl font-semibold uppercase tracking-wider font-mono">
+              <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto justify-end">
+                <span className="min-h-[44px] flex items-center bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs px-3 py-1.5 rounded-xl font-semibold uppercase tracking-wider font-mono">
                   Status: {selectedManagerPrint.status}
                 </span>
                 <button
                   onClick={() => window.print()}
-                  className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 transition cursor-pointer"
+                  className="min-h-[44px] flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs sm:text-sm font-semibold text-white hover:bg-blue-500 transition cursor-pointer"
                 >
                   <Printer className="h-4 w-4" />
-                  <span>Print / Save PDF</span>
+                  <span>Print / PDF</span>
                 </button>
                 <button
                   onClick={() => setSelectedManagerPrint(null)}
-                  className="rounded-xl border border-main-border bg-card-bg p-2 text-muted-text hover:text-main-text transition cursor-pointer"
+                  className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl border border-main-border bg-card-bg p-2 text-muted-text hover:text-main-text transition cursor-pointer"
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -2684,19 +2718,39 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
             </div>
 
             {/* Printable Document Core */}
-            {managerPrintMode === 'job_timesheet' ? (
-              <JobTimeSheetPrintout
-                employeeName={
-                  (() => {
-                    const u = allUsers.find(userItem => userItem.username === selectedManagerPrint.username);
-                    return u ? u.fullName : selectedManagerPrint.username;
-                  })()
+            <div 
+              className="w-full max-w-4xl mx-auto overflow-x-auto pb-8 touch-pan-x"
+              style={{ touchAction: 'pan-x pan-y pinch-zoom', WebkitOverflowScrolling: 'touch' }}
+            >
+              <div 
+                className={`transition-all duration-200 ${
+                  mobileFitWidth 
+                    ? 'w-[720px] max-w-none origin-top-left sm:w-full sm:origin-top' 
+                    : 'min-w-[700px] sm:min-w-0'
+                }`}
+                style={
+                  mobileFitWidth
+                    ? {
+                        transform: `scale(calc((100vw - 28px) / 720))`,
+                        transformOrigin: 'top left',
+                        marginBottom: `calc((100vw - 28px) - 720px)`
+                      }
+                    : undefined
                 }
-                dateRange={`${selectedManagerPrint.startDate} to ${selectedManagerPrint.endDate}`}
-                entries={selectedManagerPrint.entries || []}
-              />
-            ) : (
-            <div id="payperiod-printout" className="w-full max-w-4xl mx-auto bg-white text-slate-950 p-8 md:p-12 rounded-2xl shadow-2xl print:shadow-none print:p-0 print:m-0 print:bg-white print:text-black">
+              >
+                {managerPrintMode === 'job_timesheet' ? (
+                  <JobTimeSheetPrintout
+                    employeeName={
+                      (() => {
+                        const u = allUsers.find(userItem => userItem.username === selectedManagerPrint.username);
+                        return u ? u.fullName : selectedManagerPrint.username;
+                      })()
+                    }
+                    dateRange={`${selectedManagerPrint.startDate} to ${selectedManagerPrint.endDate}`}
+                    entries={selectedManagerPrint.entries || []}
+                  />
+                ) : (
+                <div id="payperiod-printout" className="print-sheet w-full max-w-4xl mx-auto bg-white text-slate-950 p-4 sm:p-8 md:p-12 rounded-2xl shadow-2xl print:shadow-none print:p-0 print:m-0 print:bg-white print:text-black">
               
               {/* Report Header */}
               <div className="flex flex-col md:flex-row justify-between items-start border-b-2 border-slate-300 pb-6 mb-6 print-border-slate-300">
@@ -2831,6 +2885,8 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
 
             </div>
             )}
+              </div>
+            </div>
           </div>
         )}
       </AnimatePresence>
@@ -2838,7 +2894,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
       {/* FULL-SIZE FLHA SAFETY CARD VIEWER MODAL (MANAGER AUDIT) */}
       <AnimatePresence>
         {selectedManagerFlhaEntry && selectedManagerFlhaEntry.flhaImageUrl && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -2851,7 +2907,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="relative w-full max-w-2xl max-h-[92dvh] flex flex-col overflow-hidden rounded-3xl border border-main-border bg-card-bg shadow-2xl z-10 pb-safe"
+              className="relative w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden rounded-3xl border border-main-border bg-card-bg shadow-2xl z-10 pb-safe"
             >
               {/* Modal Header */}
               <div className="flex items-center justify-between px-5 py-4 border-b border-main-border bg-card-bg shrink-0">

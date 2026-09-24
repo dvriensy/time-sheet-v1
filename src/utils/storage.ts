@@ -69,6 +69,33 @@ export function safeSetItem(key: string, value: string): boolean {
   }
 }
 
+/**
+ * Recursively removes any keys with `undefined` values from an object or array.
+ * Firestore setDoc/updateDoc strictly rejects undefined fields.
+ */
+export function cleanForFirestore<T>(data: T): T {
+  if (data === null || data === undefined) {
+    return data;
+  }
+  if (Array.isArray(data)) {
+    return data.map(item => cleanForFirestore(item)) as unknown as T;
+  }
+  if (typeof data === 'object' && !(data instanceof Date)) {
+    const cleaned: Record<string, any> = {};
+    for (const [key, value] of Object.entries(data as Record<string, any>)) {
+      if (value !== undefined) {
+        cleaned[key] = cleanForFirestore(value);
+      }
+    }
+    return cleaned as T;
+  }
+  return data;
+}
+
+export async function safeSetDoc(docRef: any, data: any) {
+  return setDoc(docRef, cleanForFirestore(data));
+}
+
 // Storage keys
 const KEY_TIMESHEETS = 'timesheets_tracker_records';
 const KEY_GEOFENCE = 'timesheets_tracker_geofence';
@@ -119,7 +146,7 @@ export async function flushOfflineQueue() {
   for (const item of queue) {
     try {
       if (item.operation === 'WRITE' && item.payload) {
-        await setDoc(doc(db, item.collectionName, item.documentId), item.payload);
+        await safeSetDoc(doc(db, item.collectionName, item.documentId), item.payload);
       } else if (item.operation === 'DELETE') {
         await deleteDoc(doc(db, item.collectionName, item.documentId));
       }
@@ -187,7 +214,7 @@ export async function syncAuditRecordToFirestore(record: AuditRecord) {
       enqueueOfflineOp('WRITE', 'auditTrail', record.id, record);
       return;
     }
-    await setDoc(doc(db, 'auditTrail', record.id), record);
+    await safeSetDoc(doc(db, 'auditTrail', record.id), record);
   } catch (err) {
     console.error('Firestore syncAuditRecordToFirestore error:', err);
     enqueueOfflineOp('WRITE', 'auditTrail', record.id, record);
@@ -265,7 +292,7 @@ export function checkShiftOverlap(
 // Background Firestore Sync Writers
 export async function syncUserToFirestore(user: UserAccount) {
   try {
-    await setDoc(doc(db, 'users', user.username), user);
+    await safeSetDoc(doc(db, 'users', user.username), user);
   } catch (err) {
     console.error('Firestore syncUserToFirestore error:', err);
     handleFirestoreError(err, OperationType.WRITE, `users/${user.username}`);
@@ -283,7 +310,7 @@ export async function deleteUserFromFirestore(username: string) {
 
 export async function syncTimesheetToFirestore(entry: TimesheetEntry) {
   try {
-    await setDoc(doc(db, 'timesheets', entry.id), entry);
+    await safeSetDoc(doc(db, 'timesheets', entry.id), entry);
   } catch (err) {
     console.error('Firestore syncTimesheetToFirestore error:', err);
     handleFirestoreError(err, OperationType.WRITE, `timesheets/${entry.id}`);
@@ -301,7 +328,7 @@ export async function deleteTimesheetFromFirestore(id: string) {
 
 export async function syncActiveSessionToFirestore(username: string, session: ActiveSession) {
   try {
-    await setDoc(doc(db, 'activeSessions', username), session);
+    await safeSetDoc(doc(db, 'activeSessions', username), session);
   } catch (err) {
     console.error('Firestore syncActiveSessionToFirestore error:', err);
     handleFirestoreError(err, OperationType.WRITE, `activeSessions/${username}`);
@@ -319,7 +346,7 @@ export async function deleteActiveSessionFromFirestore(username: string) {
 
 export async function syncTimeOffRequestToFirestore(request: TimeOffRequest) {
   try {
-    await setDoc(doc(db, 'timeOffRequests', request.id), request);
+    await safeSetDoc(doc(db, 'timeOffRequests', request.id), request);
   } catch (err) {
     console.error('Firestore syncTimeOffRequestToFirestore error:', err);
     handleFirestoreError(err, OperationType.WRITE, `timeOffRequests/${request.id}`);
@@ -328,7 +355,7 @@ export async function syncTimeOffRequestToFirestore(request: TimeOffRequest) {
 
 export async function syncFutureShiftToFirestore(shift: FutureShift) {
   try {
-    await setDoc(doc(db, 'futureShifts', shift.id), shift);
+    await safeSetDoc(doc(db, 'futureShifts', shift.id), shift);
   } catch (err) {
     console.error('Firestore syncFutureShiftToFirestore error:', err);
     handleFirestoreError(err, OperationType.WRITE, `futureShifts/${shift.id}`);
@@ -337,7 +364,7 @@ export async function syncFutureShiftToFirestore(shift: FutureShift) {
 
 export async function syncSubmittedTimesheetToFirestore(submission: SubmittedTimesheet) {
   try {
-    await setDoc(doc(db, 'submittedTimesheets', submission.id), submission);
+    await safeSetDoc(doc(db, 'submittedTimesheets', submission.id), submission);
   } catch (err) {
     console.error('Firestore syncSubmittedTimesheetToFirestore error:', err);
     handleFirestoreError(err, OperationType.WRITE, `submittedTimesheets/${submission.id}`);
@@ -448,7 +475,7 @@ export async function initializeFirebaseSync(onSyncCallback?: () => void) {
       // Seed Firestore with local users (if any exist)
       const localUsers = getAllUsers();
       for (const u of localUsers) {
-        await setDoc(doc(db, 'users', u.username), u);
+        await safeSetDoc(doc(db, 'users', u.username), u);
       }
     } else {
       // Overwrite local storage with firestore users
@@ -464,7 +491,7 @@ export async function initializeFirebaseSync(onSyncCallback?: () => void) {
     if (timesheetsSnap.empty) {
       const localTimesheets = getTimesheetsAllRaw();
       for (const t of localTimesheets) {
-        await setDoc(doc(db, 'timesheets', t.id), t);
+        await safeSetDoc(doc(db, 'timesheets', t.id), t);
       }
     } else {
       const firestoreTimesheets: TimesheetEntry[] = [];
@@ -487,7 +514,7 @@ export async function initializeFirebaseSync(onSyncCallback?: () => void) {
     if (timeOffSnap.empty) {
       const localTimeOff = getTimeOffRequests();
       for (const tr of localTimeOff) {
-        await setDoc(doc(db, 'timeOffRequests', tr.id), tr);
+        await safeSetDoc(doc(db, 'timeOffRequests', tr.id), tr);
       }
     } else {
       const firestoreTimeOff: TimeOffRequest[] = [];
@@ -502,7 +529,7 @@ export async function initializeFirebaseSync(onSyncCallback?: () => void) {
     if (futureShiftsSnap.empty) {
       const localFutureShifts = getFutureShifts();
       for (const fs of localFutureShifts) {
-        await setDoc(doc(db, 'futureShifts', fs.id), fs);
+        await safeSetDoc(doc(db, 'futureShifts', fs.id), fs);
       }
     } else {
       const firestoreFutureShifts: FutureShift[] = [];
@@ -549,7 +576,7 @@ export async function initializeFirebaseSync(onSyncCallback?: () => void) {
         }
       ];
       for (const d of initialDispatches) {
-        await setDoc(doc(db, 'workDispatches', d.id), d);
+        await safeSetDoc(doc(db, 'workDispatches', d.id), d);
       }
       safeSetItem(KEY_WORK_DISPATCHES, JSON.stringify(initialDispatches));
     } else {
@@ -871,7 +898,7 @@ export async function registerUserClient(fullName: string, username: string, pas
       bio: 'Registered contractor account.'
     };
 
-    await setDoc(userDocRef, newUser);
+    await safeSetDoc(userDocRef, newUser);
 
     const usersRaw = localStorage.getItem(KEY_USERS_LIST);
     const users: UserAccount[] = usersRaw ? JSON.parse(usersRaw) : [];
@@ -2074,7 +2101,7 @@ export function getWorkDispatches(): WorkDispatch[] {
 
 export async function syncWorkDispatchToFirestore(dispatch: WorkDispatch) {
   try {
-    await setDoc(doc(db, 'workDispatches', dispatch.id), dispatch);
+    await safeSetDoc(doc(db, 'workDispatches', dispatch.id), dispatch);
   } catch (err) {
     console.error('Firestore syncWorkDispatchToFirestore error:', err);
     handleFirestoreError(err, OperationType.WRITE, `workDispatches/${dispatch.id}`);

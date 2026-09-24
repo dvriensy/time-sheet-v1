@@ -14,8 +14,9 @@ const STATIC_ASSETS = [
   '/logo.jpg'
 ];
 
-// Install Event: cache core app shell and skip waiting
+// Install Event: cache core app shell and force immediate skipWaiting
 self.addEventListener('install', (event) => {
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(STATIC_ASSETS).catch((err) => {
@@ -23,7 +24,6 @@ self.addEventListener('install', (event) => {
       });
     })
   );
-  self.skipWaiting();
 });
 
 // Activate Event: clean older caches and claim clients immediately
@@ -39,6 +39,14 @@ self.addEventListener('activate', (event) => {
       );
     }).then(() => self.clients.claim())
   );
+  self.clients.claim();
+});
+
+// Message Event: Allow client pages to trigger immediate activation
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 // Push Event: Handle background push notifications when the site/tab is closed

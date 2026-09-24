@@ -173,6 +173,126 @@ html.dark h6 {
   color: #f8fafc;
 }
 
+/* Print Sheet & Job Report Modal Contrast Guard: strictly force dark text on white backgrounds */
+.print-sheet,
+.print-sheet table,
+.print-sheet th,
+.print-sheet td,
+#payperiod-printout,
+#payperiod-printout table,
+#payperiod-printout th,
+#payperiod-printout td {
+  color: #0f172a !important;
+}
+
+.print-sheet .font-mono,
+#payperiod-printout .font-mono,
+html.dark .print-sheet .font-mono,
+html.dark #payperiod-printout .font-mono,
+html:not(.dark) .print-sheet .font-mono,
+html:not(.dark) #payperiod-printout .font-mono {
+  color: #0f172a !important;
+}
+
+html.dark .print-sheet table td,
+html.dark .print-sheet table th,
+html.dark #payperiod-printout table td,
+html.dark #payperiod-printout table th {
+  color: #0f172a !important;
+}
+
+html.dark .print-sheet h1,
+html.dark #payperiod-printout h1,
+html.dark .print-sheet h2,
+html.dark #payperiod-printout h2,
+html.dark .print-sheet h3,
+html.dark #payperiod-printout h3,
+html.dark .print-sheet h4,
+html.dark #payperiod-printout h4 {
+  color: #0f172a !important;
+}
+
+/* Badge and tone overrides inside print sheets */
+html.dark .print-sheet .text-emerald-800,
+html.dark #payperiod-printout .text-emerald-800 {
+  color: #065f46 !important;
+}
+html.dark .print-sheet .text-amber-800,
+html.dark #payperiod-printout .text-amber-800,
+html.dark .print-sheet .text-amber-900,
+html.dark #payperiod-printout .text-amber-900,
+.print-sheet .text-amber-900,
+#payperiod-printout .text-amber-900,
+.print-sheet .text-amber-800,
+#payperiod-printout .text-amber-800 {
+  color: #9a3412 !important;
+}
+html.dark .print-sheet .text-amber-950,
+html.dark #payperiod-printout .text-amber-950,
+.print-sheet .text-amber-950,
+#payperiod-printout .text-amber-950 {
+  color: #78350f !important;
+}
+
+.print-sheet .bg-amber-50,
+#payperiod-printout .bg-amber-50 {
+  background-color: #fffbeb !important;
+}
+
+.print-sheet .bg-amber-100,
+#payperiod-printout .bg-amber-100 {
+  background-color: #fef3c7 !important;
+}
+
+.print-sheet .border-amber-300,
+#payperiod-printout .border-amber-300 {
+  border-color: #fcd34d !important;
+}
+
+.print-sheet .border-amber-500,
+#payperiod-printout .border-amber-500 {
+  border-color: #f59e0b !important;
+}
+
+@media print {
+  .print-sheet .bg-amber-50,
+  #payperiod-printout .bg-amber-50 {
+    background-color: #fffbeb !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .print-sheet .bg-amber-100,
+  #payperiod-printout .bg-amber-100 {
+    background-color: #fef3c7 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .print-sheet .text-amber-900,
+  #payperiod-printout .text-amber-900,
+  .print-sheet .text-amber-800,
+  #payperiod-printout .text-amber-800 {
+    color: #9a3412 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .print-sheet .border-amber-500,
+  #payperiod-printout .border-amber-500 {
+    border-color: #f59e0b !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+html.dark .print-sheet .text-blue-800,
+html.dark #payperiod-printout .text-blue-800,
+html.dark .print-sheet .text-blue-900,
+html.dark #payperiod-printout .text-blue-900 {
+  color: #1e3a8a !important;
+}
+html.dark .print-sheet .text-blue-950,
+html.dark #payperiod-printout .text-blue-950 {
+  color: #172554 !important;
+}
+
 /* Form inputs, textareas, and select elements switch to dark surface with light text */
 html.dark input,
 html.dark textarea,

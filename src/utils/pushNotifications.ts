@@ -16,6 +16,8 @@ export interface PushSubscriptionState {
   subscription: PushSubscription | null;
 }
 
+import { safeSetItem } from './storage';
+
 // Convert base64 VAPID public key to Uint8Array for PushManager
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -293,7 +295,7 @@ export function startWorkday5pmScheduler(
       const lastTriggered = localStorage.getItem(KEY_LAST_TRIGGERED_DATE);
 
       if (lastTriggered !== todayStr) {
-        localStorage.setItem(KEY_LAST_TRIGGERED_DATE, todayStr);
+        safeSetItem(KEY_LAST_TRIGGERED_DATE, todayStr);
         console.log('[PushNotifications] 5:00 PM workday milestone reached, firing push notification!');
         trigger5pmShiftReminder(username);
         if (onTrigger) onTrigger();
