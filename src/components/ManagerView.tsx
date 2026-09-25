@@ -1778,7 +1778,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                       <label className="text-[10px] font-bold text-muted-text uppercase font-mono">Project / Task Name</label>
                       <input
                         type="text"
-                        placeholder="e.g. Framer Layout development"
+                        placeholder="Task / project name"
                         value={assignProject}
                         onChange={(e) => setAssignProject(e.target.value)}
                         className="w-full rounded-xl border border-main-border bg-input-bg p-2 text-xs text-main-text focus:border-blue-500/40 focus:outline-none"
@@ -1814,7 +1814,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                       <div className="relative">
                         <input
                           type="text"
-                          placeholder="e.g. Downtown Highrise - Floor 4"
+                          placeholder="Site / location"
                           value={assignLocation}
                           onChange={(e) => setAssignLocation(e.target.value)}
                           className="w-full rounded-xl border border-main-border bg-input-bg p-2 pl-7 text-xs text-main-text focus:border-blue-500/40 focus:outline-none"

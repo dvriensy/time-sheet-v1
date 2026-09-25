@@ -109,10 +109,10 @@ export const HeaderTimer: React.FC<HeaderTimerProps> = ({ currentUser, onShiftLo
         // Active Running State: live timer + 1-tap stop button
         <div
           id="header-active-timer-pill"
-          className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 sm:py-1.5 min-h-[44px] rounded-xl bg-emerald-500/10 dark:bg-emerald-500/15 border border-emerald-500/30 text-main-text shadow-sm"
+          className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 min-h-[44px] rounded-xl bg-emerald-500/10 dark:bg-emerald-500/15 border border-emerald-500/30 text-main-text shadow-sm shrink-0"
           title={`Active Shift: Started at ${activeSession.startTime || 'now'}`}
         >
-          <span className="relative flex h-2 w-2">
+          <span className="relative flex h-2 w-2 shrink-0">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
           </span>
@@ -124,23 +124,24 @@ export const HeaderTimer: React.FC<HeaderTimerProps> = ({ currentUser, onShiftLo
           <button
             id="header-stop-timer-btn"
             onClick={handleStop}
-            className="flex items-center gap-1 ml-0.5 sm:ml-1 px-2.5 py-1.5 min-h-[36px] rounded-lg bg-rose-500 hover:bg-rose-600 active:scale-95 text-white text-xs font-semibold shadow-xs transition-all cursor-pointer"
+            className="flex items-center justify-center gap-1 ml-0.5 sm:ml-1 px-2 sm:px-2.5 py-1.5 min-h-[36px] rounded-lg bg-rose-500 hover:bg-rose-600 active:scale-95 text-white text-xs font-semibold shadow-xs transition-all cursor-pointer shrink-0"
             title="Stop Timer & Save Shift"
           >
-            <Square className="h-2.5 w-2.5 fill-current" />
-            <span>Stop</span>
+            <Square className="h-2.5 w-2.5 fill-current shrink-0" />
+            <span className="hidden xs:inline sm:inline">Stop</span>
           </button>
         </div>
       ) : (
-        // Idle State: 1-tap Start Timer button
+        // Idle State: 1-tap Start Timer button (On < 640px screens, hide text and show only play icon)
         <button
           id="header-start-timer-btn"
           onClick={handleStart}
-          className={`min-h-[44px] flex items-center gap-1.5 cursor-pointer font-medium border border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-600 hover:text-white hover:border-emerald-600 shadow-sm transition-all duration-200 active:scale-95 px-3 py-2 rounded-xl text-xs`}
+          className="min-h-[44px] min-w-[40px] flex items-center justify-center gap-1.5 cursor-pointer font-medium border border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-600 hover:text-white hover:border-emerald-600 shadow-sm transition-all duration-200 active:scale-95 px-2.5 sm:px-3 py-2 rounded-xl text-xs shrink-0"
           title="Start Shift Timer (1-tap, no task required)"
+          aria-label="Start Timer"
         >
-          <Play className="h-3.5 w-3.5 fill-current" />
-          <span>Start Timer</span>
+          <Play className="h-3.5 w-3.5 fill-current shrink-0" />
+          <span className="hidden sm:inline">Start Timer</span>
         </button>
       )}
 

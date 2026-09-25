@@ -243,22 +243,22 @@ export default function App() {
     }
 
     return (
-      <div className="flex-grow flex flex-col w-full h-full relative overflow-hidden min-h-0">
+      <div className="flex-grow flex flex-col w-full max-w-full h-full relative overflow-hidden min-h-0">
         {/* Top bar header */}
-        <header className="flex flex-row items-center justify-between p-3 md:px-6 md:py-3.5 mb-3 md:mb-4 bg-card-bg rounded-2xl border border-main-border/60 shadow-sm transition-all duration-200 shrink-0 select-none">
+        <header className="flex flex-row items-center justify-between p-2.5 sm:p-3 md:px-6 md:py-3.5 mb-2.5 sm:mb-3 md:mb-4 bg-card-bg rounded-2xl border border-main-border/60 shadow-sm transition-all duration-200 shrink-0 select-none w-full max-w-full overflow-hidden box-border">
           {/* Logo / Brand & Tabs (Left alignment on desktop) */}
-          <div className="flex items-center gap-5 shrink-0">
-            <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 md:gap-5 shrink min-w-0">
+            <div className="flex items-center gap-2 sm:gap-3 shrink-0">
               <div className="relative group shrink-0">
                 <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-600 via-sky-500 to-cyan-400 rounded-xl blur-[2px] opacity-40 group-hover:opacity-75 transition duration-300"></div>
                 <img 
                   src="/logo.jpg" 
                   alt="WORKSPACE Logo" 
-                  className="relative w-9 h-9 md:w-10 md:h-10 rounded-xl object-cover shadow-md shadow-blue-500/20 border border-blue-400/30" 
+                  className="relative w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-xl object-cover shadow-md shadow-blue-500/20 border border-blue-400/30" 
                 />
               </div>
-              <div className="flex flex-col justify-center">
-                <h1 className="text-base md:text-lg font-display font-extrabold tracking-wider text-main-text leading-tight flex items-center">
+              <div className="flex flex-col justify-center min-w-0">
+                <h1 className="text-sm sm:text-base md:text-lg font-display font-extrabold tracking-wider text-main-text leading-tight flex items-center">
                   <span className="tracking-wide">WORK</span>
                   <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-500 via-sky-400 to-cyan-400 font-black">SPACE</span>
                 </h1>
@@ -314,7 +314,7 @@ export default function App() {
           </div>
 
           {/* Action Utilities (Right alignment) */}
-          <div className="flex items-center gap-2 md:gap-3">
+          <div className="flex items-center gap-1 sm:gap-1.5 md:gap-3 shrink-0">
             {/* One-Tap Header Shift Timer */}
             <HeaderTimer 
               currentUser={currentUser}
@@ -325,13 +325,12 @@ export default function App() {
             {/* Request Time Off Button */}
             <button
               onClick={() => setIsTimeOffOpen(true)}
-              className={`flex items-center gap-1.5 cursor-pointer relative border border-blue-500/20 bg-blue-500/5 hover:bg-blue-600 hover:text-white hover:border-blue-600 text-blue-500 shadow-sm transition-all duration-200 ${
-                isMobileView ? 'p-2 rounded-xl' : 'px-3.5 py-1.5 text-xs rounded-xl font-medium'
-              }`}
+              className="flex items-center justify-center gap-1.5 cursor-pointer relative border border-blue-500/20 bg-blue-500/5 hover:bg-blue-600 hover:text-white hover:border-blue-600 text-blue-500 shadow-sm transition-all duration-200 p-2 sm:px-3 sm:py-1.5 text-xs rounded-xl font-medium min-h-[44px] min-w-[38px] shrink-0"
               title="Request Absence or Time Off"
+              aria-label="Request Absence or Time Off"
             >
-              <CalendarDays className="h-3.5 w-3.5" />
-              {!isMobileView && <span>Time Off</span>}
+              <CalendarDays className="h-4 w-4 sm:h-3.5 sm:w-3.5 shrink-0" />
+              <span className="hidden sm:inline">Time Off</span>
               {timeOffBadge > 0 && (
                 <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white border border-card-bg shadow animate-bounce">
                   {timeOffBadge}
@@ -342,13 +341,14 @@ export default function App() {
             {/* Theme Toggle Button */}
             <button
               onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-              className="p-2 rounded-xl border border-main-border bg-app-bg text-muted-text hover:text-main-text transition duration-200 cursor-pointer flex items-center justify-center shadow-sm hover:scale-105 active:scale-95"
+              className="p-2 min-h-[44px] min-w-[38px] rounded-xl border border-main-border bg-app-bg text-muted-text hover:text-main-text transition duration-200 cursor-pointer flex items-center justify-center shadow-sm hover:scale-105 active:scale-95 shrink-0"
               title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+              aria-label="Toggle Theme"
             >
               {theme === 'dark' ? (
-                <Sun className="h-3.5 w-3.5 md:h-4 md:w-4 text-amber-400 hover:rotate-45 transition-transform duration-300" />
+                <Sun className="h-4 w-4 sm:h-3.5 sm:w-3.5 md:h-4 md:w-4 text-amber-400 hover:rotate-45 transition-transform duration-300" />
               ) : (
-                <Moon className="h-3.5 w-3.5 md:h-4 md:w-4 text-blue-600 hover:-rotate-12 transition-transform duration-300" />
+                <Moon className="h-4 w-4 sm:h-3.5 sm:w-3.5 md:h-4 md:w-4 text-blue-600 hover:-rotate-12 transition-transform duration-300" />
               )}
             </button>
 
@@ -361,7 +361,7 @@ export default function App() {
             )}
 
             {/* Profile Avatar & Info */}
-            <div className={`flex items-center gap-2 ${!isMobileView ? 'border-l border-main-border pl-3 md:pl-4' : ''}`}>
+            <div className={`flex items-center gap-1 sm:gap-2 ${!isMobileView ? 'border-l border-main-border pl-3 md:pl-4' : 'border-l border-main-border/50 pl-1.5 sm:pl-2'}`}>
               {!isMobileView && (
                 <div className="text-right hidden md:block max-w-[100px] lg:max-w-[120px]">
                   <p className="text-xs font-bold text-main-text leading-tight truncate">{currentUser.fullName}</p>
@@ -370,13 +370,14 @@ export default function App() {
               )}
               <button
                 onClick={() => setActiveTab('account')}
-                className="w-8 h-8 md:w-9 md:h-9 rounded-full bg-app-bg border border-main-border hover:border-blue-500 flex items-center justify-center text-muted-text shrink-0 overflow-hidden cursor-pointer transition-all duration-200 focus:outline-none" 
+                className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-app-bg border border-main-border hover:border-blue-500 flex items-center justify-center text-muted-text shrink-0 overflow-hidden cursor-pointer transition-all duration-200 focus:outline-none" 
                 title={`${currentUser.fullName} (@${currentUser.username})`}
+                aria-label="User Account"
               >
                 {currentUser.avatarUrl ? (
                   <img src={currentUser.avatarUrl} alt={currentUser.fullName} referrerPolicy="no-referrer" className="w-full h-full object-cover select-none animate-fade-in" />
                 ) : (
-                  <User className="h-4.5 w-4.5" />
+                  <User className="h-4 w-4 sm:h-4.5 sm:w-4.5" />
                 )}
               </button>
               
@@ -386,7 +387,8 @@ export default function App() {
                   setCurrentUser(null);
                   setActiveTab('timesheets');
                 }}
-                className={`text-xs font-semibold cursor-pointer transition shrink-0 ${isMobileView ? 'text-rose-400 hover:text-rose-300 p-1 bg-transparent border-none ml-0.5' : 'bg-rose-500/10 hover:bg-rose-500 hover:text-white border border-rose-500/20 text-rose-500 px-2.5 py-1.5 rounded-xl ml-1.5'}`}
+                className={`text-xs font-semibold cursor-pointer transition shrink-0 min-h-[44px] flex items-center justify-center ${isMobileView ? 'text-rose-400 hover:text-rose-300 px-1 py-1 bg-transparent border-none' : 'bg-rose-500/10 hover:bg-rose-500 hover:text-white border border-rose-500/20 text-rose-500 px-2.5 py-1.5 rounded-xl ml-1'}`}
+                title="Log Out"
               >
                 {isMobileView ? 'Exit' : 'Log Out'}
               </button>
@@ -394,45 +396,48 @@ export default function App() {
           </div>
         </header>
 
-        {/* MOBILE NAVIGATION TABS (Segmented Control below header on mobile) */}
+        {/* MOBILE NAVIGATION TABS (Equal-Width Grid Segmented Control on mobile) */}
         {isMobileView && (
-          <div className="flex items-center bg-card-bg p-1 rounded-xl border border-main-border/60 mb-2 shrink-0 shadow-sm">
+          <nav 
+            aria-label="Mobile Navigation"
+            className={`grid ${isManager ? 'grid-cols-3' : 'grid-cols-2'} gap-1 bg-card-bg p-1 rounded-xl border border-main-border/60 mb-2 shrink-0 shadow-sm w-full`}
+          >
             <button
               onClick={() => setActiveTab('timesheets')}
-              className={`flex-1 flex items-center justify-center gap-1.5 min-h-[44px] py-2.5 px-3 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${
+              className={`w-full flex items-center justify-center gap-1 min-h-[44px] py-1.5 px-1 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${
                 activeTab === 'timesheets' 
                   ? 'bg-blue-600 text-white shadow-sm' 
-                  : 'text-muted-text hover:text-main-text'
+                  : 'text-muted-text hover:text-main-text hover:bg-card-bg/50'
               }`}
             >
-              <Clock className="h-4 w-4" />
-              <span>Ledger</span>
+              <Clock className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">Ledger</span>
             </button>
             {isManager && (
               <button
                 onClick={() => setActiveTab('manager')}
-                className={`flex-1 flex items-center justify-center gap-1.5 min-h-[44px] py-2.5 px-3 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${
+                className={`w-full flex items-center justify-center gap-1 min-h-[44px] py-1.5 px-1 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${
                   activeTab === 'manager' 
                     ? 'bg-blue-600 text-white shadow-sm' 
-                    : 'text-muted-text hover:text-main-text'
+                    : 'text-muted-text hover:text-main-text hover:bg-card-bg/50'
                 }`}
               >
-                <Users className="h-4 w-4" />
-                <span>Management</span>
+                <Users className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">Management</span>
               </button>
             )}
             <button
               onClick={() => setActiveTab('account')}
-              className={`flex-1 flex items-center justify-center gap-1.5 min-h-[44px] py-2.5 px-3 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${
+              className={`w-full flex items-center justify-center gap-1 min-h-[44px] py-1.5 px-1 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${
                 activeTab === 'account' 
                   ? 'bg-blue-600 text-white shadow-sm' 
-                  : 'text-muted-text hover:text-main-text'
+                  : 'text-muted-text hover:text-main-text hover:bg-card-bg/50'
               }`}
             >
-              <User className="h-4 w-4" />
-              <span>Account</span>
+              <User className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">Account</span>
             </button>
-          </div>
+          </nav>
         )}
 
         {/* ACTIVE TAB RENDER BLOCK */}
@@ -525,7 +530,7 @@ export default function App() {
       <div className="fixed top-12 left-1/2 -translate-x-1/2 w-full max-w-7xl h-[400px] bg-gradient-to-b from-blue-500/5 to-transparent blur-3xl pointer-events-none" />
 
       {/* MAIN SYSTEM CONTAINER SHELL */}
-      <div className="relative z-10 flex-grow flex flex-col max-w-7xl w-full mx-auto px-2.5 py-2 sm:px-4 sm:py-3 md:px-6 md:py-4 h-full overflow-hidden min-h-0">
+      <div className="relative z-10 flex-grow flex flex-col max-w-7xl w-full mx-auto px-2 py-2 sm:px-4 sm:py-3 md:px-6 md:py-4 h-full overflow-hidden min-h-0">
         {renderAppContent(isMobile)}
       </div>
     </div>

@@ -1170,7 +1170,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                 type="text"
                 value={activeProject}
                 onChange={(e) => setActiveProject(e.target.value)}
-                placeholder="What task or job are you doing? (optional)"
+                placeholder="Task / job (optional)"
                 className={`w-full rounded-xl px-3 py-2 text-xs font-medium focus:outline-none transition min-h-[44px] ${
                   isClockedIn 
                     ? 'bg-blue-900/30 text-white border border-blue-400/30' 
@@ -1187,7 +1187,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                 type="text"
                 value={activeLocation}
                 onChange={(e) => setActiveLocation(e.target.value)}
-                placeholder="e.g. Remote, HQ Office, Customer Site (optional)"
+                placeholder="Site / location (optional)"
                 className={`w-full rounded-xl px-3 py-2 text-xs font-medium focus:outline-none transition min-h-[44px] ${
                   isClockedIn 
                     ? 'bg-blue-900/30 text-white border border-blue-400/30' 
@@ -1204,7 +1204,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                 <textarea
                   value={activeNotes}
                   onChange={(e) => setActiveNotes(e.target.value)}
-                  placeholder="Describe your current work segment (optional)..."
+                  placeholder="Shift notes (optional)..."
                   className={`w-full rounded-xl border border-blue-400/30 bg-blue-900/30 px-3 py-2 text-xs text-white placeholder-blue-300/50 focus:outline-none ${isMobileView ? 'h-16' : 'h-20'} resize-none`}
                 />
               </motion.div>
@@ -2305,7 +2305,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                       type="text"
                       value={manualProject}
                       onChange={(e) => setManualProject(e.target.value)}
-                      placeholder="e.g. Site Maintenance (optional)"
+                      placeholder="Task / job (optional)"
                       className="w-full rounded-xl border border-main-border bg-input-bg px-3 py-2 text-xs font-medium text-main-text focus:border-blue-500/50 focus:outline-none transition-colors"
                     />
                   </div>
@@ -2447,7 +2447,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                     type="text"
                     value={manualLocation}
                     onChange={(e) => setManualLocation(e.target.value)}
-                    placeholder="e.g. Remote, Office, Customer Site (optional)"
+                    placeholder="Site / location (optional)"
                     className="w-full rounded-xl border border-main-border bg-input-bg px-3 py-2 text-xs font-medium text-main-text focus:border-blue-500/50 focus:outline-none transition-colors"
                   />
                 </div>
