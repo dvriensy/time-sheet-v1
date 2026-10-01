@@ -5,7 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Clock, User, Sun, Moon, Users, CalendarDays, Bell, Smartphone } from 'lucide-react';
+import { Clock, User, Sun, Moon, Users, CalendarDays, Bell } from 'lucide-react';
 import { 
   getTimesheets, 
   getAppSettings, 
@@ -254,25 +254,25 @@ export default function App() {
     return (
       <div className="flex-grow flex flex-col w-full max-w-full h-full relative overflow-hidden min-h-0">
         {/* Top bar header */}
-        <header className="flex flex-row items-center justify-between p-2.5 sm:p-3 md:px-6 md:py-3.5 mb-2.5 sm:mb-3 md:mb-4 bg-card-bg rounded-2xl border border-main-border/60 shadow-sm transition-all duration-200 shrink-0 select-none w-full max-w-full overflow-hidden box-border">
+        <header className="flex flex-row items-center justify-between gap-2 px-2.5 py-2 sm:px-3.5 sm:py-2.5 md:px-5 md:py-3 mb-2.5 sm:mb-3 md:mb-4 bg-card-bg rounded-2xl border border-main-border/60 shadow-sm transition-all duration-200 shrink-0 select-none w-full max-w-full overflow-hidden box-border">
           {/* Logo / Brand & Tabs (Left alignment on desktop) */}
-          <div className="flex items-center gap-2 sm:gap-3 md:gap-5 shrink min-w-0">
-            <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          <div className="flex items-center gap-2 sm:gap-3 md:gap-4 shrink min-w-0">
+            <div className="flex items-center gap-2 shrink-0">
               <div className="relative group shrink-0">
                 <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-600 via-sky-500 to-cyan-400 rounded-xl blur-[2px] opacity-40 group-hover:opacity-75 transition duration-300"></div>
                 <img 
                   src="/logo.jpg" 
                   alt="WORKSPACE Logo" 
-                  className="relative w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-xl object-cover shadow-md shadow-blue-500/20 border border-blue-400/30" 
+                  className="relative w-7 h-7 sm:w-8 sm:h-8 md:w-9 md:h-9 rounded-xl object-cover shadow-md shadow-blue-500/20 border border-blue-400/30" 
                 />
               </div>
               <div className="flex flex-col justify-center min-w-0">
-                <h1 className="text-sm sm:text-base md:text-lg font-display font-extrabold tracking-wider text-main-text leading-tight flex items-center">
+                <h1 className="text-xs sm:text-sm md:text-base font-display font-extrabold tracking-wider text-main-text leading-tight flex items-center truncate">
                   <span className="tracking-wide">WORK</span>
                   <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-500 via-sky-400 to-cyan-400 font-black">SPACE</span>
                 </h1>
                 {!isMobileView && (
-                  <div className="flex items-center gap-1.5 mt-0.5">
+                  <div className="hidden xl:flex items-center gap-1.5 mt-0.5">
                     <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
                     <p className="text-[9px] font-mono tracking-widest uppercase text-blue-500 dark:text-sky-400 font-medium">Enterprise Suite</p>
                   </div>
@@ -282,10 +282,10 @@ export default function App() {
 
             {/* Desktop Navigation Tabs (Directly in header next to logo) */}
             {!isMobileView && (
-              <div className="flex items-center bg-app-bg p-1 rounded-xl border border-main-border/50 ml-1 shrink-0">
+              <div className="flex items-center bg-app-bg p-1 rounded-xl border border-main-border/50 shrink-0">
                 <button
                   onClick={() => setActiveTab('timesheets')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${
+                  className={`flex items-center gap-1.5 px-2.5 lg:px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${
                     activeTab === 'timesheets' 
                       ? 'bg-blue-600 text-white shadow-sm' 
                       : 'text-muted-text hover:text-main-text'
@@ -297,7 +297,7 @@ export default function App() {
                 {isManager && (
                   <button
                     onClick={() => setActiveTab('manager')}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${
+                    className={`flex items-center gap-1.5 px-2.5 lg:px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${
                       activeTab === 'manager' 
                         ? 'bg-blue-600 text-white shadow-sm' 
                         : 'text-muted-text hover:text-main-text'
@@ -309,7 +309,7 @@ export default function App() {
                 )}
                 <button
                   onClick={() => setActiveTab('account')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${
+                  className={`flex items-center gap-1.5 px-2.5 lg:px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${
                     activeTab === 'account' 
                       ? 'bg-blue-600 text-white shadow-sm' 
                       : 'text-muted-text hover:text-main-text'
@@ -323,7 +323,7 @@ export default function App() {
           </div>
 
           {/* Action Utilities (Right alignment) */}
-          <div className="flex items-center gap-1 sm:gap-1.5 md:gap-3 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-1.5 md:gap-2 shrink-0">
             {/* One-Tap Header Shift Timer */}
             <HeaderTimer 
               currentUser={currentUser}
@@ -334,12 +334,12 @@ export default function App() {
             {/* Request Time Off Button */}
             <button
               onClick={() => setIsTimeOffOpen(true)}
-              className="flex items-center justify-center gap-1.5 cursor-pointer relative border border-blue-500/20 bg-blue-500/5 hover:bg-blue-600 hover:text-white hover:border-blue-600 text-blue-500 shadow-sm transition-all duration-200 p-2 sm:px-3 sm:py-1.5 text-xs rounded-xl font-medium min-h-[44px] min-w-[38px] shrink-0"
+              className="flex items-center justify-center gap-1.5 cursor-pointer relative border border-blue-500/20 bg-blue-500/5 hover:bg-blue-600 hover:text-white hover:border-blue-600 text-blue-500 shadow-xs transition-all duration-200 h-9 sm:h-10 w-9 sm:w-auto sm:px-2.5 xl:px-3 text-xs rounded-xl font-medium shrink-0"
               title="Request Absence or Time Off"
               aria-label="Request Absence or Time Off"
             >
-              <CalendarDays className="h-4 w-4 sm:h-3.5 sm:w-3.5 shrink-0" />
-              <span className="hidden sm:inline">Time Off</span>
+              <CalendarDays className="h-4 w-4 shrink-0" />
+              <span className="hidden xl:inline">Time Off</span>
               {timeOffBadge > 0 && (
                 <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white border border-card-bg shadow animate-bounce">
                   {timeOffBadge}
@@ -347,42 +347,24 @@ export default function App() {
               )}
             </button>
 
-            {/* Phone / App Sizing Calibration Button */}
-            <button
-              onClick={() => setIsPhoneSizingOpen(true)}
-              className="p-2 min-h-[44px] min-w-[36px] rounded-xl border border-main-border bg-app-bg text-muted-text hover:text-blue-500 hover:border-blue-500/40 transition duration-200 cursor-pointer flex items-center justify-center shadow-sm active:scale-95 shrink-0"
-              title="Phone & App Screen Sizing (iPhone / Android)"
-              aria-label="Phone and App Screen Sizing"
-            >
-              <Smartphone className="h-4 w-4 sm:h-3.5 sm:w-3.5 md:h-4 md:w-4 shrink-0" />
-            </button>
-
             {/* Theme Toggle Button */}
             <button
               onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-              className="p-2 min-h-[44px] min-w-[38px] rounded-xl border border-main-border bg-app-bg text-muted-text hover:text-main-text transition duration-200 cursor-pointer flex items-center justify-center shadow-sm hover:scale-105 active:scale-95 shrink-0"
+              className="h-9 sm:h-10 w-9 sm:w-10 rounded-xl border border-main-border bg-app-bg text-muted-text hover:text-main-text transition duration-200 cursor-pointer flex items-center justify-center shadow-xs hover:scale-105 active:scale-95 shrink-0"
               title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
               aria-label="Toggle Theme"
             >
               {theme === 'dark' ? (
-                <Sun className="h-4 w-4 sm:h-3.5 sm:w-3.5 md:h-4 md:w-4 text-amber-400 hover:rotate-45 transition-transform duration-300" />
+                <Sun className="h-4 w-4 text-amber-400 hover:rotate-45 transition-transform duration-300" />
               ) : (
-                <Moon className="h-4 w-4 sm:h-3.5 sm:w-3.5 md:h-4 md:w-4 text-blue-600 hover:-rotate-12 transition-transform duration-300" />
+                <Moon className="h-4 w-4 text-blue-600 hover:-rotate-12 transition-transform duration-300" />
               )}
             </button>
 
-            {/* Status light (Desktop Only) */}
-            {!isMobileView && (
-              <div className="hidden xl:flex items-center gap-2 bg-emerald-500/10 px-3 py-1.5 rounded-full border border-emerald-500/20">
-                <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></div>
-                <span className="text-[9px] font-extrabold text-emerald-500 tracking-wide uppercase font-mono">Secured</span>
-              </div>
-            )}
-
             {/* Profile Avatar & Info */}
-            <div className={`flex items-center gap-1 sm:gap-2 ${!isMobileView ? 'border-l border-main-border pl-3 md:pl-4' : 'border-l border-main-border/50 pl-1.5 sm:pl-2'}`}>
+            <div className="flex items-center gap-1.5 sm:gap-2 border-l border-main-border/50 pl-1.5 sm:pl-2.5 shrink-0">
               {!isMobileView && (
-                <div className="text-right hidden md:block max-w-[100px] lg:max-w-[120px]">
+                <div className="text-right hidden 2xl:block max-w-[110px]">
                   <p className="text-xs font-bold text-main-text leading-tight truncate">{currentUser.fullName}</p>
                   <p className="text-[9px] text-muted-text font-mono truncate">@{currentUser.username}</p>
                 </div>
@@ -396,21 +378,23 @@ export default function App() {
                 {currentUser.avatarUrl ? (
                   <img src={currentUser.avatarUrl} alt={currentUser.fullName} referrerPolicy="no-referrer" className="w-full h-full object-cover select-none animate-fade-in" />
                 ) : (
-                  <User className="h-4 w-4 sm:h-4.5 sm:w-4.5" />
+                  <User className="h-4 w-4" />
                 )}
               </button>
               
-              <button
-                onClick={() => {
-                  logoutUser();
-                  setCurrentUser(null);
-                  setActiveTab('timesheets');
-                }}
-                className={`text-xs font-semibold cursor-pointer transition shrink-0 min-h-[44px] flex items-center justify-center ${isMobileView ? 'text-rose-400 hover:text-rose-300 px-1 py-1 bg-transparent border-none' : 'bg-rose-500/10 hover:bg-rose-500 hover:text-white border border-rose-500/20 text-rose-500 px-2.5 py-1.5 rounded-xl ml-1'}`}
-                title="Log Out"
-              >
-                {isMobileView ? 'Exit' : 'Log Out'}
-              </button>
+              {!isMobileView && (
+                <button
+                  onClick={() => {
+                    logoutUser();
+                    setCurrentUser(null);
+                    setActiveTab('timesheets');
+                  }}
+                  className="hidden sm:flex items-center justify-center text-xs font-semibold cursor-pointer transition shrink-0 h-9 bg-rose-500/10 hover:bg-rose-500 hover:text-white border border-rose-500/20 text-rose-500 px-2.5 rounded-xl"
+                  title="Log Out"
+                >
+                  Log Out
+                </button>
+              )}
             </div>
           </div>
         </header>

@@ -434,7 +434,7 @@ export default function AccountView({ currentUser, onUpdateUser, onLogout, isMob
           
           {/* Sub-tab Navigation */}
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-main-border/60 pb-3">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => setActiveTab('profile')}
@@ -460,6 +460,15 @@ export default function AccountView({ currentUser, onUpdateUser, onLogout, isMob
                 <BellRing className="h-4 w-4 text-blue-400" />
                 <span>Shift Reminders & Web Push</span>
                 <span className="text-[10px] px-1.5 py-0.5 rounded-full font-mono bg-blue-500/20 text-blue-300 font-bold">5:00 PM</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => window.dispatchEvent(new CustomEvent('workspace-open-phone-sizing'))}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer transition bg-card-bg text-muted-text hover:text-main-text hover:border-blue-500/40 hover:bg-blue-500/5 border border-main-border"
+              >
+                <Smartphone className="h-4 w-4 text-blue-400" />
+                <span>Phone & App Sizing</span>
               </button>
             </div>
 

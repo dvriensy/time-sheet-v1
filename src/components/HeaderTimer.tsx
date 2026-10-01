@@ -135,18 +135,18 @@ export const HeaderTimer: React.FC<HeaderTimerProps> = ({ currentUser, onShiftLo
         className="hidden"
       />
       {activeSession?.isClockedIn ? (
-        // Active Running State: live timer + FLHA button + 1-tap stop button
+        // Active Running State: clean, compact live timer pill + 1-tap stop button
         <div
           id="header-active-timer-pill"
-          className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 sm:py-1.5 min-h-[44px] rounded-xl bg-emerald-500/10 dark:bg-emerald-500/15 border border-emerald-500/30 text-main-text shadow-sm shrink-0"
-          title={`Active Shift: Started at ${activeSession.startTime || 'now'}`}
+          className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 h-9 sm:h-10 rounded-xl bg-emerald-500/10 dark:bg-emerald-500/15 border border-emerald-500/30 text-main-text shadow-xs shrink-0"
+          title={`Active Day: Started at ${activeSession.startTime || 'now'}`}
         >
           <span className="relative flex h-2 w-2 shrink-0">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
           </span>
 
-          <span className="font-mono text-xs font-bold text-emerald-600 dark:text-emerald-400 tracking-tight">
+          <span className="font-mono text-[11px] sm:text-xs font-bold text-emerald-600 dark:text-emerald-400 tracking-tight tabular-nums">
             {formatTimer(secondsElapsed)}
           </span>
 
@@ -161,23 +161,23 @@ export const HeaderTimer: React.FC<HeaderTimerProps> = ({ currentUser, onShiftLo
               }
             }}
             disabled={isUploadingFlha}
-            className={`flex items-center justify-center gap-1 px-1.5 sm:px-2 py-1 min-h-[34px] rounded-lg text-[10px] font-bold transition cursor-pointer shrink-0 border ${
+            className={`hidden lg:inline-flex items-center justify-center gap-1 px-2 py-1 h-7 rounded-lg text-[10px] font-bold transition cursor-pointer shrink-0 border ${
               activeSession.flhaImageUrl
                 ? 'bg-emerald-500/20 text-emerald-500 border-emerald-500/40 hover:bg-emerald-500/30'
                 : 'bg-amber-500/15 text-amber-500 border-amber-500/35 hover:bg-amber-500/25'
             }`}
             title={
               activeSession.flhaImageUrl
-                ? 'FLHA Attached (Click to View or Replace)'
+                ? 'FLHA Attached (Click to View)'
                 : 'Attach FLHA Safety Card to Active Shift'
             }
           >
             {activeSession.flhaImageUrl ? (
-              <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
+              <ShieldCheck className="h-3 w-3 shrink-0" />
             ) : (
-              <Camera className="h-3.5 w-3.5 shrink-0" />
+              <Camera className="h-3 w-3 shrink-0" />
             )}
-            <span className="hidden md:inline">
+            <span>
               {isUploadingFlha ? '...' : activeSession.flhaImageUrl ? 'FLHA ✓' : '+FLHA'}
             </span>
           </button>
@@ -185,11 +185,11 @@ export const HeaderTimer: React.FC<HeaderTimerProps> = ({ currentUser, onShiftLo
           <button
             id="header-stop-timer-btn"
             onClick={handleStop}
-            className="flex items-center justify-center gap-1 ml-0.5 px-2 sm:px-2.5 py-1.5 min-h-[34px] rounded-lg bg-rose-500 hover:bg-rose-600 active:scale-95 text-white text-xs font-semibold shadow-xs transition-all cursor-pointer shrink-0"
-            title="Stop Timer & Save Shift"
+            className="flex items-center justify-center gap-1 px-2 sm:px-2.5 h-7 rounded-lg bg-rose-500 hover:bg-rose-600 active:scale-95 text-white text-[11px] font-bold shadow-xs transition-all cursor-pointer shrink-0"
+            title="End Day & Save Shift"
           >
             <Square className="h-2.5 w-2.5 fill-current shrink-0" />
-            <span className="hidden sm:inline">Stop</span>
+            <span className="hidden md:inline">End</span>
           </button>
         </div>
       ) : (
@@ -197,8 +197,8 @@ export const HeaderTimer: React.FC<HeaderTimerProps> = ({ currentUser, onShiftLo
         <button
           id="header-start-timer-btn"
           onClick={handleStart}
-          className="min-h-[44px] min-w-[40px] flex items-center justify-center gap-1.5 cursor-pointer font-medium border border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-600 hover:text-white hover:border-emerald-600 shadow-sm transition-all duration-200 active:scale-95 px-2.5 sm:px-3 py-2 rounded-xl text-xs shrink-0"
-          title="Start Shift Timer (1-tap, no task required)"
+          className="h-9 sm:h-10 min-w-[36px] flex items-center justify-center gap-1.5 cursor-pointer font-semibold border border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-600 hover:text-white hover:border-emerald-600 shadow-xs transition-all duration-200 active:scale-95 px-2.5 sm:px-3 rounded-xl text-xs shrink-0"
+          title="Start Shift Timer (1-tap)"
           aria-label="Start Timer"
         >
           <Play className="h-3.5 w-3.5 fill-current shrink-0" />

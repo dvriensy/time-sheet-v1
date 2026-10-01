@@ -1198,7 +1198,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                         <div className="flex items-start gap-2">
                           <Briefcase className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-0.5" />
                           <div className="space-y-0.5">
-                            <span className="text-[10px] text-muted-text uppercase font-mono block">Active Task</span>
+                            <span className="text-[10px] text-muted-text uppercase font-mono block">Job Name / Title</span>
                             <p className="text-xs font-semibold text-main-text leading-snug">{active.project}</p>
                           </div>
                         </div>
@@ -1206,7 +1206,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                         <div className="flex items-start gap-2">
                           <MapPin className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-0.5" />
                           <div className="space-y-0.5">
-                            <span className="text-[10px] text-muted-text uppercase font-mono block">GPS Location</span>
+                            <span className="text-[10px] text-muted-text uppercase font-mono block">Job Location</span>
                             <p className="text-xs font-semibold text-main-text leading-none">{active.location}</p>
                           </div>
                         </div>
@@ -1487,11 +1487,11 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
 
                       <div className="text-xs space-y-1 text-left font-mono border-t border-main-border/40 pt-2.5">
                         <div className="flex justify-between">
-                          <span className="text-muted-text">Active Task:</span>
+                          <span className="text-muted-text">Job Name / Title:</span>
                           <strong className="text-main-text truncate max-w-[180px]">{session.project || 'General'}</strong>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-muted-text">Location:</span>
+                          <span className="text-muted-text">Job Location:</span>
                           <strong className="text-main-text truncate max-w-[180px]">{session.flhaLocation || session.location || 'Site'}</strong>
                         </div>
                       </div>
@@ -1573,11 +1573,11 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
 
                       <div className="text-[11px] space-y-1 text-left font-mono border-t border-main-border/40 pt-2.5">
                         <div className="flex justify-between">
-                          <span className="text-muted-text">Task:</span>
+                          <span className="text-muted-text">Job Name / Title:</span>
                           <strong className="text-main-text truncate max-w-[180px]">{entry.project}</strong>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-muted-text">Site:</span>
+                          <span className="text-muted-text">Job Location:</span>
                           <strong className="text-main-text truncate max-w-[180px]">{entry.flhaLocation || entry.locationName}</strong>
                         </div>
                         <div className="flex justify-between">
@@ -3403,16 +3403,16 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                 </div>
 
                 <div className="p-2.5 rounded-xl bg-card-bg border border-main-border">
-                  <span className="text-[10px] uppercase font-mono text-muted-text block">Site / Location</span>
+                  <span className="text-[10px] uppercase font-mono text-muted-text block">Job Location</span>
                   <span className="font-semibold text-main-text mt-0.5 block truncate" title={selectedManagerFlhaEntry.flhaLocation || selectedManagerFlhaEntry.locationName}>
                     {selectedManagerFlhaEntry.flhaLocation || selectedManagerFlhaEntry.locationName || 'General Site'}
                   </span>
                 </div>
 
                 <div className="p-2.5 rounded-xl bg-card-bg border border-main-border">
-                  <span className="text-[10px] uppercase font-mono text-muted-text block">Active Task</span>
+                  <span className="text-[10px] uppercase font-mono text-muted-text block">Job Name / Title</span>
                   <span className="font-semibold text-main-text mt-0.5 block truncate" title={selectedManagerFlhaEntry.project}>
-                    {selectedManagerFlhaEntry.project || 'General Task'}
+                    {selectedManagerFlhaEntry.project || 'General Work'}
                   </span>
                 </div>
               </div>

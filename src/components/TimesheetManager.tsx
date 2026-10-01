@@ -1201,48 +1201,64 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
         }`}>
           
           {/* Status Indicators */}
-          <div className={`flex items-center justify-between ${isMobileView ? 'mb-4' : 'mb-6'}`}>
-            <span className={`text-xs font-semibold font-mono ${isClockedIn ? 'text-blue-100' : 'text-muted-text'}`}>LIVE TIMER</span>
-            <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
+          <div className="flex items-center justify-between gap-2 mb-3.5">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className={`text-xs font-bold font-mono tracking-wider uppercase ${isClockedIn ? 'text-blue-100' : 'text-muted-text'}`}>
+                {isClockedIn ? 'ACTIVE WORKDAY' : 'LIVE TIMER'}
+              </span>
+            </div>
+            <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold shrink-0 ${
               isClockedIn 
-                ? 'bg-white/20 text-white' 
+                ? 'bg-white/20 text-white border border-white/20 shadow-xs' 
                 : 'bg-app-bg text-muted-text border border-main-border'
             }`}>
-              <span className={`h-1.5 w-1.5 rounded-full ${isClockedIn ? 'bg-white animate-ping' : 'bg-muted-text'}`} />
+              <span className={`h-1.5 w-1.5 rounded-full ${isClockedIn ? 'bg-emerald-300 animate-ping' : 'bg-muted-text'}`} />
               {isClockedIn ? 'Active Shift' : 'Inactive'}
             </span>
           </div>
 
           {/* Time Display */}
-          <div className={`text-center ${isMobileView ? 'py-4' : 'py-6'} space-y-4`}>
+          <div className="space-y-2.5">
             {isClockedIn ? (
-              <div className="grid grid-cols-2 gap-4 border-b border-white/10 pb-4">
-                <div>
-                  <span className="block text-[10px] font-mono text-blue-200/70 uppercase tracking-widest mb-1">Task Duration</span>
-                  <h2 className="text-2xl sm:text-3xl font-bold tracking-tight font-mono select-none text-white truncate">
-                    {formatTimer(secondsElapsed)}
-                  </h2>
+              <>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div className="rounded-2xl bg-slate-950/25 border border-white/15 px-3 py-3 text-center">
+                    <span className="block text-[10px] font-mono text-blue-200/80 uppercase tracking-wider mb-1">
+                      Job Duration
+                    </span>
+                    <h2 className="text-lg sm:text-xl xl:text-2xl font-bold tracking-tight font-mono tabular-nums select-none text-white">
+                      {formatTimer(secondsElapsed)}
+                    </h2>
+                  </div>
+                  <div className="rounded-2xl bg-slate-950/25 border border-white/15 px-3 py-3 text-center">
+                    <span className="block text-[10px] font-mono text-blue-200/80 uppercase tracking-wider mb-1">
+                      Day Duration
+                    </span>
+                    <h2 className="text-lg sm:text-xl xl:text-2xl font-bold tracking-tight font-mono tabular-nums select-none text-white">
+                      {formatTimer(daySecondsElapsed)}
+                    </h2>
+                  </div>
                 </div>
-                <div className="border-l border-white/10">
-                  <span className="block text-[10px] font-mono text-blue-200/70 uppercase tracking-widest mb-1">Day Duration</span>
-                  <h2 className="text-2xl sm:text-3xl font-bold tracking-tight font-mono select-none text-white truncate">
-                    {formatTimer(daySecondsElapsed)}
-                  </h2>
+
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-xl bg-slate-950/20 border border-white/10 px-3 py-2 text-[11px] font-mono text-blue-100/90">
+                  <span className="flex items-center gap-1">
+                    <span className="text-blue-200/70">Start:</span>
+                    <strong className="text-white">{timerStart}</strong>
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="text-blue-200/70">Lunch:</span>
+                    <strong className="text-white">
+                      {bypassLunch ? 'Bypassed (0m)' : (daySecondsElapsed < 18000 ? 'None (< 5h)' : 'Auto -30m')}
+                    </strong>
+                  </span>
                 </div>
-              </div>
+              </>
             ) : (
-              <div>
+              <div className="text-center py-4 sm:py-5 rounded-2xl bg-app-bg/50 border border-main-border/60">
                 <span className="block text-[10px] font-mono text-muted-text uppercase tracking-widest mb-1">Shift Duration</span>
-                <h2 className="text-3xl sm:text-5xl font-bold tracking-tight font-mono select-none text-main-text">
+                <h2 className="text-3xl sm:text-4xl font-bold tracking-tight font-mono tabular-nums select-none text-main-text">
                   00:00:00
                 </h2>
-              </div>
-            )}
-            {isClockedIn && (
-              <div className="mt-2 flex items-center justify-center gap-3 text-xs font-mono text-blue-100/80">
-                <span>Start: <strong className="text-white">{timerStart}</strong></span>
-                <span>•</span>
-                <span>Lunch Deduction: <strong className="text-white">{bypassLunch ? 'Bypassed (0m)' : (daySecondsElapsed < 18000 ? 'None (< 5 hrs)' : 'Auto -30m')}</strong></span>
               </div>
             )}
           </div>
@@ -1287,13 +1303,13 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
           <div className={`${isMobileView ? 'mt-3 space-y-2.5 border-t pt-3' : 'mt-4 space-y-3.5 border-t pt-5'} ${isClockedIn ? 'border-white/10' : 'border-main-border'}`}>
             <div>
               <label className={`text-[11px] font-semibold uppercase font-mono block mb-1 ${isClockedIn ? 'text-blue-200' : 'text-muted-text'}`}>
-                Active Task <span className="text-muted-text/60 font-normal lowercase">(optional)</span>
+                Job Name / Job Title <span className="text-muted-text/60 font-normal lowercase">(optional)</span>
               </label>
               <input
                 type="text"
                 value={activeProject}
                 onChange={(e) => setActiveProject(e.target.value)}
-                placeholder="Task / job (optional)"
+                placeholder="Job name or title (optional)"
                 className={`w-full rounded-xl px-3 py-2 text-xs font-medium focus:outline-none transition min-h-[44px] ${
                   isClockedIn 
                     ? 'bg-blue-900/30 text-white border border-blue-400/30' 
@@ -1304,13 +1320,13 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
 
             <div>
               <label className={`text-[11px] font-semibold uppercase font-mono block mb-1 ${isClockedIn ? 'text-blue-200' : 'text-muted-text'}`}>
-                Where are you? <span className="text-muted-text/60 font-normal lowercase">(optional)</span>
+                Job Location <span className="text-muted-text/60 font-normal lowercase">(optional)</span>
               </label>
               <input
                 type="text"
                 value={activeLocation}
                 onChange={(e) => setActiveLocation(e.target.value)}
-                placeholder="Site / location (optional)"
+                placeholder="Job location (optional)"
                 className={`w-full rounded-xl px-3 py-2 text-xs font-medium focus:outline-none transition min-h-[44px] ${
                   isClockedIn 
                     ? 'bg-blue-900/30 text-white border border-blue-400/30' 
@@ -2210,7 +2226,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                                   )}
                                   {hasMultipleTasks && (
                                     <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-2.5 py-0.5 text-[9px] font-semibold text-blue-500 uppercase tracking-wider border border-blue-500/20">
-                                      {dayEntries.length} Tasks
+                                      {dayEntries.length} Jobs
                                     </span>
                                   )}
                                   {!hasMultipleTasks && singleEntry.isOvertime && (
@@ -2225,20 +2241,15 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                                         e.stopPropagation();
                                         setSelectedFlhaEntry(singleEntry);
                                       }}
-                                      className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 px-2 py-1 text-[10px] font-bold uppercase tracking-wider transition cursor-pointer shadow-xs min-h-[36px]"
+                                      className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider transition cursor-pointer shadow-xs"
                                       title="Click to view full-size FLHA Safety Card"
                                     >
-                                      <img 
-                                        src={singleEntry.flhaImageUrl} 
-                                        alt="FLHA" 
-                                        className="w-4 h-4 rounded object-cover border border-emerald-500/40" 
-                                      />
+                                      <ShieldCheck className="h-3 w-3 shrink-0" />
                                       <span>FLHA Card</span>
-                                      <Eye className="h-3 w-3 opacity-70" />
                                     </button>
                                   )}
                                   {hasMultipleTasks && dayEntries.some(e => e.flhaImageUrl) && (
-                                    <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
+                                    <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider">
                                       <ShieldCheck className="h-3 w-3 text-emerald-500" />
                                       FLHA Attached
                                     </span>
@@ -2253,7 +2264,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                                     <span className="hidden sm:inline text-muted-text/40">•</span>
                                     <div className="flex items-center gap-1.5 truncate">
                                       <Briefcase className="h-3.5 w-3.5 text-blue-400 sm:hidden shrink-0" />
-                                      <span className="text-[10px] uppercase font-bold text-muted-text/70 sm:hidden">Task:</span>
+                                      <span className="text-[10px] uppercase font-bold text-muted-text/70 sm:hidden">Job:</span>
                                       <span className="truncate text-main-text font-medium">{singleEntry.project || 'General'}</span>
                                     </div>
                                     {singleEntry.locationName && (
@@ -2261,7 +2272,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                                         <span className="hidden sm:inline text-muted-text/40">•</span>
                                         <div className="flex items-center gap-1.5 truncate">
                                           <MapPin className="h-3.5 w-3.5 text-blue-400 sm:hidden shrink-0" />
-                                          <span className="text-[10px] uppercase font-bold text-muted-text/70 sm:hidden">Client/Site:</span>
+                                          <span className="text-[10px] uppercase font-bold text-muted-text/70 sm:hidden">Location:</span>
                                           <span className="truncate text-muted-text">{singleEntry.locationName}</span>
                                         </div>
                                       </>
@@ -2574,13 +2585,13 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                   </div>
                   <div>
                     <label className="text-[11px] font-semibold text-muted-text block mb-1 uppercase font-mono">
-                      Active Task <span className="text-muted-text/60 font-normal lowercase">(optional)</span>
+                      Job Name / Job Title <span className="text-muted-text/60 font-normal lowercase">(optional)</span>
                     </label>
                     <input
                       type="text"
                       value={manualProject}
                       onChange={(e) => setManualProject(e.target.value)}
-                      placeholder="Task / job (optional)"
+                      placeholder="Job name or title (optional)"
                       className="w-full rounded-xl border border-main-border bg-input-bg px-3 py-2 text-xs font-medium text-main-text focus:border-blue-500/50 focus:outline-none transition-colors"
                     />
                   </div>
@@ -2716,13 +2727,13 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
 
                 <div>
                   <label className="text-[11px] font-semibold text-muted-text block mb-1 uppercase font-mono">
-                    Where / Location <span className="text-muted-text/60 font-normal lowercase">(optional)</span>
+                    Job Location <span className="text-muted-text/60 font-normal lowercase">(optional)</span>
                   </label>
                   <input
                     type="text"
                     value={manualLocation}
                     onChange={(e) => setManualLocation(e.target.value)}
-                    placeholder="Site / location (optional)"
+                    placeholder="Job location (optional)"
                     className="w-full rounded-xl border border-main-border bg-input-bg px-3 py-2 text-xs font-medium text-main-text focus:border-blue-500/50 focus:outline-none transition-colors"
                   />
                 </div>
@@ -2976,16 +2987,16 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                 </div>
 
                 <div className="p-2.5 rounded-xl bg-card-bg border border-main-border">
-                  <span className="text-[10px] uppercase font-mono text-muted-text block">Site / Location</span>
+                  <span className="text-[10px] uppercase font-mono text-muted-text block">Job Location</span>
                   <span className="font-semibold text-main-text mt-0.5 block truncate" title={selectedFlhaEntry.flhaLocation || selectedFlhaEntry.locationName}>
                     {selectedFlhaEntry.flhaLocation || selectedFlhaEntry.locationName || 'General Site'}
                   </span>
                 </div>
 
                 <div className="p-2.5 rounded-xl bg-card-bg border border-main-border">
-                  <span className="text-[10px] uppercase font-mono text-muted-text block">Active Task</span>
+                  <span className="text-[10px] uppercase font-mono text-muted-text block">Job Name / Title</span>
                   <span className="font-semibold text-main-text mt-0.5 block truncate" title={selectedFlhaEntry.project}>
-                    {selectedFlhaEntry.project || 'General Task'}
+                    {selectedFlhaEntry.project || 'General Work'}
                   </span>
                 </div>
               </div>
