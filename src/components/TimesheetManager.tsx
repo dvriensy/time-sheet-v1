@@ -16,6 +16,7 @@ import {
   PayPeriodGroup,
   getCurrentUser,
   updateActiveSession,
+  updateActiveSessionFlha,
   clearActiveSession,
   clearActiveSessionLocally,
   deleteActiveSessionFromFirestore,
@@ -74,7 +75,9 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     initialDayBreakSecondsElapsed,
     initialTaskStartTimestamp,
     initialClockInTimestamp,
-    initialIsOvertime
+    initialIsOvertime,
+    initialFlhaImage,
+    initialFlhaTimestamp
   } = useMemo(() => {
     const user = getCurrentUser();
     if (user) {
@@ -107,6 +110,8 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
           initialTaskStartTimestamp: taskStart,
           initialClockInTimestamp: clockInStart,
           initialIsOvertime: !!session.isOvertime,
+          initialFlhaImage: session.flhaImageUrl || null,
+          initialFlhaTimestamp: session.flhaTimestamp || null,
         };
       }
     }
@@ -124,6 +129,8 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
       initialTaskStartTimestamp: null as number | null,
       initialClockInTimestamp: null as number | null,
       initialIsOvertime: false,
+      initialFlhaImage: null as string | null,
+      initialFlhaTimestamp: null as string | null,
     };
   }, []);
 
@@ -167,6 +174,9 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
   const [activeProject, setActiveProject] = useState(initialProject);
   const [activeLocation, setActiveLocation] = useState(initialLocation);
   const [activeNotes, setActiveNotes] = useState(initialNotes);
+  const [activeFlhaImage, setActiveFlhaImage] = useState<string | null>(initialFlhaImage);
+  const [activeFlhaTimestamp, setActiveFlhaTimestamp] = useState<string | null>(initialFlhaTimestamp);
+  const [isCompressingActiveFlha, setIsCompressingActiveFlha] = useState<boolean>(false);
   const [switchNotification, setSwitchNotification] = useState<string | null>(null);
 
   // UI state
@@ -334,6 +344,87 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     setManualFlhaTimestamp(null);
   };
 
+  // Live Active Shift FLHA handlers (while clocked in or preparing shift)
+  const handleActiveFlhaPhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setIsCompressingActiveFlha(true);
+      const dataUrl = await compressImageToDataUrl(file, 1200, 1200, 0.82);
+      const nowIso = new Date().toISOString();
+      setActiveFlhaImage(dataUrl);
+      setActiveFlhaTimestamp(nowIso);
+      if (isClockedIn) {
+        updateActiveSessionFlha(dataUrl, nowIso, activeLocation || 'General Site');
+      }
+      setSwitchNotification('FLHA Safety Card attached to your active shift and synced live to Management.');
+      setTimeout(() => setSwitchNotification(null), 4500);
+    } catch (err) {
+      console.error('Active shift FLHA photo processing failed:', err);
+      setValidationError('Failed to process FLHA image. Please try another photo.');
+    } finally {
+      setIsCompressingActiveFlha(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleRemoveActiveFlhaPhoto = () => {
+    setActiveFlhaImage(null);
+    setActiveFlhaTimestamp(null);
+    if (isClockedIn) {
+      updateActiveSessionFlha(null);
+    }
+  };
+
+  const handleViewActiveFlha = () => {
+    if (!activeFlhaImage) return;
+    setSelectedFlhaEntry({
+      id: 'active-live-flha',
+      username: user?.username || 'employee',
+      date: formatLocalDate(),
+      startTime: timerStart || 'Active',
+      endTime: 'Now (Clocked In)',
+      breakMinutes: 0,
+      project: activeProject || 'General Work',
+      locationName: activeLocation || 'General Site',
+      notes: activeNotes || 'Live active shift FLHA',
+      totalHours: Number((daySecondsElapsed / 3600).toFixed(2)),
+      isSynced: true,
+      flhaImageUrl: activeFlhaImage,
+      flhaTimestamp: activeFlhaTimestamp || new Date().toISOString(),
+      flhaLocation: activeLocation || 'General Site',
+    });
+  };
+
+  useEffect(() => {
+    const onOpenActiveFlha = () => {
+      const currentUser = getCurrentUser();
+      if (!currentUser) return;
+      const s = getActiveSessions()[currentUser.username];
+      const img = s?.flhaImageUrl || activeFlhaImage;
+      if (img) {
+        setSelectedFlhaEntry({
+          id: 'active-live-flha',
+          username: currentUser.username,
+          date: formatLocalDate(),
+          startTime: s?.startTime || timerStart || 'Active',
+          endTime: 'Now (Clocked In)',
+          breakMinutes: 0,
+          project: s?.project || activeProject || 'General Work',
+          locationName: s?.location || activeLocation || 'General Site',
+          notes: s?.notes || activeNotes || 'Live active shift FLHA',
+          totalHours: Number((daySecondsElapsed / 3600).toFixed(2)),
+          isSynced: true,
+          flhaImageUrl: img,
+          flhaTimestamp: s?.flhaTimestamp || activeFlhaTimestamp || new Date().toISOString(),
+          flhaLocation: s?.flhaLocation || s?.location || activeLocation || 'General Site',
+        });
+      }
+    };
+    window.addEventListener('workspace-view-active-flha', onOpenActiveFlha);
+    return () => window.removeEventListener('workspace-view-active-flha', onOpenActiveFlha);
+  }, [activeFlhaImage, activeFlhaTimestamp, timerStart, activeProject, activeLocation, activeNotes, daySecondsElapsed]);
+
   // Escape key listener to close FLHA viewer modal, manual shift logger dialog, and other dialogs
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -458,6 +549,8 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
         setActiveLocation(session.location || '');
         setActiveNotes(session.notes || '');
         setIsOvertime(!!session.isOvertime);
+        setActiveFlhaImage(session.flhaImageUrl || null);
+        setActiveFlhaTimestamp(session.flhaTimestamp || null);
         setTaskStartTimestamp(incomingTaskStart);
         setClockInTimestamp(incomingClockIn);
         setSecondsElapsed(incomingSecondsElapsed);
@@ -476,6 +569,8 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
         setTimerStart('');
         setIsOvertime(false);
         setBypassLunch(false);
+        setActiveFlhaImage(null);
+        setActiveFlhaTimestamp(null);
 
         // Refresh UI & entries list
         onRefreshEntries();
@@ -516,13 +611,15 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
         const projectChanged = activeProject !== (session.project || '');
         const locationChanged = activeLocation !== (session.location || '');
         const notesChanged = activeNotes !== (session.notes || '');
+        const flhaChanged = (activeFlhaImage || '') !== (session.flhaImageUrl || '');
 
         if (
           statusChanged ||
           startChanged ||
           projectChanged ||
           locationChanged ||
-          notesChanged
+          notesChanged ||
+          flhaChanged
         ) {
           setIsClockedIn(true);
           setTimerStart(session.startTime);
@@ -530,6 +627,8 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
           setActiveLocation(session.location || '');
           setActiveNotes(session.notes || '');
           setIsOvertime(!!session.isOvertime);
+          setActiveFlhaImage(session.flhaImageUrl || null);
+          setActiveFlhaTimestamp(session.flhaTimestamp || null);
           setTaskStartTimestamp(incomingTaskStart);
           setClockInTimestamp(incomingClockIn);
           setSecondsElapsed(incomingSecondsElapsed);
@@ -546,6 +645,8 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
           setTimerStart('');
           setIsOvertime(false);
           setBypassLunch(false);
+          setActiveFlhaImage(null);
+          setActiveFlhaTimestamp(null);
           onRefreshEntries();
         }
       }
@@ -564,6 +665,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     activeProject,
     activeLocation,
     activeNotes,
+    activeFlhaImage,
     taskStartTimestamp,
     clockInTimestamp,
     onRefreshEntries
@@ -589,12 +691,15 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
         dayBreakSecondsElapsed: 0,
         taskStartTimestamp: taskStartTimestamp || undefined,
         clockInTimestamp: clockInTimestamp || undefined,
+        flhaImageUrl: activeFlhaImage || '',
+        flhaTimestamp: activeFlhaTimestamp || undefined,
+        flhaLocation: activeLocation || 'General Site',
       });
     } else {
       clearActiveSession();
       deleteActiveSessionFromFirestore(currentUser.username);
     }
-  }, [isClockedIn, timerStart, activeProject, activeLocation, activeNotes, isOvertime, taskStartTimestamp, clockInTimestamp]);
+  }, [isClockedIn, timerStart, activeProject, activeLocation, activeNotes, isOvertime, activeFlhaImage, activeFlhaTimestamp, taskStartTimestamp, clockInTimestamp]);
 
   // Periodically sync seconds elapsed to Firestore (every 10 seconds) to avoid quota issues, but keep localStorage updated every second
   useEffect(() => {
@@ -736,8 +841,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     const breakMins = (bypassLunch || isUnder5Hours) ? 0 : 30;
 
     try {
-      // Save the entry using local calendar date
-      addTimesheetEntry({
+      const newEntryPayload: Omit<TimesheetEntry, 'id' | 'totalHours' | 'earnings' | 'isSynced'> = {
         date: formatLocalDate(now),
         startTime: timerStart,
         endTime: endStr,
@@ -748,7 +852,16 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
         geofencedClockIn: simulatedGeoTrigger || false,
         geofencedClockOut: simulatedGeoTrigger || false,
         isOvertime: isOvertime
-      });
+      };
+
+      if (activeFlhaImage) {
+        newEntryPayload.flhaImageUrl = activeFlhaImage;
+        newEntryPayload.flhaTimestamp = activeFlhaTimestamp || now.toISOString();
+        newEntryPayload.flhaLocation = activeLocation || 'Site';
+      }
+
+      // Save the entry using local calendar date
+      addTimesheetEntry(newEntryPayload);
 
       // Clear active session locally & in Firestore
       clearActiveSession();
@@ -765,6 +878,8 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
       setIsOvertime(false);
       setTimerStart('');
       setActiveNotes('');
+      setActiveFlhaImage(null);
+      setActiveFlhaTimestamp(null);
       
       window.dispatchEvent(new Event('storage-sync'));
       onRefreshEntries();
@@ -782,19 +897,27 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     const endStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
 
     try {
-      // Save current task segment without break deduction (deduction applied on end of shift)
-      addTimesheetEntry({
+      const segmentPayload: Omit<TimesheetEntry, 'id' | 'totalHours' | 'earnings' | 'isSynced'> = {
         date: formatLocalDate(now),
         startTime: timerStart,
         endTime: endStr,
         breakMinutes: 0,
-        project: activeProject,
-        locationName: activeLocation,
+        project: activeProject || 'General Work',
+        locationName: activeLocation || 'Site',
         notes: activeNotes || 'Work segment completed.',
         geofencedClockIn: false,
         geofencedClockOut: false,
         isOvertime: isOvertime
-      });
+      };
+
+      if (activeFlhaImage) {
+        segmentPayload.flhaImageUrl = activeFlhaImage;
+        segmentPayload.flhaTimestamp = activeFlhaTimestamp || now.toISOString();
+        segmentPayload.flhaLocation = activeLocation || 'Site';
+      }
+
+      // Save current task segment without break deduction (deduction applied on end of shift)
+      addTimesheetEntry(segmentPayload);
 
       // Start next task segment immediately
       setTimerStart(endStr);
@@ -1209,6 +1332,158 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                 />
               </motion.div>
             )}
+
+            {/* LIVE SHIFT FLHA SAFETY CARD ATTACHMENT (Available while Clocked In or before starting shift) */}
+            <div
+              id="active-shift-flha-section"
+              className={`rounded-2xl p-3 border transition-all ${
+                isClockedIn
+                  ? activeFlhaImage
+                    ? 'bg-emerald-950/45 border-emerald-400/40'
+                    : 'bg-blue-950/40 border-blue-300/30'
+                  : activeFlhaImage
+                  ? 'bg-emerald-500/10 border-emerald-500/30'
+                  : 'bg-input-bg/50 border-main-border'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <ShieldCheck
+                    className={`h-4 w-4 shrink-0 ${
+                      activeFlhaImage
+                        ? 'text-emerald-400'
+                        : isClockedIn
+                        ? 'text-blue-200'
+                        : 'text-blue-500'
+                    }`}
+                  />
+                  <span
+                    className={`text-[11px] font-bold uppercase font-mono truncate ${
+                      isClockedIn ? 'text-white' : 'text-main-text'
+                    }`}
+                  >
+                    Shift FLHA Safety Card
+                  </span>
+                </div>
+                <span
+                  className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                    activeFlhaImage
+                      ? 'bg-emerald-500/25 text-emerald-300 border border-emerald-400/40'
+                      : isClockedIn
+                      ? 'bg-amber-500/25 text-amber-200 border border-amber-400/40'
+                      : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                  }`}
+                >
+                  {activeFlhaImage ? 'LIVE SYNCED' : isClockedIn ? 'ADD ANYTIME' : 'OPTIONAL'}
+                </span>
+              </div>
+
+              {activeFlhaImage ? (
+                <div className="flex items-center gap-3 bg-slate-950/40 p-2 rounded-xl border border-white/10">
+                  <button
+                    type="button"
+                    onClick={handleViewActiveFlha}
+                    className="relative w-14 h-14 rounded-lg overflow-hidden border border-emerald-400/40 shrink-0 group cursor-pointer"
+                    title="View Full-Screen FLHA Card"
+                  >
+                    <img
+                      src={activeFlhaImage}
+                      alt="Active Shift FLHA"
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
+                      <Maximize2 className="h-4 w-4 text-white" />
+                    </div>
+                  </button>
+
+                  <div className="flex-1 min-w-0 text-left space-y-1">
+                    <p className={`text-xs font-bold truncate ${isClockedIn ? 'text-emerald-200' : 'text-emerald-500'}`}>
+                      FLHA Attached to Shift
+                    </p>
+                    <p className={`text-[10px] font-mono truncate ${isClockedIn ? 'text-blue-200/80' : 'text-muted-text'}`}>
+                      {activeFlhaTimestamp
+                        ? `Captured ${new Date(activeFlhaTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                        : 'Visible to Manager Live'}
+                    </p>
+                    <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                      <button
+                        type="button"
+                        onClick={handleViewActiveFlha}
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 border border-emerald-400/30 text-[10px] font-semibold cursor-pointer transition"
+                      >
+                        <Eye className="h-3 w-3" />
+                        <span>View</span>
+                      </button>
+
+                      <label className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 text-blue-100 border border-blue-400/30 text-[10px] font-semibold cursor-pointer transition">
+                        <Camera className="h-3 w-3" />
+                        <span>Replace</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleActiveFlhaPhotoSelect}
+                          className="hidden"
+                        />
+                      </label>
+
+                      <button
+                        type="button"
+                        onClick={handleRemoveActiveFlhaPhoto}
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 border border-rose-400/30 text-[10px] font-semibold cursor-pointer transition"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className={`text-[10px] leading-snug ${isClockedIn ? 'text-blue-100/85' : 'text-muted-text'}`}>
+                    {isClockedIn
+                      ? 'Snap or upload your Field Level Hazard Assessment card while clocked in. Managers can view it immediately.'
+                      : 'Attach your FLHA photo now or at any time after clocking in.'}
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label
+                      className={`min-h-[42px] flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-xl border text-xs font-semibold cursor-pointer transition active:scale-95 ${
+                        isClockedIn
+                          ? 'bg-white/15 hover:bg-white/25 text-white border-white/25 shadow-xs'
+                          : 'bg-blue-600/10 hover:bg-blue-600/20 text-blue-500 border-blue-500/25'
+                      }`}
+                    >
+                      <Camera className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{isCompressingActiveFlha ? 'Processing...' : 'Snap Photo'}</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        disabled={isCompressingActiveFlha}
+                        onChange={handleActiveFlhaPhotoSelect}
+                        className="hidden"
+                      />
+                    </label>
+
+                    <label
+                      className={`min-h-[42px] flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-xl border text-xs font-semibold cursor-pointer transition active:scale-95 ${
+                        isClockedIn
+                          ? 'bg-blue-900/40 hover:bg-blue-900/60 text-blue-100 border-blue-300/30'
+                          : 'bg-card-bg hover:bg-input-bg text-muted-text hover:text-main-text border-main-border'
+                      }`}
+                    >
+                      <ImageIcon className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{isCompressingActiveFlha ? 'Wait...' : 'Upload File'}</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        disabled={isCompressingActiveFlha}
+                        onChange={handleActiveFlhaPhotoSelect}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {isClockedIn && (

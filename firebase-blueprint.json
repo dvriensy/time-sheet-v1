@@ -40,7 +40,10 @@
         "geofencedClockIn": { "type": "boolean" },
         "geofencedClockOut": { "type": "boolean" },
         "isSynced": { "type": "boolean" },
-        "isOvertime": { "type": "boolean" }
+        "isOvertime": { "type": "boolean" },
+        "flhaImageUrl": { "type": "string" },
+        "flhaTimestamp": { "type": "string" },
+        "flhaLocation": { "type": "string" }
       },
       "required": ["id", "username", "fullName", "date", "startTime", "endTime", "breakMinutes", "totalHours", "project", "isSynced"]
     },
@@ -60,7 +63,10 @@
         "lastActiveTimestamp": { "type": "string" },
         "secondsElapsed": { "type": "number" },
         "breakSecondsElapsed": { "type": "number" },
-        "isOvertime": { "type": "boolean" }
+        "isOvertime": { "type": "boolean" },
+        "flhaImageUrl": { "type": "string" },
+        "flhaTimestamp": { "type": "string" },
+        "flhaLocation": { "type": "string" }
       },
       "required": ["username", "fullName", "isClockedIn", "isOnBreak", "startTime", "project", "location", "notes", "lastActiveTimestamp"]
     },

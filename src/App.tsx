@@ -5,7 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Clock, User, Sun, Moon, Users, CalendarDays, Bell } from 'lucide-react';
+import { Clock, User, Sun, Moon, Users, CalendarDays, Bell, Smartphone } from 'lucide-react';
 import { 
   getTimesheets, 
   getAppSettings, 
@@ -24,6 +24,7 @@ import {
   registerServiceWorker, 
   startWorkday5pmScheduler 
 } from './utils/pushNotifications';
+import { applyDeviceProfileToDocument } from './utils/deviceProfile';
 import { TimesheetEntry } from './types';
 
 // Import our modular sub-components
@@ -33,6 +34,7 @@ import AccountView from './components/AccountView';
 import ManagerView from './components/ManagerView';
 import TimeOffSidebar from './components/TimeOffSidebar';
 import HeaderTimer from './components/HeaderTimer';
+import PhoneSizingModal from './components/PhoneSizingModal';
 
 export default function App() {
   // Initialize standard LocalStorage templates on mount
@@ -89,14 +91,21 @@ export default function App() {
 
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(getCurrentUser());
   const [isMobile, setIsMobile] = useState(false);
+  const [isPhoneSizingOpen, setIsPhoneSizingOpen] = useState(false);
 
   useEffect(() => {
     const handleResize = () => {
       setIsMobile(window.innerWidth < 1024);
+      applyDeviceProfileToDocument();
     };
     handleResize();
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    const handleOpenPhoneSizing = () => setIsPhoneSizingOpen(true);
+    window.addEventListener('workspace-open-phone-sizing', handleOpenPhoneSizing);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('workspace-open-phone-sizing', handleOpenPhoneSizing);
+    };
   }, []);
 
   // Web Push Notifications Service Worker & 5:00 PM Workday Shift Reminder Scheduler
@@ -338,6 +347,16 @@ export default function App() {
               )}
             </button>
 
+            {/* Phone / App Sizing Calibration Button */}
+            <button
+              onClick={() => setIsPhoneSizingOpen(true)}
+              className="p-2 min-h-[44px] min-w-[36px] rounded-xl border border-main-border bg-app-bg text-muted-text hover:text-blue-500 hover:border-blue-500/40 transition duration-200 cursor-pointer flex items-center justify-center shadow-sm active:scale-95 shrink-0"
+              title="Phone & App Screen Sizing (iPhone / Android)"
+              aria-label="Phone and App Screen Sizing"
+            >
+              <Smartphone className="h-4 w-4 sm:h-3.5 sm:w-3.5 md:h-4 md:w-4 shrink-0" />
+            </button>
+
             {/* Theme Toggle Button */}
             <button
               onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
@@ -516,8 +535,14 @@ export default function App() {
           }}
         />
 
-        {/* Footer info line */}
-        <footer className="mt-2 shrink-0 border-t border-main-border/30 py-2 text-center text-[9px] text-muted-text font-mono tracking-wider uppercase select-none">
+        {/* Phone & App Display Sizing Modal */}
+        <PhoneSizingModal
+          isOpen={isPhoneSizingOpen}
+          onClose={() => setIsPhoneSizingOpen(false)}
+        />
+
+        {/* Footer info line (hidden on mobile app viewports to maximize vertical space) */}
+        <footer className="hidden md:block mt-2 shrink-0 border-t border-main-border/30 py-2 text-center text-[9px] text-muted-text font-mono tracking-wider uppercase select-none">
           WORKSPACE Enterprise Tracker
         </footer>
       </div>
@@ -525,7 +550,7 @@ export default function App() {
   };
 
   return (
-    <div className="h-dvh min-h-dvh max-h-dvh overflow-hidden bg-app-bg text-main-text flex flex-col font-sans selection:bg-blue-600 selection:text-white transition-colors duration-200 pb-safe">
+    <div className="h-dvh min-h-dvh max-h-dvh overflow-hidden bg-app-bg text-main-text flex flex-col font-sans selection:bg-blue-600 selection:text-white transition-colors duration-200 pt-safe pb-safe pl-safe pr-safe">
       {/* Decorative radial lighting nodes */}
       <div className="fixed top-12 left-1/2 -translate-x-1/2 w-full max-w-7xl h-[400px] bg-gradient-to-b from-blue-500/5 to-transparent blur-3xl pointer-events-none" />
 

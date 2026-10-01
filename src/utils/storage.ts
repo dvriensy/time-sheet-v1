@@ -1514,6 +1514,9 @@ export interface ActiveSession {
   isOvertime?: boolean;
   taskStartTimestamp?: number;
   clockInTimestamp?: number;
+  flhaImageUrl?: string;
+  flhaTimestamp?: string;
+  flhaLocation?: string;
 }
 
 export function getActiveSessions(): Record<string, ActiveSession> {
@@ -1541,14 +1544,50 @@ export function updateActiveSession(session: Partial<ActiveSession>) {
     lastActiveTimestamp: new Date().toISOString()
   };
   
-  all[currentUsername] = {
+  const nextSession: ActiveSession = {
     ...existing,
     ...session,
     lastActiveTimestamp: new Date().toISOString()
   };
+
+  if (session.flhaImageUrl === undefined && existing.flhaImageUrl) {
+    nextSession.flhaImageUrl = existing.flhaImageUrl;
+    nextSession.flhaTimestamp = existing.flhaTimestamp;
+    nextSession.flhaLocation = existing.flhaLocation;
+  } else if (session.flhaImageUrl === '') {
+    delete nextSession.flhaImageUrl;
+    delete nextSession.flhaTimestamp;
+    delete nextSession.flhaLocation;
+  }
+  
+  all[currentUsername] = nextSession;
   
   safeSetItem('timesheets_tracker_active_sessions', JSON.stringify(all));
   syncActiveSessionToFirestore(currentUsername, all[currentUsername]);
+}
+
+export function updateActiveSessionFlha(flhaImageUrl: string | null, flhaTimestamp?: string | null, flhaLocation?: string) {
+  const currentUsername = localStorage.getItem('timesheets_tracker_current_user');
+  if (!currentUsername) return;
+  const all = getActiveSessions();
+  const existing = all[currentUsername];
+  if (!existing) return;
+
+  if (flhaImageUrl) {
+    existing.flhaImageUrl = flhaImageUrl;
+    existing.flhaTimestamp = flhaTimestamp || new Date().toISOString();
+    existing.flhaLocation = flhaLocation || existing.location || 'General Site';
+  } else {
+    delete existing.flhaImageUrl;
+    delete existing.flhaTimestamp;
+    delete existing.flhaLocation;
+  }
+  existing.lastActiveTimestamp = new Date().toISOString();
+  all[currentUsername] = existing;
+  safeSetItem('timesheets_tracker_active_sessions', JSON.stringify(all));
+  syncActiveSessionToFirestore(currentUsername, existing);
+  window.dispatchEvent(new Event('storage-sync'));
+  window.dispatchEvent(new CustomEvent('timer-state-changed', { detail: { isClockedIn: existing.isClockedIn, session: existing } }));
 }
 
 export function clearActiveSessionLocally(username?: string) {
@@ -1643,7 +1682,7 @@ export function stopOneTapTimer(options?: {
   const isUnder5Hours = elapsedSecs < 18000;
   const breakMinutes = (options?.bypassLunch || isUnder5Hours) ? 0 : 30;
 
-  const entry = addTimesheetEntry({
+  const entryPayload: Omit<TimesheetEntry, 'id' | 'totalHours' | 'earnings' | 'isSynced'> = {
     date: now.toISOString().slice(0, 10),
     startTime: session.startTime || endStr,
     endTime: endStr,
@@ -1654,7 +1693,15 @@ export function stopOneTapTimer(options?: {
     geofencedClockIn: false,
     geofencedClockOut: false,
     isOvertime: options?.isOvertime !== undefined ? options.isOvertime : !!session.isOvertime,
-  });
+  };
+
+  if (session.flhaImageUrl) {
+    entryPayload.flhaImageUrl = session.flhaImageUrl;
+    entryPayload.flhaTimestamp = session.flhaTimestamp || now.toISOString();
+    entryPayload.flhaLocation = session.flhaLocation || entryPayload.locationName;
+  }
+
+  const entry = addTimesheetEntry(entryPayload);
 
   clearActiveSessionLocally(currentUsername);
   deleteActiveSessionFromFirestore(currentUsername);

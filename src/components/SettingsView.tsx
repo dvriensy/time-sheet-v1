@@ -21,7 +21,9 @@ import {
   registerServiceWorker,
   getPushSubscriptionState,
   subscribeToPushNotifications,
-  trigger5pmShiftReminder
+  trigger5pmShiftReminder,
+  isNotificationSupported,
+  getNotificationPermission
 } from '../utils/pushNotifications';
 
 interface SettingsViewProps {
@@ -45,8 +47,8 @@ export default function SettingsView({ onSettingsChanged, privacyMode, onToggleP
     permission: NotificationPermission;
     isSubscribed: boolean;
   }>({
-    supported: typeof window !== 'undefined' && 'serviceWorker' in navigator && 'Notification' in window,
-    permission: typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default',
+    supported: isNotificationSupported(),
+    permission: getNotificationPermission(),
     isSubscribed: false
   });
   const [testingPush, setTestingPush] = useState(false);
@@ -225,7 +227,7 @@ export default function SettingsView({ onSettingsChanged, privacyMode, onToggleP
                         const checked = e.target.checked;
                         handleSaveReminders({ dailyShiftReminder: checked });
                         if (checked) {
-                          if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission !== 'granted') {
+                          if (isNotificationSupported() && getNotificationPermission() !== 'granted') {
                             setEnablingPush(true);
                             try {
                               const ok = await subscribeToPushNotifications();
@@ -274,7 +276,7 @@ export default function SettingsView({ onSettingsChanged, privacyMode, onToggleP
                     onClick={async () => {
                       setTestingPush(true);
                       try {
-                        if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission !== 'granted') {
+                        if (isNotificationSupported() && getNotificationPermission() !== 'granted') {
                           await subscribeToPushNotifications();
                           const s = await getPushSubscriptionState();
                           setPushState({

@@ -53,8 +53,8 @@ interface ManagerViewProps {
 }
 
 export default function ManagerView({ currentUser, isMobileView = false, onLoginAsUser }: ManagerViewProps) {
-  // Tabs: 'live', 'history', 'timeoff', 'schedule', 'accounts', 'inbox', 'dispatches', or 'audit'
-  const [managerTab, setManagerTab] = useState<'live' | 'history' | 'timeoff' | 'schedule' | 'accounts' | 'inbox' | 'dispatches' | 'audit'>('live');
+  // Tabs: 'live', 'flha', 'history', 'timeoff', 'schedule', 'accounts', 'inbox', 'dispatches', or 'audit'
+  const [managerTab, setManagerTab] = useState<'live' | 'flha' | 'history' | 'timeoff' | 'schedule' | 'accounts' | 'inbox' | 'dispatches' | 'audit'>('live');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [submittedList, setSubmittedList] = useState<SubmittedTimesheet[]>([]);
   const isOwner = currentUser.username === 'derek_vriens' || 
@@ -576,7 +576,79 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
     });
   }, [timeOffList, searchQuery]);
 
-  // Global aggregate stats
+  // Global aggregate stats & unified FLHA Safety Records (Live Clocked-In + Historical)
+  const flhaVaultData = useMemo(() => {
+    const sessionsList = Object.values(liveSessions) as ActiveSession[];
+    const todayDateStr = new Date().toISOString().slice(0, 10);
+
+    // 1. Live active shift FLHAs (while employee is clocked in right now)
+    const liveFlhas: Array<{
+      session: ActiveSession;
+      syntheticEntry: TimesheetEntry;
+      avatarUrl?: string;
+    }> = [];
+
+    sessionsList.forEach((s) => {
+      if (s.isClockedIn && s.flhaImageUrl) {
+        const matchedUser = allUsers.find((u) => u.username === s.username);
+        liveFlhas.push({
+          session: s,
+          avatarUrl: matchedUser?.avatarUrl,
+          syntheticEntry: {
+            id: `live-flha-${s.username}`,
+            username: s.username,
+            date: todayDateStr,
+            startTime: s.startTime || 'Active',
+            endTime: 'Clocked In Now',
+            breakMinutes: 0,
+            project: s.project || 'Active Shift',
+            locationName: s.flhaLocation || s.location || 'General Site',
+            notes: s.notes || 'Live clocked-in shift FLHA',
+            totalHours: Number(((s.daySecondsElapsed || s.secondsElapsed || 0) / 3600).toFixed(2)),
+            isSynced: true,
+            flhaImageUrl: s.flhaImageUrl,
+            flhaTimestamp: s.flhaTimestamp || s.lastActiveTimestamp,
+            flhaLocation: s.flhaLocation || s.location || 'General Site',
+          },
+        });
+      }
+    });
+
+    // 2. Historical / logged shift FLHAs across all entries & submitted timesheets
+    const entryMap = new Map<string, TimesheetEntry>();
+    allEntries.forEach((e) => {
+      if (e.flhaImageUrl) entryMap.set(e.id, e);
+    });
+    submittedList.forEach((sub) => {
+      (sub.entries || []).forEach((e) => {
+        if (e.flhaImageUrl && !entryMap.has(e.id)) {
+          entryMap.set(e.id, { ...e, username: e.username || sub.username });
+        }
+      });
+    });
+
+    const loggedFlhas = Array.from(entryMap.values())
+      .map((entry) => {
+        const matchedUser = allUsers.find((u) => u.username === entry.username);
+        return {
+          entry,
+          fullName: matchedUser?.fullName || entry.username || 'Employee',
+          avatarUrl: matchedUser?.avatarUrl,
+          department: matchedUser?.department || 'Operations',
+        };
+      })
+      .sort((a, b) => {
+        if (a.entry.date !== b.entry.date) return b.entry.date.localeCompare(a.entry.date);
+        return (b.entry.flhaTimestamp || b.entry.startTime).localeCompare(a.entry.flhaTimestamp || a.entry.startTime);
+      });
+
+    return {
+      liveFlhas,
+      loggedFlhas,
+      totalCount: liveFlhas.length + loggedFlhas.length,
+    };
+  }, [liveSessions, allEntries, submittedList, allUsers]);
+
   const aggregateStats = useMemo(() => {
     const sessionsList = Object.values(liveSessions) as ActiveSession[];
     const activeCount = sessionsList.filter(s => s.isClockedIn && !s.isOnBreak).length;
@@ -791,44 +863,77 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
       </AnimatePresence>
 
       {/* TOP AGGREGATE SUMMARY CARDS */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         
         {/* Active workers */}
-        <div className="bg-card-bg border border-main-border rounded-2xl p-4 shadow-xl flex items-center justify-between">
+        <div
+          onClick={() => setManagerTab('live')}
+          className="bg-card-bg border border-main-border hover:border-emerald-500/40 rounded-2xl p-3.5 sm:p-4 shadow-xl flex items-center justify-between cursor-pointer transition"
+        >
           <div className="space-y-1">
             <span className="text-[10px] font-mono text-muted-text uppercase tracking-wider block">Active Shifts</span>
-            <span className="text-2xl font-extrabold text-main-text font-mono flex items-center gap-2">
+            <span className="text-xl sm:text-2xl font-extrabold text-main-text font-mono flex items-center gap-2">
               {aggregateStats.activeCount}
               {aggregateStats.activeCount > 0 && (
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping inline-block"></span>
               )}
             </span>
           </div>
-          <div className="h-10 w-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
+          <div className="h-9 w-9 sm:h-10 sm:w-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-500 shrink-0">
             <Radio className="h-5 w-5" />
           </div>
         </div>
 
+        {/* FLHA Safety Vault Card (View at any point) */}
+        <div
+          onClick={() => setManagerTab('flha')}
+          className={`bg-card-bg border rounded-2xl p-3.5 sm:p-4 shadow-xl flex items-center justify-between cursor-pointer transition ${
+            managerTab === 'flha'
+              ? 'border-emerald-500 ring-1 ring-emerald-500/30'
+              : 'border-main-border hover:border-emerald-500/40'
+          }`}
+          title="Click to view all Live & Logged Employee FLHAs at any point"
+        >
+          <div className="space-y-1 min-w-0">
+            <span className="text-[10px] font-mono text-emerald-500 uppercase tracking-wider font-bold block truncate">
+              FLHA Safety Cards
+            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-xl sm:text-2xl font-extrabold text-main-text font-mono">
+                {flhaVaultData.totalCount}
+              </span>
+              {flhaVaultData.liveFlhas.length > 0 && (
+                <span className="text-[9px] font-mono font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-1.5 py-0.5 rounded-full">
+                  {flhaVaultData.liveFlhas.length} Live
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="h-9 w-9 sm:h-10 sm:w-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-500 shrink-0">
+            <ShieldCheck className="h-5 w-5" />
+          </div>
+        </div>
+
         {/* Total logged hours */}
-        <div className="bg-card-bg border border-main-border rounded-2xl p-4 shadow-xl flex items-center justify-between">
+        <div className="bg-card-bg border border-main-border rounded-2xl p-3.5 sm:p-4 shadow-xl flex items-center justify-between">
           <div className="space-y-1">
             <span className="text-[10px] font-mono text-muted-text uppercase tracking-wider block">Total Team Hours</span>
-            <span className="text-2xl font-extrabold text-main-text font-mono">{aggregateStats.totalTeamHours.toFixed(1)} hrs</span>
+            <span className="text-xl sm:text-2xl font-extrabold text-main-text font-mono">{aggregateStats.totalTeamHours.toFixed(1)} hrs</span>
           </div>
-          <div className="h-10 w-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-500">
+          <div className="h-9 w-9 sm:h-10 sm:w-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-500 shrink-0">
             <Clock className="h-5 w-5" />
           </div>
         </div>
 
         {/* Estimated payroll */}
-        <div className="bg-card-bg border border-main-border rounded-2xl p-4 shadow-xl flex items-center justify-between">
+        <div className="bg-card-bg border border-main-border rounded-2xl p-3.5 sm:p-4 shadow-xl flex items-center justify-between">
           <div className="space-y-1">
             <span className="text-[10px] font-mono text-muted-text uppercase tracking-wider block">Payroll Estimate</span>
-            <span className="text-2xl font-extrabold text-blue-500 font-mono">
+            <span className="text-xl sm:text-2xl font-extrabold text-blue-500 font-mono">
               ${aggregateStats.totalPayrollEst.toLocaleString(undefined, { maximumFractionDigits: 0 })}
             </span>
           </div>
-          <div className="h-10 w-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-500">
+          <div className="h-9 w-9 sm:h-10 sm:w-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-500 shrink-0">
             <Landmark className="h-5 w-5" />
           </div>
         </div>
@@ -848,6 +953,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
               {(() => {
                 const opt = [
                   { value: 'live', label: 'Live Team Members', icon: Activity, badge: 0 },
+                  { value: 'flha', label: 'FLHA Safety Vault (Live & All)', icon: ShieldCheck, badge: flhaVaultData.liveFlhas.length },
                   { value: 'history', label: 'Staff History', icon: Users, badge: 0 },
                   { value: 'timeoff', label: 'Time-Off Requests', icon: CalendarDays, badge: timeOffList.filter(r => r.status === 'pending').length },
                   { value: 'schedule', label: 'Shift Scheduler', icon: CalendarDays, badge: 0 },
@@ -891,6 +997,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                 >
                   {[
                     { value: 'live', label: 'Live Team Members', icon: Activity, desc: 'Monitor real-time shifts, projects, and active locations.' },
+                    { value: 'flha', label: 'FLHA Safety Vault (Live & All)', icon: ShieldCheck, desc: 'View employee Field Level Hazard Assessments at any point (clocked-in or past).', badge: flhaVaultData.totalCount },
                     { value: 'history', label: 'Staff History', icon: Users, desc: 'View full timesheet records, earnings ledger, and logs.' },
                     { value: 'timeoff', label: 'Time-Off Requests', icon: CalendarDays, desc: 'Review and approve/deny employee leave proposals.', badge: timeOffList.filter(r => r.status === 'pending').length },
                     { value: 'schedule', label: 'Shift Scheduler', icon: CalendarDays, desc: 'Design and assign future shifts and schedules.' },
@@ -950,16 +1057,32 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
           />
         </div>
 
-        {/* Sample data generator */}
-        <button
-          onClick={managerTab === 'timeoff' ? handleAddMockTimeOff : handleAddMockEmployee}
-          className="w-full md:w-auto flex items-center justify-center gap-1.5 bg-blue-500/5 hover:bg-blue-500/10 border border-blue-500/10 hover:border-blue-500/20 px-4 py-2 rounded-xl text-xs font-semibold text-blue-500 cursor-pointer transition shrink-0 animate-fade-in"
-        >
-          <PlusCircle className="h-4 w-4" />
-          <span>
-            {managerTab === 'timeoff' ? "Quick-Add Staff Time-Off Request" : "Quick-Add Sample Team Members"}
-          </span>
-        </button>
+        {/* Quick FLHA Vault Button & Sample Data Generator */}
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => setManagerTab(managerTab === 'flha' ? 'live' : 'flha')}
+            className={`flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer border ${
+              managerTab === 'flha'
+                ? 'bg-emerald-600 text-white border-emerald-500 shadow-md shadow-emerald-500/20'
+                : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 border-emerald-500/25'
+            }`}
+            title="Inspect all Live & Historical Employee FLHA Safety Cards at any point"
+          >
+            <ShieldCheck className="h-4 w-4 shrink-0" />
+            <span>{managerTab === 'flha' ? 'Back to Live Roster' : `View All FLHAs (${flhaVaultData.totalCount})`}</span>
+          </button>
+
+          <button
+            onClick={managerTab === 'timeoff' ? handleAddMockTimeOff : handleAddMockEmployee}
+            className="flex items-center justify-center gap-1.5 bg-blue-500/5 hover:bg-blue-500/10 border border-blue-500/10 hover:border-blue-500/20 px-3.5 py-2 rounded-xl text-xs font-semibold text-blue-500 cursor-pointer transition shrink-0 animate-fade-in"
+          >
+            <PlusCircle className="h-4 w-4" />
+            <span>
+              {managerTab === 'timeoff' ? "Quick-Add Staff Time-Off Request" : "Quick-Add Sample Team"}
+            </span>
+          </button>
+        </div>
 
       </div>
 
@@ -1102,12 +1225,109 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                             <p className="text-xs text-muted-text italic leading-relaxed">"{active.notes}"</p>
                           </div>
                         )}
+
+                        {/* Live Shift FLHA Safety Card Box (Viewable while employee is clocked in) */}
+                        {active.flhaImageUrl ? (
+                          <div className="mt-2.5 p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between gap-2.5">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <img
+                                src={active.flhaImageUrl}
+                                alt="Live FLHA"
+                                className="w-10 h-10 rounded-lg object-cover border border-emerald-500/40 shrink-0"
+                              />
+                              <div className="min-w-0 text-left">
+                                <span className="text-[10px] font-bold text-emerald-500 uppercase font-mono flex items-center gap-1">
+                                  <ShieldCheck className="h-3 w-3 shrink-0" />
+                                  Live Shift FLHA
+                                </span>
+                                <p className="text-[10px] text-muted-text font-mono truncate">
+                                  {active.flhaTimestamp
+                                    ? `Added ${new Date(active.flhaTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                                    : 'Attached while clocked in'}
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setSelectedManagerFlhaEntry({
+                                  id: `live-flha-${user.username}`,
+                                  username: user.username,
+                                  date: new Date().toISOString().slice(0, 10),
+                                  startTime: active.startTime || 'Active',
+                                  endTime: 'Clocked In Now',
+                                  breakMinutes: 0,
+                                  project: active.project || 'Active Shift',
+                                  locationName: active.flhaLocation || active.location || 'General Site',
+                                  notes: active.notes || 'Live clocked-in shift FLHA',
+                                  totalHours: Number(((active.daySecondsElapsed || active.secondsElapsed || 0) / 3600).toFixed(2)),
+                                  isSynced: true,
+                                  flhaImageUrl: active.flhaImageUrl,
+                                  flhaTimestamp: active.flhaTimestamp || active.lastActiveTimestamp,
+                                  flhaLocation: active.flhaLocation || active.location || 'General Site',
+                                })
+                              }
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold uppercase tracking-wider shadow-sm transition cursor-pointer shrink-0"
+                            >
+                              <Eye className="h-3 w-3" />
+                              <span>View FLHA</span>
+                            </button>
+                          </div>
+                        ) : (
+                          (() => {
+                            const todayStr = new Date().toISOString().slice(0, 10);
+                            const todayLoggedFlha = user.entries.find((e) => e.date === todayStr && e.flhaImageUrl);
+                            if (todayLoggedFlha) {
+                              return (
+                                <div className="mt-2.5 p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between gap-2">
+                                  <span className="text-[10px] font-bold text-emerald-500 font-mono flex items-center gap-1">
+                                    <ShieldCheck className="h-3.5 w-3.5" />
+                                    Today's FLHA On File
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedManagerFlhaEntry(todayLoggedFlha)}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold cursor-pointer transition"
+                                  >
+                                    <Eye className="h-3 w-3" />
+                                    <span>View FLHA</span>
+                                  </button>
+                                </div>
+                              );
+                            }
+                            return (
+                              <div className="mt-2.5 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-between text-[10px] font-mono text-amber-500">
+                                <span className="flex items-center gap-1.5 font-semibold">
+                                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                                  No FLHA Attached to Active Shift Yet
+                                </span>
+                              </div>
+                            );
+                          })()
+                        )}
                       </div>
                     ) : (
-                      <div className="py-6 flex flex-col items-center justify-center text-center text-muted-text/50">
-                        <Radio className="h-6 w-6 stroke-1 mb-1.5" />
-                        <p className="text-xs font-mono">Not clocked in right now</p>
-                        <p className="text-[10px] mt-1 max-w-[200px]">This contractor is off-shift. Live telemetry is locked.</p>
+                      <div className="py-5 flex flex-col items-center justify-center text-center text-muted-text/50 space-y-2">
+                        <Radio className="h-6 w-6 stroke-1" />
+                        <div>
+                          <p className="text-xs font-mono">Not clocked in right now</p>
+                          <p className="text-[10px] mt-0.5 max-w-[200px]">This contractor is off-shift. Live telemetry is locked.</p>
+                        </div>
+                        {(() => {
+                          const latestFlha = user.entries.find((e) => e.flhaImageUrl);
+                          if (!latestFlha) return null;
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => setSelectedManagerFlhaEntry(latestFlha)}
+                              className="mt-1 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 border border-emerald-500/25 text-[10px] font-bold font-mono transition cursor-pointer"
+                            >
+                              <ShieldCheck className="h-3.5 w-3.5" />
+                              <span>View Latest FLHA ({latestFlha.date})</span>
+                              <Eye className="h-3 w-3" />
+                            </button>
+                          );
+                        })()}
                       </div>
                     )}
                   </div>
@@ -1177,6 +1397,201 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
           </div>
         </div>
 
+      ) : managerTab === 'flha' ? (
+
+        /* TAB: FLHA SAFETY VAULT (VIEW LIVE CLOCKED-IN & ALL HISTORICAL FLHAS AT ANY POINT) */
+        <div className="space-y-6 animate-fade-in" id="manager-flha-vault-tab">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-main-border/40 pb-3">
+            <div>
+              <h3 className="text-sm font-bold text-main-text uppercase tracking-wider font-mono flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4 text-emerald-500" />
+                <span>FLHA Safety Compliance Vault (Live & Archive)</span>
+              </h3>
+              <p className="text-xs text-muted-text mt-0.5">
+                Inspect Field Level Hazard Assessments attached by currently clocked-in staff or from any completed shift.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 text-xs font-mono">
+              <span className="px-2.5 py-1 rounded-xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/25 font-bold">
+                {flhaVaultData.liveFlhas.length} Live Active
+              </span>
+              <span className="px-2.5 py-1 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/25 font-bold">
+                {flhaVaultData.loggedFlhas.length} Logged Cards
+              </span>
+            </div>
+          </div>
+
+          {/* SECTION 1: LIVE ACTIVE SHIFT FLHAs (Currently Clocked-In Employees) */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-bold uppercase tracking-wider font-mono text-emerald-500 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+              <span>Currently Clocked-In Shift FLHAs ({flhaVaultData.liveFlhas.length})</span>
+            </h4>
+
+            {flhaVaultData.liveFlhas.length === 0 ? (
+              <div className="bg-card-bg border border-main-border rounded-2xl p-5 text-center text-muted-text text-xs font-mono">
+                No currently clocked-in employees have a live FLHA attached right now.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {flhaVaultData.liveFlhas
+                  .filter(({ session }) => {
+                    const q = searchQuery.toLowerCase().trim();
+                    if (!q) return true;
+                    return (
+                      session.fullName.toLowerCase().includes(q) ||
+                      session.username.toLowerCase().includes(q) ||
+                      (session.project || '').toLowerCase().includes(q) ||
+                      (session.location || '').toLowerCase().includes(q)
+                    );
+                  })
+                  .map(({ session, syntheticEntry }) => (
+                    <div
+                      key={`vault-live-${session.username}`}
+                      className="bg-card-bg border-2 border-emerald-500/40 rounded-2xl p-4 shadow-xl flex flex-col justify-between gap-3"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <span className="inline-flex items-center gap-1 text-[9px] font-mono font-bold uppercase px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 mb-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                            Clocked In Now
+                          </span>
+                          <h5 className="text-sm font-bold text-main-text">{session.fullName}</h5>
+                          <p className="text-[10px] font-mono text-muted-text">@{session.username} • Started {session.startTime}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedManagerFlhaEntry(syntheticEntry)}
+                          className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md cursor-pointer transition"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                          <span>Inspect</span>
+                        </button>
+                      </div>
+
+                      <div
+                        onClick={() => setSelectedManagerFlhaEntry(syntheticEntry)}
+                        className="relative h-44 w-full rounded-xl overflow-hidden border border-main-border bg-slate-950 cursor-pointer group"
+                      >
+                        <img
+                          src={session.flhaImageUrl}
+                          alt={`Live FLHA for ${session.fullName}`}
+                          className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                        />
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
+                          <span className="px-3 py-1.5 rounded-xl bg-white/90 text-slate-900 text-xs font-bold flex items-center gap-1.5">
+                            <Maximize2 className="h-3.5 w-3.5" /> Full Screen View
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="text-xs space-y-1 text-left font-mono border-t border-main-border/40 pt-2.5">
+                        <div className="flex justify-between">
+                          <span className="text-muted-text">Active Task:</span>
+                          <strong className="text-main-text truncate max-w-[180px]">{session.project || 'General'}</strong>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-text">Location:</span>
+                          <strong className="text-main-text truncate max-w-[180px]">{session.flhaLocation || session.location || 'Site'}</strong>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
+
+          {/* SECTION 2: ALL LOGGED & SUBMITTED FLHA CARDS */}
+          <div className="space-y-3 pt-2">
+            <h4 className="text-xs font-bold uppercase tracking-wider font-mono text-muted-text">
+              All Logged & Historical Shift FLHA Cards ({flhaVaultData.loggedFlhas.length})
+            </h4>
+
+            {flhaVaultData.loggedFlhas.length === 0 ? (
+              <div className="bg-card-bg border border-main-border rounded-2xl p-8 text-center text-muted-text text-xs font-mono">
+                No historical FLHA cards found yet. When employees attach an FLHA during their shift or in the shift logger, it appears here permanently.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {flhaVaultData.loggedFlhas
+                  .filter(({ entry, fullName }) => {
+                    const q = searchQuery.toLowerCase().trim();
+                    if (!q) return true;
+                    return (
+                      fullName.toLowerCase().includes(q) ||
+                      (entry.username || '').toLowerCase().includes(q) ||
+                      (entry.project || '').toLowerCase().includes(q) ||
+                      (entry.locationName || '').toLowerCase().includes(q) ||
+                      entry.date.includes(q)
+                    );
+                  })
+                  .map(({ entry, fullName, department }) => (
+                    <div
+                      key={`vault-logged-${entry.id}`}
+                      className="bg-card-bg border border-main-border hover:border-emerald-500/40 rounded-2xl p-4 shadow-lg flex flex-col justify-between gap-3 transition"
+                    >
+                      <div className="flex items-start justify-between gap-2 text-left">
+                        <div className="min-w-0">
+                          <span className="text-[10px] font-mono font-bold text-blue-400 uppercase block">
+                            {new Date(entry.date + 'T00:00:00').toLocaleDateString(undefined, {
+                              weekday: 'short',
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric',
+                            })}
+                          </span>
+                          <h5 className="text-sm font-bold text-main-text truncate">{fullName}</h5>
+                          <p className="text-[10px] font-mono text-muted-text truncate">
+                            @{entry.username} • {department}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedManagerFlhaEntry(entry)}
+                          className="px-3 py-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-600 text-emerald-500 hover:text-white border border-emerald-500/30 text-xs font-bold flex items-center gap-1 transition cursor-pointer shrink-0"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                          <span>View</span>
+                        </button>
+                      </div>
+
+                      <div
+                        onClick={() => setSelectedManagerFlhaEntry(entry)}
+                        className="relative h-40 w-full rounded-xl overflow-hidden border border-main-border bg-slate-950 cursor-pointer group"
+                      >
+                        <img
+                          src={entry.flhaImageUrl}
+                          alt={`FLHA for ${fullName} on ${entry.date}`}
+                          className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                        />
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
+                          <span className="px-3 py-1.5 rounded-xl bg-white/90 text-slate-900 text-xs font-bold flex items-center gap-1.5">
+                            <Maximize2 className="h-3.5 w-3.5" /> Open Full Screen
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="text-[11px] space-y-1 text-left font-mono border-t border-main-border/40 pt-2.5">
+                        <div className="flex justify-between">
+                          <span className="text-muted-text">Task:</span>
+                          <strong className="text-main-text truncate max-w-[180px]">{entry.project}</strong>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-text">Site:</span>
+                          <strong className="text-main-text truncate max-w-[180px]">{entry.flhaLocation || entry.locationName}</strong>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-text">Shift:</span>
+                          <strong className="text-main-text">{entry.startTime} – {entry.endTime} ({entry.totalHours}h)</strong>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
+        </div>
+
       ) : managerTab === 'history' ? (
 
         /* TAB: STAFF LEDGER HISTORY */
@@ -1208,11 +1623,46 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                         )}
                       </div>
                       <div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <h4 className="text-sm font-bold text-main-text">{user.fullName}</h4>
                           {user.department && (
                             <span className="hidden sm:inline-flex rounded-full bg-blue-500/5 border border-blue-500/10 px-2 py-0.5 text-[9px] font-semibold text-blue-500 uppercase tracking-wider">
                               {user.department}
+                            </span>
+                          )}
+                          {user.activeSession?.isClockedIn && user.activeSession?.flhaImageUrl && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedManagerFlhaEntry({
+                                  id: `live-flha-${user.username}`,
+                                  username: user.username,
+                                  date: new Date().toISOString().slice(0, 10),
+                                  startTime: user.activeSession?.startTime || 'Active',
+                                  endTime: 'Clocked In Now',
+                                  breakMinutes: 0,
+                                  project: user.activeSession?.project || 'Active Shift',
+                                  locationName: user.activeSession?.flhaLocation || user.activeSession?.location || 'General Site',
+                                  notes: user.activeSession?.notes || 'Live clocked-in shift FLHA',
+                                  totalHours: Number(((user.activeSession?.daySecondsElapsed || user.activeSession?.secondsElapsed || 0) / 3600).toFixed(2)),
+                                  isSynced: true,
+                                  flhaImageUrl: user.activeSession?.flhaImageUrl,
+                                  flhaTimestamp: user.activeSession?.flhaTimestamp || user.activeSession?.lastActiveTimestamp,
+                                  flhaLocation: user.activeSession?.flhaLocation || user.activeSession?.location || 'General Site',
+                                });
+                              }}
+                              className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/35 px-2 py-0.5 text-[9px] font-bold text-emerald-500 uppercase tracking-wider cursor-pointer transition"
+                              title="View Live Clocked-In Shift FLHA"
+                            >
+                              <ShieldCheck className="h-3 w-3" />
+                              <span>Live FLHA</span>
+                            </button>
+                          )}
+                          {user.entries.filter((e) => e.flhaImageUrl).length > 0 && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-[9px] font-semibold text-emerald-500 uppercase font-mono">
+                              <ShieldCheck className="h-2.5 w-2.5" />
+                              {user.entries.filter((e) => e.flhaImageUrl).length} FLHA{user.entries.filter((e) => e.flhaImageUrl).length > 1 ? 's' : ''}
                             </span>
                           )}
                         </div>

@@ -18,6 +18,33 @@ export interface PushSubscriptionState {
 
 import { safeSetItem } from './storage';
 
+/**
+ * Safely check if Web Push & Notification APIs are supported in the current browser/webview
+ */
+export function isNotificationSupported(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof navigator !== 'undefined' &&
+    'serviceWorker' in navigator &&
+    'Notification' in window &&
+    typeof window.Notification !== 'undefined'
+  );
+}
+
+/**
+ * Safely read current Notification.permission without throwing ReferenceError on iOS/WebViews
+ */
+export function getNotificationPermission(): NotificationPermission {
+  try {
+    if (typeof window !== 'undefined' && 'Notification' in window && typeof window.Notification !== 'undefined') {
+      return window.Notification.permission;
+    }
+  } catch {
+    // Ignore security/context errors in restricted webviews
+  }
+  return 'default';
+}
+
 // Convert base64 VAPID public key to Uint8Array for PushManager
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -62,7 +89,7 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
  * Query current push notification state
  */
 export async function getPushSubscriptionState(): Promise<PushSubscriptionState> {
-  if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('Notification' in window)) {
+  if (!isNotificationSupported()) {
     return {
       supported: false,
       permission: 'default',
@@ -81,7 +108,7 @@ export async function getPushSubscriptionState(): Promise<PushSubscriptionState>
 
     return {
       supported: true,
-      permission: Notification.permission,
+      permission: getNotificationPermission(),
       isSubscribed: !!subscription,
       registration,
       subscription
@@ -90,7 +117,7 @@ export async function getPushSubscriptionState(): Promise<PushSubscriptionState>
     console.warn('[PushNotifications] Error reading push subscription state:', err);
     return {
       supported: true,
-      permission: Notification.permission,
+      permission: getNotificationPermission(),
       isSubscribed: false,
       registration: null,
       subscription: null
@@ -102,12 +129,12 @@ export async function getPushSubscriptionState(): Promise<PushSubscriptionState>
  * Request notification permission and subscribe to browser Push API
  */
 export async function subscribeToPushNotifications(username?: string): Promise<boolean> {
-  if (typeof window === 'undefined' || !('Notification' in window)) {
+  if (!isNotificationSupported()) {
     throw new Error('Push notifications are not supported by this browser.');
   }
 
   // 1. Request permission
-  const permission = await Notification.requestPermission();
+  const permission = await window.Notification.requestPermission();
   if (permission !== 'granted') {
     console.warn('[PushNotifications] Notification permission denied or dismissed:', permission);
     return false;
@@ -232,7 +259,7 @@ export async function trigger5pmShiftReminder(username?: string): Promise<boolea
     }
 
     // 2. Also trigger via active Service Worker registration
-    if ('serviceWorker' in navigator && Notification.permission === 'granted') {
+    if (isNotificationSupported() && getNotificationPermission() === 'granted') {
       const registration = await navigator.serviceWorker.ready;
       await registration.showNotification('WORKSPACE • 5:00 PM Shift Reminder', {
         body: "Your workday shift has ended! Tap here to open the shift logger and record your hours.",
@@ -278,7 +305,7 @@ export function startWorkday5pmScheduler(
 
   const checkSchedule = () => {
     if (!isEnabled()) return;
-    if (Notification.permission !== 'granted') return;
+    if (!isNotificationSupported() || getNotificationPermission() !== 'granted') return;
 
     const now = new Date();
     const dayOfWeek = now.getDay(); // 0 = Sunday, 1 = Monday, ..., 5 = Friday, 6 = Saturday

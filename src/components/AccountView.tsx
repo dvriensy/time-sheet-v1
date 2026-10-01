@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   User, Mail, Phone, Briefcase, DollarSign, Camera, Save, 
   Sparkles, CheckCircle2, RefreshCw, LogOut, Clock, Landmark,
-  Trash2, BellRing, Send, ShieldCheck
+  Trash2, BellRing, Send, ShieldCheck, Smartphone
 } from 'lucide-react';
 import { 
   UserAccount, 
@@ -22,7 +22,9 @@ import {
   registerServiceWorker, 
   getPushSubscriptionState, 
   subscribeToPushNotifications, 
-  trigger5pmShiftReminder 
+  trigger5pmShiftReminder,
+  isNotificationSupported,
+  getNotificationPermission
 } from '../utils/pushNotifications';
 
 interface AccountViewProps {
@@ -81,8 +83,8 @@ export default function AccountView({ currentUser, onUpdateUser, onLogout, isMob
     permission: NotificationPermission;
     isSubscribed: boolean;
   }>({
-    supported: typeof window !== 'undefined' && 'serviceWorker' in navigator && 'Notification' in window,
-    permission: typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default',
+    supported: isNotificationSupported(),
+    permission: getNotificationPermission(),
     isSubscribed: false
   });
   const [testingPush, setTestingPush] = useState(false);
@@ -111,7 +113,7 @@ export default function AccountView({ currentUser, onUpdateUser, onLogout, isMob
   const handleToggleDailyShiftReminder = async (enabled: boolean) => {
     handleSaveReminders({ dailyShiftReminder: enabled });
     if (enabled) {
-      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission !== 'granted') {
+      if (isNotificationSupported() && getNotificationPermission() !== 'granted') {
         setEnablingPush(true);
         try {
           const ok = await subscribeToPushNotifications(currentUser.username);
@@ -142,7 +144,7 @@ export default function AccountView({ currentUser, onUpdateUser, onLogout, isMob
   const handleTest5pmPushAlert = async () => {
     setTestingPush(true);
     try {
-      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission !== 'granted') {
+      if (isNotificationSupported() && getNotificationPermission() !== 'granted') {
         await subscribeToPushNotifications(currentUser.username);
         const s = await getPushSubscriptionState();
         setPushState({
@@ -782,6 +784,35 @@ export default function AccountView({ currentUser, onUpdateUser, onLogout, isMob
               </button>
             </div>
           </form>
+
+          {/* QUICK ACCESS: PHONE & APP DISPLAY SIZING BANNER */}
+          <div className="bg-card-bg border border-blue-500/20 rounded-2xl p-5 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                <Smartphone className="h-5 w-5" />
+              </div>
+              <div className="space-y-0.5 text-left">
+                <h4 className="text-xs font-bold text-main-text flex items-center gap-2">
+                  <span>Phone & Standalone App Sizing</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                    iPhone & Android
+                  </span>
+                </h4>
+                <p className="text-[11px] text-muted-text">
+                  Tell the app which phone you have to calibrate Notch / Dynamic Island safe areas and screen scale.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent('workspace-open-phone-sizing'))}
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold cursor-pointer transition shrink-0 shadow-md shadow-blue-500/15"
+            >
+              <Smartphone className="h-3.5 w-3.5" />
+              <span>Select Phone Model</span>
+            </button>
+          </div>
 
           {/* QUICK ACCESS: WORKDAY SHIFT REMINDER BANNER */}
           <div className="bg-card-bg border border-blue-500/20 rounded-2xl p-5 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
