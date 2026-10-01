@@ -5,7 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Clock, User, Sun, Moon, Users, CalendarDays, Bell } from 'lucide-react';
+import { Clock, User, Sun, Moon, Users, CalendarDays, Bell, Share, X } from 'lucide-react';
 import { 
   getTimesheets, 
   getAppSettings, 
@@ -22,7 +22,8 @@ import {
 } from './utils/storage';
 import { 
   registerServiceWorker, 
-  startWorkday5pmScheduler 
+  startWorkday5pmScheduler,
+  getIOSNotificationInfo
 } from './utils/pushNotifications';
 import { applyDeviceProfileToDocument } from './utils/deviceProfile';
 import { TimesheetEntry } from './types';
@@ -92,6 +93,10 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(getCurrentUser());
   const [isMobile, setIsMobile] = useState(false);
   const [isPhoneSizingOpen, setIsPhoneSizingOpen] = useState(false);
+  const [showIOSHomeScreenBanner, setShowIOSHomeScreenBanner] = useState(() => {
+    const info = getIOSNotificationInfo();
+    return info.iosNeedsHomeScreen;
+  });
 
   useEffect(() => {
     const handleResize = () => {
@@ -398,6 +403,26 @@ export default function App() {
             </div>
           </div>
         </header>
+
+        {/* iOS Safari Add to Home Screen Notification Setup Banner */}
+        {showIOSHomeScreenBanner && (
+          <div className="mb-2.5 rounded-2xl border border-amber-500/35 bg-amber-500/10 px-3.5 py-2.5 flex items-center justify-between gap-3 shrink-0">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <Share className="h-4 w-4 text-amber-400 shrink-0" />
+              <p className="text-xs text-main-text leading-snug">
+                <strong>iOS Safari Notifications:</strong> Save this app to your Home Screen (tap <strong>Share → Add to Home Screen</strong>) to enable push notifications.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowIOSHomeScreenBanner(false)}
+              className="p-1 rounded-lg text-muted-text hover:text-main-text cursor-pointer shrink-0"
+              aria-label="Dismiss iOS setup banner"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
 
         {/* MOBILE NAVIGATION TABS (Equal-Width Grid Segmented Control on mobile) */}
         {isMobileView && (

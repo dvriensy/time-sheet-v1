@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   BellRing, ShieldCheck, Download, Trash2, KeySquare, 
   History, Info, ToggleLeft, Check, AlertTriangle, Eye, EyeOff, Clock,
-  Send, Sparkles
+  Send, Sparkles, Share, PlusSquare
 } from 'lucide-react';
 import { 
   getReminderSettings, saveReminderSettings, 
@@ -22,6 +22,8 @@ import {
   getPushSubscriptionState,
   subscribeToPushNotifications,
   trigger5pmShiftReminder,
+  sendTestNotification,
+  getIOSNotificationInfo,
   isNotificationSupported,
   getNotificationPermission
 } from '../utils/pushNotifications';
@@ -44,12 +46,17 @@ export default function SettingsView({ onSettingsChanged, privacyMode, onToggleP
 
   const [pushState, setPushState] = useState<{
     supported: boolean;
-    permission: NotificationPermission;
+    permission: NotificationPermission | 'unsupported';
     isSubscribed: boolean;
-  }>({
-    supported: isNotificationSupported(),
-    permission: getNotificationPermission(),
-    isSubscribed: false
+    iosNeedsHomeScreen: boolean;
+  }>(() => {
+    const iosInfo = getIOSNotificationInfo();
+    return {
+      supported: isNotificationSupported(),
+      permission: isNotificationSupported() ? getNotificationPermission() : 'unsupported',
+      isSubscribed: false,
+      iosNeedsHomeScreen: iosInfo.iosNeedsHomeScreen
+    };
   });
   const [testingPush, setTestingPush] = useState(false);
   const [enablingPush, setEnablingPush] = useState(false);
@@ -60,7 +67,8 @@ export default function SettingsView({ onSettingsChanged, privacyMode, onToggleP
       setPushState({
         supported: s.supported,
         permission: s.permission,
-        isSubscribed: s.isSubscribed
+        isSubscribed: s.isSubscribed,
+        iosNeedsHomeScreen: s.iosNeedsHomeScreen
       });
     });
   }, []);
@@ -202,6 +210,20 @@ export default function SettingsView({ onSettingsChanged, privacyMode, onToggleP
 
             <div className="space-y-4">
               
+              {/* iOS Safari Setup Info Banner */}
+              <div className={`rounded-2xl border p-4 space-y-2 ${
+                pushState.iosNeedsHomeScreen
+                  ? 'border-amber-500/40 bg-amber-500/10'
+                  : 'border-main-border bg-input-bg/40'
+              }`}>
+                <div className="flex items-start gap-2.5 text-left">
+                  <Share className={`h-4 w-4 shrink-0 mt-0.5 ${pushState.iosNeedsHomeScreen ? 'text-amber-400' : 'text-blue-400'}`} />
+                  <p className="text-xs text-muted-text leading-relaxed">
+                    <strong className="text-main-text">Safari on iOS (iPhone / iPad):</strong> Notifications require saving this app to your Home Screen first. Tap <strong>Share</strong> <span className="font-mono">(↑)</span> → <strong>Add to Home Screen</strong> <PlusSquare className="inline h-3.5 w-3.5 mx-0.5 -mt-0.5 text-blue-400" />, then open WORKSPACE from your Home Screen.
+                  </p>
+                </div>
+              </div>
+
               {/* Daily Workday Shift Reminder (5:00 PM Web Push via Service Worker) */}
               <div className="rounded-2xl border border-blue-500/30 bg-blue-500/5 p-4 space-y-3">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -227,7 +249,7 @@ export default function SettingsView({ onSettingsChanged, privacyMode, onToggleP
                         const checked = e.target.checked;
                         handleSaveReminders({ dailyShiftReminder: checked });
                         if (checked) {
-                          if (isNotificationSupported() && getNotificationPermission() !== 'granted') {
+                          if (getNotificationPermission() !== 'granted') {
                             setEnablingPush(true);
                             try {
                               const ok = await subscribeToPushNotifications();
@@ -235,15 +257,16 @@ export default function SettingsView({ onSettingsChanged, privacyMode, onToggleP
                               setPushState({
                                 supported: s.supported,
                                 permission: s.permission,
-                                isSubscribed: s.isSubscribed
+                                isSubscribed: s.isSubscribed,
+                                iosNeedsHomeScreen: s.iosNeedsHomeScreen
                               });
                               if (ok) {
                                 showToast('Push notifications enabled for 5:00 PM shift reminder.');
+                              } else if (s.iosNeedsHomeScreen) {
+                                showToast('On iOS Safari, save the app to your Home Screen (Share → Add to Home Screen) first.');
                               } else {
-                                showToast('Notification permission not granted. Browser alert might be blocked.');
+                                showToast('Notification permission not granted in browser settings.');
                               }
-                            } catch (err: any) {
-                              showToast('Push setup error: ' + (err?.message || 'Failed'));
                             } finally {
                               setEnablingPush(false);
                             }
@@ -270,34 +293,57 @@ export default function SettingsView({ onSettingsChanged, privacyMode, onToggleP
                     </span>
                   </div>
 
-                  <button
-                    type="button"
-                    disabled={testingPush || enablingPush}
-                    onClick={async () => {
-                      setTestingPush(true);
-                      try {
-                        if (isNotificationSupported() && getNotificationPermission() !== 'granted') {
-                          await subscribeToPushNotifications();
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={testingPush || enablingPush}
+                      onClick={async () => {
+                        setTestingPush(true);
+                        try {
+                          const res = await sendTestNotification();
                           const s = await getPushSubscriptionState();
                           setPushState({
                             supported: s.supported,
                             permission: s.permission,
-                            isSubscribed: s.isSubscribed
+                            isSubscribed: s.isSubscribed,
+                            iosNeedsHomeScreen: s.iosNeedsHomeScreen
                           });
+                          showToast(res.message);
+                        } finally {
+                          setTestingPush(false);
                         }
-                        await trigger5pmShiftReminder();
-                        showToast('5:00 PM Shift Reminder triggered! Tap the notification banner to open shift logger.');
-                      } catch (e: any) {
-                        showToast('Error triggering push alert: ' + (e?.message || 'Check browser permissions'));
-                      } finally {
-                        setTestingPush(false);
-                      }
-                    }}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold cursor-pointer shadow-md shadow-blue-500/20 active:scale-95 transition disabled:opacity-50"
-                  >
-                    <Send className={`h-3.5 w-3.5 ${testingPush ? 'animate-spin' : ''}`} />
-                    <span>{testingPush ? 'Dispatching...' : 'Test 5:00 PM Alert'}</span>
-                  </button>
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold cursor-pointer shadow-md shadow-emerald-500/20 active:scale-95 transition disabled:opacity-50"
+                    >
+                      <Send className={`h-3.5 w-3.5 ${testingPush ? 'animate-spin' : ''}`} />
+                      <span>{testingPush ? 'Sending...' : 'Test Notification'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={testingPush || enablingPush}
+                      onClick={async () => {
+                        setTestingPush(true);
+                        try {
+                          const res = await trigger5pmShiftReminder();
+                          const s = await getPushSubscriptionState();
+                          setPushState({
+                            supported: s.supported,
+                            permission: s.permission,
+                            isSubscribed: s.isSubscribed,
+                            iosNeedsHomeScreen: s.iosNeedsHomeScreen
+                          });
+                          showToast(res.ok ? '5:00 PM Shift Reminder dispatched via Service Worker!' : res.message);
+                        } finally {
+                          setTestingPush(false);
+                        }
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold cursor-pointer shadow-md shadow-blue-500/20 active:scale-95 transition disabled:opacity-50"
+                    >
+                      <BellRing className="h-3.5 w-3.5" />
+                      <span>Test 5:00 PM Alert</span>
+                    </button>
+                  </div>
                 </div>
               </div>
               

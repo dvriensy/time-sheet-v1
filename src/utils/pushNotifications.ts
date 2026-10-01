@@ -4,31 +4,87 @@
  */
 
 /**
- * Push Notification Utility for WORKSPACE
- * Uses Service Worker (public/sw.js) and Browser Push API to handle background alerts
+ * Push & Service Worker Notification Utility for WORKSPACE
+ * Uses Service Worker (public/sw.js) and navigator.serviceWorker.ready.then(reg => reg.showNotification(...))
+ * to handle local and push alerts reliably across mobile (iOS Home Screen PWA / Android) and desktop.
  */
+
+import { safeSetItem, getReminderSettings } from './storage';
 
 export interface PushSubscriptionState {
   supported: boolean;
-  permission: NotificationPermission;
+  permission: NotificationPermission | 'unsupported';
   isSubscribed: boolean;
   registration: ServiceWorkerRegistration | null;
   subscription: PushSubscription | null;
+  isIOS: boolean;
+  isSafari: boolean;
+  isStandalone: boolean;
+  iosNeedsHomeScreen: boolean;
 }
 
-import { safeSetItem } from './storage';
+export interface NotificationDispatchResult {
+  ok: boolean;
+  status: 'sent' | 'denied' | 'default' | 'unsupported' | 'ios_needs_homescreen' | 'error';
+  permission: NotificationPermission | 'unsupported';
+  message: string;
+}
 
 /**
- * Safely check if Web Push & Notification APIs are supported in the current browser/webview
+ * Detect iOS, Safari, and Standalone Home Screen mode
+ */
+export function getIOSNotificationInfo(): {
+  isIOS: boolean;
+  isSafari: boolean;
+  isStandalone: boolean;
+  iosNeedsHomeScreen: boolean;
+} {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') {
+    return {
+      isIOS: false,
+      isSafari: false,
+      isStandalone: false,
+      iosNeedsHomeScreen: false
+    };
+  }
+
+  const ua = navigator.userAgent || '';
+  const isIOS =
+    /iPad|iPhone|iPod/i.test(ua) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+  const isSafari =
+    /Safari/i.test(ua) &&
+    !/Chrome|CriOS|FxiOS|Opios|EdgiOS|Android/i.test(ua);
+
+  const isStandalone =
+    (typeof window.matchMedia === 'function' &&
+      window.matchMedia('(display-mode: standalone)').matches) ||
+    (navigator as unknown as { standalone?: boolean }).standalone === true;
+
+  return {
+    isIOS,
+    isSafari,
+    isStandalone,
+    iosNeedsHomeScreen: isIOS && !isStandalone
+  };
+}
+
+/**
+ * Safely check if Service Worker & Notification APIs are supported in the current browser/webview
  */
 export function isNotificationSupported(): boolean {
-  return (
-    typeof window !== 'undefined' &&
-    typeof navigator !== 'undefined' &&
-    'serviceWorker' in navigator &&
-    'Notification' in window &&
-    typeof window.Notification !== 'undefined'
-  );
+  try {
+    return (
+      typeof window !== 'undefined' &&
+      typeof navigator !== 'undefined' &&
+      'serviceWorker' in navigator &&
+      'Notification' in window &&
+      typeof window.Notification !== 'undefined'
+    );
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -36,7 +92,11 @@ export function isNotificationSupported(): boolean {
  */
 export function getNotificationPermission(): NotificationPermission {
   try {
-    if (typeof window !== 'undefined' && 'Notification' in window && typeof window.Notification !== 'undefined') {
+    if (
+      typeof window !== 'undefined' &&
+      'Notification' in window &&
+      typeof window.Notification !== 'undefined'
+    ) {
       return window.Notification.permission;
     }
   } catch {
@@ -45,12 +105,103 @@ export function getNotificationPermission(): NotificationPermission {
   return 'default';
 }
 
+/**
+ * Check Notification.permission, request access if set to 'default',
+ * and handle 'denied' or unsupported browsers cleanly without throwing errors.
+ */
+export async function ensureNotificationPermission(): Promise<{
+  supported: boolean;
+  permission: NotificationPermission | 'unsupported';
+  granted: boolean;
+  iosNeedsHomeScreen: boolean;
+  message: string;
+}> {
+  const iosInfo = getIOSNotificationInfo();
+
+  if (!isNotificationSupported()) {
+    if (iosInfo.iosNeedsHomeScreen) {
+      return {
+        supported: false,
+        permission: 'unsupported',
+        granted: false,
+        iosNeedsHomeScreen: true,
+        message:
+          'On iOS Safari, notifications require saving WORKSPACE to your Home Screen first (Share → Add to Home Screen).'
+      };
+    }
+    return {
+      supported: false,
+      permission: 'unsupported',
+      granted: false,
+      iosNeedsHomeScreen: false,
+      message: 'Notifications are not supported in this browser environment.'
+    };
+  }
+
+  try {
+    let currentPermission = window.Notification.permission;
+
+    if (currentPermission === 'default') {
+      // Handle both Promise-based and legacy callback-based requestPermission cleanly
+      const result = await new Promise<NotificationPermission>((resolve) => {
+        try {
+          const maybePromise = window.Notification.requestPermission((perm) => {
+            resolve(perm);
+          });
+          if (maybePromise && typeof maybePromise.then === 'function') {
+            maybePromise.then(resolve).catch(() => resolve(getNotificationPermission()));
+          }
+        } catch {
+          resolve(getNotificationPermission());
+        }
+      });
+      currentPermission = result;
+    }
+
+    if (currentPermission === 'granted') {
+      return {
+        supported: true,
+        permission: 'granted',
+        granted: true,
+        iosNeedsHomeScreen: false,
+        message: 'Notification permission granted.'
+      };
+    }
+
+    if (currentPermission === 'denied') {
+      return {
+        supported: true,
+        permission: 'denied',
+        granted: false,
+        iosNeedsHomeScreen: false,
+        message:
+          'Notifications are blocked in your browser settings. Enable Notifications for this site in your browser or device settings to receive alerts.'
+      };
+    }
+
+    return {
+      supported: true,
+      permission: currentPermission,
+      granted: false,
+      iosNeedsHomeScreen: iosInfo.iosNeedsHomeScreen,
+      message: 'Notification permission request was dismissed.'
+    };
+  } catch (err) {
+    console.warn('[PushNotifications] Cleanly caught permission check error:', err);
+    return {
+      supported: false,
+      permission: 'unsupported',
+      granted: false,
+      iosNeedsHomeScreen: iosInfo.iosNeedsHomeScreen,
+      message: 'Could not request notification permission in this browser context.'
+    };
+  }
+}
+
 // Convert base64 VAPID public key to Uint8Array for PushManager
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding)
-    .replace(/-/g, '+')
-    .replace(/_/g, '/');
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
 
   const rawData = window.atob(base64);
   const outputArray = new Uint8Array(rawData.length);
@@ -65,8 +216,7 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
  * Register the Service Worker in public/sw.js
  */
 export async function registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
-  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
-    console.warn('[PushNotifications] Service Worker is not supported in this browser environment.');
+  if (typeof window === 'undefined' || typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
     return null;
   }
 
@@ -75,43 +225,115 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
       scope: '/'
     });
 
-    // Wait for the active service worker
     await navigator.serviceWorker.ready;
-    console.log('[PushNotifications] Service Worker successfully registered with scope:', registration.scope);
     return registration;
   } catch (error) {
-    console.error('[PushNotifications] Service Worker registration failed:', error);
+    console.warn('[PushNotifications] Service Worker registration failed:', error);
     return null;
   }
 }
 
 /**
- * Query current push notification state
+ * Dispatch a local notification strictly through the Service Worker:
+ * navigator.serviceWorker.ready.then(reg => reg.showNotification(title, options))
+ * Never calls `new Notification()` directly so mobile browsers do not block or throw.
  */
-export async function getPushSubscriptionState(): Promise<PushSubscriptionState> {
-  if (!isNotificationSupported()) {
+export async function dispatchServiceWorkerNotification(
+  title: string,
+  options?: NotificationOptions & { vibrate?: number[]; actions?: Array<{ action: string; title: string }>; renotify?: boolean }
+): Promise<NotificationDispatchResult> {
+  const permCheck = await ensureNotificationPermission();
+  if (!permCheck.supported) {
     return {
-      supported: false,
-      permission: 'default',
-      isSubscribed: false,
-      registration: null,
-      subscription: null
+      ok: false,
+      status: permCheck.iosNeedsHomeScreen ? 'ios_needs_homescreen' : 'unsupported',
+      permission: permCheck.permission,
+      message: permCheck.message
+    };
+  }
+
+  if (!permCheck.granted) {
+    return {
+      ok: false,
+      status: permCheck.permission === 'denied' ? 'denied' : 'default',
+      permission: permCheck.permission,
+      message: permCheck.message
     };
   }
 
   try {
-    const registration = await navigator.serviceWorker.ready;
-    let subscription: PushSubscription | null = null;
-    if ('pushManager' in registration) {
-      subscription = await registration.pushManager.getSubscription();
-    }
+    // Ensure service worker registration is active before waiting on ready
+    await registerServiceWorker();
+
+    const notificationOptions: NotificationOptions & Record<string, unknown> = {
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+      vibrate: [200, 100, 200],
+      data: {
+        url: '/?tab=timesheet&action=log-shift',
+        dateOfArrival: Date.now()
+      },
+      ...options
+    };
+
+    await navigator.serviceWorker.ready.then((reg) =>
+      reg.showNotification(title, notificationOptions)
+    );
 
     return {
-      supported: true,
+      ok: true,
+      status: 'sent',
+      permission: 'granted',
+      message: 'Notification dispatched via Service Worker.'
+    };
+  } catch (err) {
+    console.warn('[PushNotifications] Service Worker showNotification failed cleanly:', err);
+    return {
+      ok: false,
+      status: 'error',
       permission: getNotificationPermission(),
-      isSubscribed: !!subscription,
+      message: 'Service Worker could not display the notification. Try reloading the page.'
+    };
+  }
+}
+
+/**
+ * Query current push notification state cleanly without throwing
+ */
+export async function getPushSubscriptionState(): Promise<PushSubscriptionState> {
+  const iosInfo = getIOSNotificationInfo();
+
+  if (!isNotificationSupported()) {
+    return {
+      supported: false,
+      permission: 'unsupported',
+      isSubscribed: false,
+      registration: null,
+      subscription: null,
+      ...iosInfo
+    };
+  }
+
+  try {
+    await registerServiceWorker();
+    const registration = await navigator.serviceWorker.ready;
+    let subscription: PushSubscription | null = null;
+    if ('pushManager' in registration && registration.pushManager) {
+      try {
+        subscription = await registration.pushManager.getSubscription();
+      } catch {
+        subscription = null;
+      }
+    }
+
+    const currentPerm = getNotificationPermission();
+    return {
+      supported: true,
+      permission: currentPerm,
+      isSubscribed: !!subscription || currentPerm === 'granted',
       registration,
-      subscription
+      subscription,
+      ...iosInfo
     };
   } catch (err) {
     console.warn('[PushNotifications] Error reading push subscription state:', err);
@@ -120,102 +342,92 @@ export async function getPushSubscriptionState(): Promise<PushSubscriptionState>
       permission: getNotificationPermission(),
       isSubscribed: false,
       registration: null,
-      subscription: null
+      subscription: null,
+      ...iosInfo
     };
   }
 }
 
 /**
- * Request notification permission and subscribe to browser Push API
+ * Request notification permission and subscribe to Service Worker notifications cleanly without throwing
  */
 export async function subscribeToPushNotifications(username?: string): Promise<boolean> {
-  if (!isNotificationSupported()) {
-    throw new Error('Push notifications are not supported by this browser.');
-  }
-
-  // 1. Request permission
-  const permission = await window.Notification.requestPermission();
-  if (permission !== 'granted') {
-    console.warn('[PushNotifications] Notification permission denied or dismissed:', permission);
+  const permResult = await ensureNotificationPermission();
+  if (!permResult.supported || !permResult.granted) {
     return false;
   }
 
-  // 2. Ensure Service Worker is registered
   const registration = await registerServiceWorker();
-  if (!registration || !('pushManager' in registration)) {
-    throw new Error('Service Worker or Push Manager not available.');
+  if (!registration) {
+    return false;
   }
 
-  try {
-    // 3. Retrieve VAPID public key from backend
-    let applicationServerKey: Uint8Array | undefined;
+  // Optional Web Push subscription if PushManager is supported by the browser
+  if ('pushManager' in registration && registration.pushManager) {
     try {
-      const resp = await fetch('/api/push/vapid-public-key');
-      if (resp.ok) {
-        const data = await resp.json();
-        if (data.publicKey) {
-          applicationServerKey = urlBase64ToUint8Array(data.publicKey);
+      let applicationServerKey: Uint8Array | undefined;
+      try {
+        const resp = await fetch('/api/push/vapid-public-key');
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.publicKey) {
+            applicationServerKey = urlBase64ToUint8Array(data.publicKey);
+          }
+        }
+      } catch {
+        // Optional backend VAPID endpoint
+      }
+
+      const subscribeOptions: PushSubscriptionOptionsInit = {
+        userVisibleOnly: true,
+        ...(applicationServerKey ? { applicationServerKey } : {})
+      };
+
+      let subscription = await registration.pushManager.getSubscription();
+      if (!subscription && applicationServerKey) {
+        subscription = await registration.pushManager.subscribe(subscribeOptions);
+      }
+
+      if (subscription) {
+        try {
+          await fetch('/api/push/subscribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              subscription,
+              username: username || 'current_user'
+            })
+          });
+        } catch {
+          // Local Service Worker notifications still work offline/without backend push
         }
       }
-    } catch (err) {
-      console.warn('[PushNotifications] Could not fetch server VAPID key, subscribing with default options:', err);
+    } catch (pushErr) {
+      console.warn('[PushNotifications] Optional PushManager subscription skipped, using Service Worker notifications:', pushErr);
     }
-
-    // 4. Subscribe via PushManager
-    const subscribeOptions: PushSubscriptionOptionsInit = {
-      userVisibleOnly: true,
-      ...(applicationServerKey ? { applicationServerKey } : {})
-    };
-
-    let subscription = await registration.pushManager.getSubscription();
-    if (!subscription) {
-      subscription = await registration.pushManager.subscribe(subscribeOptions);
-    }
-
-    // 5. Send subscription to backend
-    if (subscription) {
-      try {
-        await fetch('/api/push/subscribe', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            subscription,
-            username: username || 'current_user'
-          })
-        });
-      } catch (backendErr) {
-        console.warn('[PushNotifications] Subscription created locally, but could not sync to backend:', backendErr);
-      }
-    }
-
-    // 6. Show initial confirmation notification via Service Worker
-    await registration.showNotification('WORKSPACE Notifications Enabled', {
-      body: 'Daily workday reminders active. You will receive a shift alert at 5:00 PM.',
-      icon: '/icon-192.png',
-      badge: '/icon-192.png',
-      tag: 'workspace-setup-success',
-      data: { url: '/?tab=timesheet&action=log-shift' }
-    });
-
-    return true;
-  } catch (error) {
-    console.error('[PushNotifications] Failed to subscribe to Push API:', error);
-    throw error;
   }
+
+  // Dispatch initial confirmation notification strictly through Service Worker
+  const dispatchRes = await dispatchServiceWorkerNotification('WORKSPACE Notifications Enabled', {
+    body: 'Notifications are active on this device. You will receive workday shift reminders.',
+    tag: 'workspace-setup-success',
+    data: { url: '/?tab=timesheet&action=log-shift' }
+  });
+
+  return dispatchRes.ok || getNotificationPermission() === 'granted';
 }
 
 /**
- * Unsubscribe from push notifications
+ * Unsubscribe from push notifications cleanly
  */
 export async function unsubscribeFromPushNotifications(username?: string): Promise<boolean> {
+  if (!isNotificationSupported()) return false;
   try {
     const registration = await navigator.serviceWorker.ready;
-    if ('pushManager' in registration) {
+    if ('pushManager' in registration && registration.pushManager) {
       const subscription = await registration.pushManager.getSubscription();
       if (subscription) {
         await subscription.unsubscribe();
-
-        // Notify backend
         try {
           await fetch('/api/push/unsubscribe', {
             method: 'POST',
@@ -225,74 +437,79 @@ export async function unsubscribeFromPushNotifications(username?: string): Promi
               username: username || 'current_user'
             })
           });
-        } catch (e) {
-          console.warn('[PushNotifications] Could not inform server of unsubscription:', e);
+        } catch {
+          // Ignore backend network error
         }
       }
     }
     return true;
   } catch (err) {
-    console.error('[PushNotifications] Error unsubscribing:', err);
+    console.warn('[PushNotifications] Error unsubscribing:', err);
     return false;
   }
+}
+
+/**
+ * Send an immediate Test Notification through the Service Worker
+ */
+export async function sendTestNotification(username?: string): Promise<NotificationDispatchResult> {
+  const result = await dispatchServiceWorkerNotification('WORKSPACE • Test Notification', {
+    body: `Push & Service Worker notifications are working for ${username ? `@${username}` : 'your account'}! Tap to open your timesheet ledger.`,
+    tag: `workspace-test-notification-${Date.now()}`,
+    renotify: true,
+    data: {
+      url: '/?tab=timesheet&action=log-shift',
+      dateOfArrival: Date.now()
+    },
+    actions: [
+      { action: 'open_logger', title: 'Open Shift Logger' },
+      { action: 'dismiss', title: 'Dismiss' }
+    ]
+  });
+
+  return result;
 }
 
 /**
  * Trigger the 5:00 PM Workday Shift Reminder Push Notification
- * Shows directly through the Service Worker and sends to server push if available
+ * Dispatches through navigator.serviceWorker.ready.then(reg => reg.showNotification(...))
  */
-export async function trigger5pmShiftReminder(username?: string): Promise<boolean> {
+export async function trigger5pmShiftReminder(username?: string): Promise<NotificationDispatchResult> {
+  // Optional server push trigger
   try {
-    // 1. Send via server API if possible
-    let serverSuccess = false;
-    try {
-      const resp = await fetch('/api/push/trigger-5pm-reminder', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username })
-      });
-      if (resp.ok) {
-        serverSuccess = true;
-      }
-    } catch (e) {
-      console.warn('[PushNotifications] Server push trigger skipped or offline, using local Service Worker:', e);
-    }
-
-    // 2. Also trigger via active Service Worker registration
-    if (isNotificationSupported() && getNotificationPermission() === 'granted') {
-      const registration = await navigator.serviceWorker.ready;
-      await registration.showNotification('WORKSPACE • 5:00 PM Shift Reminder', {
-        body: "Your workday shift has ended! Tap here to open the shift logger and record your hours.",
-        icon: '/icon-192.png',
-        badge: '/icon-192.png',
-        vibrate: [200, 100, 200, 100, 200],
-        tag: 'workday-shift-reminder-5pm',
-        data: {
-          url: '/?tab=timesheet&action=log-shift',
-          dateOfArrival: Date.now()
-        },
-        actions: [
-          { action: 'open_logger', title: 'Open Shift Logger' },
-          { action: 'dismiss', title: 'Dismiss' }
-        ],
-        requireInteraction: true
-      } as any);
-      return true;
-    }
-
-    return serverSuccess;
-  } catch (err) {
-    console.error('[PushNotifications] Failed to trigger 5:00 PM shift reminder:', err);
-    return false;
+    await fetch('/api/push/trigger-5pm-reminder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username })
+    });
+  } catch {
+    // Local Service Worker handles notification delivery
   }
+
+  return dispatchServiceWorkerNotification('WORKSPACE • 5:00 PM Shift Reminder', {
+    body: 'Your workday shift has ended! Tap here to open the shift logger and record your hours.',
+    tag: 'workday-shift-reminder-5pm',
+    renotify: true,
+    requireInteraction: true,
+    data: {
+      url: '/?tab=timesheet&action=log-shift',
+      dateOfArrival: Date.now()
+    },
+    actions: [
+      { action: 'open_logger', title: 'Open Shift Logger' },
+      { action: 'dismiss', title: 'Dismiss' }
+    ]
+  });
 }
 
 /**
- * Client-Side Workday 5:00 PM Scheduler
- * Checks every 30 seconds if current time is 17:00 on Monday-Friday and triggers reminder if enabled.
+ * Client-Side Workday & Shift Alarm Scheduler
+ * Dispatches 5:00 PM reminder, Clock-In alarm, and Clock-Out alarm via Service Worker
  */
 let schedulerIntervalId: number | null = null;
-const KEY_LAST_TRIGGERED_DATE = 'workspace_push_5pm_last_date';
+const KEY_LAST_TRIGGERED_5PM = 'workspace_push_5pm_last_date';
+const KEY_LAST_TRIGGERED_CLOCKIN = 'workspace_push_clockin_last_date';
+const KEY_LAST_TRIGGERED_CLOCKOUT = 'workspace_push_clockout_last_date';
 
 export function startWorkday5pmScheduler(
   isEnabled: () => boolean,
@@ -304,33 +521,55 @@ export function startWorkday5pmScheduler(
   }
 
   const checkSchedule = () => {
-    if (!isEnabled()) return;
     if (!isNotificationSupported() || getNotificationPermission() !== 'granted') return;
 
     const now = new Date();
     const dayOfWeek = now.getDay(); // 0 = Sunday, 1 = Monday, ..., 5 = Friday, 6 = Saturday
-    const isWorkday = dayOfWeek >= 1 && dayOfWeek <= 5; // Monday to Friday
+    const isWorkday = dayOfWeek >= 1 && dayOfWeek <= 5;
+    const todayStr = now.toISOString().slice(0, 10);
+    const currentHHMM = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
-    if (!isWorkday) return;
-
-    const hours = now.getHours();
-    const minutes = now.getMinutes();
-
-    // Trigger at 5:00 PM (17:00)
-    if (hours === 17 && minutes === 0) {
-      const todayStr = now.toISOString().slice(0, 10);
-      const lastTriggered = localStorage.getItem(KEY_LAST_TRIGGERED_DATE);
-
+    // 1. 5:00 PM Workday Reminder
+    if (isEnabled() && isWorkday && now.getHours() === 17 && now.getMinutes() === 0) {
+      const lastTriggered = localStorage.getItem(KEY_LAST_TRIGGERED_5PM);
       if (lastTriggered !== todayStr) {
-        safeSetItem(KEY_LAST_TRIGGERED_DATE, todayStr);
-        console.log('[PushNotifications] 5:00 PM workday milestone reached, firing push notification!');
+        safeSetItem(KEY_LAST_TRIGGERED_5PM, todayStr);
         trigger5pmShiftReminder(username);
         if (onTrigger) onTrigger();
       }
     }
+
+    // 2. Custom Clock-In & Clock-Out Alarms from ReminderSettings
+    try {
+      const reminders = getReminderSettings();
+      if (reminders.clockInReminder && reminders.clockInTime === currentHHMM) {
+        const lastClockIn = localStorage.getItem(KEY_LAST_TRIGGERED_CLOCKIN);
+        if (lastClockIn !== `${todayStr}_${currentHHMM}`) {
+          safeSetItem(KEY_LAST_TRIGGERED_CLOCKIN, `${todayStr}_${currentHHMM}`);
+          dispatchServiceWorkerNotification('WORKSPACE • Clock-In Reminder', {
+            body: `Scheduled shift start (${reminders.clockInTime}). Tap to clock in and start your workday timer.`,
+            tag: 'workspace-clockin-reminder',
+            data: { url: '/?tab=timesheet' }
+          });
+        }
+      }
+
+      if (reminders.clockOutReminder && reminders.clockOutTime === currentHHMM) {
+        const lastClockOut = localStorage.getItem(KEY_LAST_TRIGGERED_CLOCKOUT);
+        if (lastClockOut !== `${todayStr}_${currentHHMM}`) {
+          safeSetItem(KEY_LAST_TRIGGERED_CLOCKOUT, `${todayStr}_${currentHHMM}`);
+          dispatchServiceWorkerNotification('WORKSPACE • Clock-Out Reminder', {
+            body: `Scheduled shift end (${reminders.clockOutTime}). Don't forget to clock out and save your shift!`,
+            tag: 'workspace-clockout-reminder',
+            data: { url: '/?tab=timesheet&action=log-shift' }
+          });
+        }
+      }
+    } catch {
+      // Ignore storage parsing errors
+    }
   };
 
-  // Run initial check and set interval every 25 seconds
   checkSchedule();
   schedulerIntervalId = window.setInterval(checkSchedule, 25000);
 
