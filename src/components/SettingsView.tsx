@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   BellRing, ShieldCheck, Download, Trash2, KeySquare, 
   History, Info, ToggleLeft, Check, AlertTriangle, Eye, EyeOff, Clock,
-  Send, Sparkles, Share, PlusSquare
+  Send, Sparkles, Share, PlusSquare, ExternalLink
 } from 'lucide-react';
 import { 
   getReminderSettings, saveReminderSettings, 
@@ -49,13 +49,15 @@ export default function SettingsView({ onSettingsChanged, privacyMode, onToggleP
     permission: NotificationPermission | 'unsupported';
     isSubscribed: boolean;
     iosNeedsHomeScreen: boolean;
+    isEmbeddedIframe: boolean;
   }>(() => {
     const iosInfo = getIOSNotificationInfo();
     return {
       supported: isNotificationSupported(),
       permission: isNotificationSupported() ? getNotificationPermission() : 'unsupported',
       isSubscribed: false,
-      iosNeedsHomeScreen: iosInfo.iosNeedsHomeScreen
+      iosNeedsHomeScreen: iosInfo.iosNeedsHomeScreen,
+      isEmbeddedIframe: iosInfo.isEmbeddedIframe
     };
   });
   const [testingPush, setTestingPush] = useState(false);
@@ -68,7 +70,8 @@ export default function SettingsView({ onSettingsChanged, privacyMode, onToggleP
         supported: s.supported,
         permission: s.permission,
         isSubscribed: s.isSubscribed,
-        iosNeedsHomeScreen: s.iosNeedsHomeScreen
+        iosNeedsHomeScreen: s.iosNeedsHomeScreen,
+        isEmbeddedIframe: s.isEmbeddedIframe
       });
     });
   }, []);
@@ -210,6 +213,27 @@ export default function SettingsView({ onSettingsChanged, privacyMode, onToggleP
 
             <div className="space-y-4">
               
+              {/* Embedded Iframe Warning (window.self !== window.top) */}
+              {pushState.isEmbeddedIframe && (
+                <div className="rounded-2xl border border-amber-500/45 bg-amber-500/10 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-start gap-2.5 text-left">
+                    <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+                    <p className="text-xs text-muted-text leading-relaxed">
+                      <strong className="text-amber-300">Embedded Iframe Detected:</strong> Notifications require opening the app in a separate browser tab.
+                    </p>
+                  </div>
+                  <a
+                    href={typeof window !== 'undefined' ? window.location.href : '/'}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition shrink-0"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    <span>Open in New Tab</span>
+                  </a>
+                </div>
+              )}
+
               {/* iOS Safari Setup Info Banner */}
               <div className={`rounded-2xl border p-4 space-y-2 ${
                 pushState.iosNeedsHomeScreen
@@ -258,15 +282,18 @@ export default function SettingsView({ onSettingsChanged, privacyMode, onToggleP
                                 supported: s.supported,
                                 permission: s.permission,
                                 isSubscribed: s.isSubscribed,
-                                iosNeedsHomeScreen: s.iosNeedsHomeScreen
+                                iosNeedsHomeScreen: s.iosNeedsHomeScreen,
+                                isEmbeddedIframe: s.isEmbeddedIframe
                               });
                               if (ok) {
                                 showToast('Push notifications enabled for 5:00 PM shift reminder.');
                               } else if (s.iosNeedsHomeScreen) {
-                                showToast('On iOS Safari, save the app to your Home Screen (Share → Add to Home Screen) first.');
+                                showToast('IOS_HOMESCREEN_REQUIRED: Save the app to your Home Screen (Share → Add to Home Screen) first.');
                               } else {
-                                showToast('Notification permission not granted in browser settings.');
+                                showToast(`Permission Denied: Notification.permission is "${s.permission}".`);
                               }
+                            } catch (err: any) {
+                              showToast(err instanceof Error ? `${err.name}: ${err.message}` : String(err));
                             } finally {
                               setEnablingPush(false);
                             }
@@ -306,9 +333,12 @@ export default function SettingsView({ onSettingsChanged, privacyMode, onToggleP
                             supported: s.supported,
                             permission: s.permission,
                             isSubscribed: s.isSubscribed,
-                            iosNeedsHomeScreen: s.iosNeedsHomeScreen
+                            iosNeedsHomeScreen: s.iosNeedsHomeScreen,
+                            isEmbeddedIframe: s.isEmbeddedIframe
                           });
                           showToast(res.message);
+                        } catch (err: any) {
+                          showToast(err instanceof Error ? `${err.name}: ${err.message}` : String(err));
                         } finally {
                           setTestingPush(false);
                         }
@@ -331,9 +361,12 @@ export default function SettingsView({ onSettingsChanged, privacyMode, onToggleP
                             supported: s.supported,
                             permission: s.permission,
                             isSubscribed: s.isSubscribed,
-                            iosNeedsHomeScreen: s.iosNeedsHomeScreen
+                            iosNeedsHomeScreen: s.iosNeedsHomeScreen,
+                            isEmbeddedIframe: s.isEmbeddedIframe
                           });
-                          showToast(res.ok ? '5:00 PM Shift Reminder dispatched via Service Worker!' : res.message);
+                          showToast(res.message);
+                        } catch (err: any) {
+                          showToast(err instanceof Error ? `${err.name}: ${err.message}` : String(err));
                         } finally {
                           setTestingPush(false);
                         }

@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Play, Square, Plus, Trash2, FileOutput, Printer, X, MapPin, Briefcase, Calendar, CheckCircle2, Pencil, ClipboardList, Folder, FolderOpen, ChevronDown, ChevronRight, ChevronLeft, Archive, AlertTriangle, HelpCircle, Bell, Inbox, Send, Utensils, UtensilsCrossed, Clock, Sparkles, Zap, ExternalLink, RefreshCw, Camera, Eye, Download, ShieldCheck, Image as ImageIcon, Maximize2 } from 'lucide-react';
+import { Play, Square, Plus, Trash2, FileOutput, Printer, X, MapPin, Briefcase, Calendar, CheckCircle2, Pencil, ClipboardList, Folder, FolderOpen, ChevronDown, ChevronRight, ChevronLeft, Archive, AlertTriangle, HelpCircle, Bell, Inbox, Send, Utensils, UtensilsCrossed, Clock, Sparkles, Zap, ExternalLink, RefreshCw, Camera, Eye, Download, ShieldCheck, Image as ImageIcon, Maximize2, GitFork } from 'lucide-react';
 import { 
   getPayPeriodsGrouped, 
   addTimesheetEntry, 
@@ -31,7 +31,11 @@ import {
   getSubmittedTimesheets,
   enrichEntriesWithOvertime,
   ActiveSession,
-  safeSetItem
+  safeSetItem,
+  splitShiftIntoRegularAndOvertime,
+  splitExistingTimesheetEntry,
+  SplitShiftResult,
+  formatMinutesToHHMM
 } from '../utils/storage';
 import { db } from '../lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
@@ -143,6 +147,14 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
   const [timerStart, setTimerStart] = useState<string>(initialTimerStart);
   const [isOvertime, setIsOvertime] = useState<boolean>(initialIsOvertime);
   const [bypassLunch, setBypassLunch] = useState<boolean>(false);
+  const [splitDayOnEnd, setSplitDayOnEnd] = useState<boolean>(true);
+  const [endDaySplitModal, setEndDaySplitModal] = useState<{
+    isOpen: boolean;
+    splitInfo: SplitShiftResult;
+    endStr: string;
+    breakMins: number;
+    date: string;
+  } | null>(null);
   
   // Alberta Holiday States
   const [todayHoliday, setTodayHoliday] = useState<string | null>(null);
@@ -315,6 +327,28 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
   const [manualNotes, setManualNotes] = useState('');
   const [manualIsOvertime, setManualIsOvertime] = useState(false);
   const [selectedPresetId, setSelectedPresetId] = useState<string | null>('standard_8h');
+  const [manualSplitDay, setManualSplitDay] = useState(false);
+  const [manualRegularThreshold, setManualRegularThreshold] = useState<number>(8.0);
+
+  // Real-time calculation of manual shift split
+  const manualShiftPreview = useMemo(() => {
+    if (!manualStart || !manualEnd) return { totalHours: 0, regularHours: 0, overtimeHours: 0, splitTime: manualEnd };
+    const breakMins = manualBypassLunch ? 0 : 30;
+    const split = splitShiftIntoRegularAndOvertime({
+      date: manualDate,
+      startTime: manualStart,
+      endTime: manualEnd,
+      breakMinutes: breakMins,
+      regularThreshold: manualRegularThreshold,
+    });
+    if (!split) return { totalHours: 0, regularHours: 0, overtimeHours: 0, splitTime: manualEnd };
+    return {
+      totalHours: split.totalHours,
+      regularHours: split.regularHours,
+      overtimeHours: split.overtimeHours,
+      splitTime: split.splitTime
+    };
+  }, [manualDate, manualStart, manualEnd, manualBypassLunch, manualRegularThreshold]);
 
   // FLHA Safety Card State for Shift Logger Modal & Viewer
   const [manualFlhaImage, setManualFlhaImage] = useState<string | null>(null);
@@ -829,7 +863,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     }
   };
 
-  const handleClockOut = () => {
+  const executeClockOut = () => {
     if (!isClockedIn) return;
 
     // Calculate end time
@@ -880,9 +914,155 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
       setActiveNotes('');
       setActiveFlhaImage(null);
       setActiveFlhaTimestamp(null);
+      setEndDaySplitModal(null);
       
       window.dispatchEvent(new Event('storage-sync'));
       onRefreshEntries();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setValidationError(msg);
+    }
+  };
+
+  const handleConfirmSplitClockOut = (splitInfo: SplitShiftResult) => {
+    try {
+      addTimesheetEntry(splitInfo.regularPayload);
+      addTimesheetEntry(splitInfo.overtimePayload);
+
+      clearActiveSession();
+      if (user?.username) {
+        deleteActiveSessionFromFirestore(user.username);
+      }
+
+      setIsClockedIn(false);
+      setTaskStartTimestamp(null);
+      setClockInTimestamp(null);
+      setSecondsElapsed(0);
+      setDaySecondsElapsed(0);
+      setBypassLunch(false);
+      setIsOvertime(false);
+      setTimerStart('');
+      setActiveNotes('');
+      setActiveFlhaImage(null);
+      setActiveFlhaTimestamp(null);
+      setEndDaySplitModal(null);
+
+      setSwitchNotification(`Day successfully split into ${splitInfo.regularHours.toFixed(2)}h Regular (${splitInfo.regularPayload.startTime}–${splitInfo.splitTime}) and ${splitInfo.overtimeHours.toFixed(2)}h Overtime (${splitInfo.splitTime}–${splitInfo.overtimePayload.endTime})!`);
+      setTimeout(() => setSwitchNotification(null), 6000);
+
+      window.dispatchEvent(new Event('storage-sync'));
+      onRefreshEntries();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setValidationError(msg);
+    }
+  };
+
+  const handleStandardClockOut = () => {
+    setEndDaySplitModal(null);
+    executeClockOut();
+  };
+
+  const handleClockOut = () => {
+    if (!isClockedIn) return;
+
+    const now = new Date();
+    const endStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    const isUnder5Hours = daySecondsElapsed < 18000;
+    const breakMins = (bypassLunch || isUnder5Hours) ? 0 : 30;
+
+    const grossMins = Math.floor(daySecondsElapsed / 60);
+    const grossHalfHours = Math.ceil(grossMins / 30) * 0.5;
+    const netDayHours = Math.max(0, grossHalfHours - (breakMins / 60));
+
+    // If day exceeds 8 hours, splitDayOnEnd is enabled, and not already pure overtime mode
+    if (netDayHours > 8.0 && splitDayOnEnd && !isOvertime) {
+      const splitInfo = splitShiftIntoRegularAndOvertime({
+        date: formatLocalDate(now),
+        startTime: timerStart,
+        endTime: endStr,
+        breakMinutes: breakMins,
+        project: activeProject || 'General Work',
+        locationName: activeLocation || 'Site',
+        notes: activeNotes || '',
+        regularThreshold: 8.0,
+        flhaImageUrl: activeFlhaImage || undefined,
+        flhaTimestamp: activeFlhaTimestamp || undefined,
+        flhaLocation: activeLocation || 'Site'
+      });
+
+      if (splitInfo && splitInfo.overtimeHours > 0) {
+        setEndDaySplitModal({
+          isOpen: true,
+          splitInfo,
+          endStr,
+          breakMins,
+          date: formatLocalDate(now)
+        });
+        return;
+      }
+    }
+
+    executeClockOut();
+  };
+
+  const handleTransitionToOvertime = () => {
+    if (!isClockedIn) return;
+    const now = new Date();
+    const nowMs = now.getTime();
+    const endStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    const isUnder5Hours = daySecondsElapsed < 18000;
+    const breakMins = (bypassLunch || isUnder5Hours) ? 0 : 30;
+
+    try {
+      const regPayload: Omit<TimesheetEntry, 'id' | 'totalHours' | 'earnings' | 'isSynced'> = {
+        date: formatLocalDate(now),
+        startTime: timerStart,
+        endTime: endStr,
+        breakMinutes: breakMins,
+        project: activeProject || 'General Work',
+        locationName: activeLocation || 'Site',
+        notes: activeNotes ? `${activeNotes} [Regular Shift locked in]` : 'Regular shift completed.',
+        geofencedClockIn: simulatedGeoTrigger || false,
+        geofencedClockOut: false,
+        isOvertime: false
+      };
+
+      if (activeFlhaImage) {
+        regPayload.flhaImageUrl = activeFlhaImage;
+        regPayload.flhaTimestamp = activeFlhaTimestamp || now.toISOString();
+        regPayload.flhaLocation = activeLocation || 'Site';
+      }
+
+      addTimesheetEntry(regPayload);
+
+      setTimerStart(endStr);
+      setTaskStartTimestamp(nowMs);
+      setSecondsElapsed(0);
+      setIsOvertime(true);
+      setBypassLunch(true);
+
+      setSwitchNotification(`Regular shift locked in (${formatTimer(secondsElapsed)}). Now tracking Overtime!`);
+      setTimeout(() => setSwitchNotification(null), 6000);
+
+      onRefreshEntries();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setValidationError(msg);
+    }
+  };
+
+  const handleSplitExistingEntry = (id: string) => {
+    try {
+      const res = splitExistingTimesheetEntry(id, 8.0);
+      if (res.success) {
+        setSwitchNotification(`Shift successfully split into ${res.message}!`);
+        setTimeout(() => setSwitchNotification(null), 5000);
+        onRefreshEntries();
+      } else {
+        setValidationError(res.message || 'Unable to split this shift.');
+        setTimeout(() => setValidationError(null), 4000);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setValidationError(msg);
@@ -946,6 +1126,63 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
       const locationVal = manualLocation.trim() || 'General Site';
       const notesVal = manualNotes.trim();
 
+      // Check if user chose to split day into Regular & Overtime
+      if (manualSplitDay && manualShiftPreview.overtimeHours > 0) {
+        const splitResult = splitShiftIntoRegularAndOvertime({
+          date: manualDate,
+          startTime: manualStart,
+          endTime: manualEnd,
+          breakMinutes: breakMins,
+          project: projectVal,
+          locationName: locationVal,
+          notes: notesVal,
+          regularThreshold: manualRegularThreshold,
+          flhaImageUrl: manualFlhaImage || editingEntry?.flhaImageUrl || undefined,
+          flhaTimestamp: manualFlhaTimestamp || editingEntry?.flhaTimestamp || undefined,
+          flhaLocation: locationVal
+        });
+
+        if (splitResult && splitResult.overtimeHours > 0) {
+          if (editingEntry) {
+            updateTimesheetEntry({
+              ...editingEntry,
+              date: manualDate,
+              startTime: splitResult.regularPayload.startTime,
+              endTime: splitResult.splitTime,
+              breakMinutes: splitResult.regularPayload.breakMinutes,
+              project: projectVal,
+              locationName: locationVal,
+              notes: splitResult.regularPayload.notes,
+              isOvertime: false,
+              regularHours: splitResult.regularHours,
+              overtimeHours: 0,
+              flhaImageUrl: manualFlhaImage || editingEntry.flhaImageUrl,
+              flhaTimestamp: manualFlhaTimestamp || editingEntry.flhaTimestamp,
+              flhaLocation: locationVal
+            });
+            addTimesheetEntry(splitResult.overtimePayload);
+          } else {
+            addTimesheetEntry(splitResult.regularPayload);
+            addTimesheetEntry(splitResult.overtimePayload);
+          }
+
+          setShowManualForm(false);
+          setEditingEntry(null);
+          setManualProject('');
+          setManualLocation('');
+          setManualNotes('');
+          setManualIsOvertime(false);
+          setManualBypassLunch(false);
+          setManualFlhaImage(null);
+          setManualFlhaTimestamp(null);
+          setManualSplitDay(false);
+          setSwitchNotification(`Day logged and split into ${splitResult.regularHours.toFixed(2)} hrs regular time and ${splitResult.overtimeHours.toFixed(2)} hrs overtime.`);
+          setTimeout(() => setSwitchNotification(null), 5000);
+          onRefreshEntries();
+          return;
+        }
+      }
+
       if (editingEntry) {
         const updatedPayload: TimesheetEntry = {
           ...editingEntry,
@@ -996,6 +1233,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
       setManualBypassLunch(false);
       setManualFlhaImage(null);
       setManualFlhaTimestamp(null);
+      setManualSplitDay(false);
       onRefreshEntries();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -1015,6 +1253,8 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     setManualIsOvertime(!!entry.isOvertime);
     setManualFlhaImage(entry.flhaImageUrl || null);
     setManualFlhaTimestamp(entry.flhaTimestamp || null);
+    setManualSplitDay(false);
+    setManualRegularThreshold(8.0);
     
     // Auto-override for pre-saved entries on holidays
     const isHoliday = getAlbertaHoliday(entry.date);
@@ -1037,6 +1277,8 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     setManualDate(formatLocalDate());
     setManualFlhaImage(null);
     setManualFlhaTimestamp(null);
+    setManualSplitDay(false);
+    setManualRegularThreshold(8.0);
     if (preset) {
       handleApplyPreset(preset);
     } else {
@@ -1252,6 +1494,73 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                     </strong>
                   </span>
                 </div>
+
+                {/* Live Regular vs Overtime Day Split Tracker */}
+                {(() => {
+                  const isUnder5 = daySecondsElapsed < 18000;
+                  const curBreak = (bypassLunch || isUnder5) ? 0 : 30;
+                  const curNetSecs = Math.max(0, daySecondsElapsed - (curBreak * 60));
+                  const curNetHrs = curNetSecs / 3600;
+                  const liveRegHrs = isOvertime ? 0 : Math.min(8.0, curNetHrs);
+                  const liveOtHrs = isOvertime ? curNetHrs : Math.max(0, curNetHrs - 8.0);
+
+                  return (
+                    <div className="rounded-2xl bg-slate-950/30 border border-white/15 p-3 space-y-2">
+                      <div className="flex items-center justify-between text-[11px] font-mono">
+                        <span className="text-blue-200/90 flex items-center gap-1.5 font-semibold">
+                          <GitFork className="h-3.5 w-3.5 text-amber-400" />
+                          <span>Day Breakdown:</span>
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-white font-bold">{liveRegHrs.toFixed(2)}h Reg</span>
+                          <span className="text-white/40">•</span>
+                          <span className={`font-bold ${liveOtHrs > 0 ? 'text-amber-300' : 'text-blue-200/60'}`}>
+                            {liveOtHrs.toFixed(2)}h OT
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Dual-segment progress bar */}
+                      <div className="h-2 w-full bg-slate-800/80 rounded-full overflow-hidden flex">
+                        <div 
+                          className="bg-blue-400 h-full transition-all duration-300" 
+                          style={{ width: `${Math.min(100, (liveRegHrs / 8) * 100)}%` }} 
+                          title={`Regular Time: ${liveRegHrs.toFixed(2)} hrs`}
+                        />
+                        {liveOtHrs > 0 && (
+                          <div 
+                            className="bg-amber-400 h-full transition-all duration-300 animate-pulse" 
+                            style={{ width: `${Math.min(100, (liveOtHrs / 4) * 100)}%` }} 
+                            title={`Overtime: ${liveOtHrs.toFixed(2)} hrs`}
+                          />
+                        )}
+                      </div>
+
+                      {/* Split on End toggle & Transition to OT */}
+                      <div className="flex items-center justify-between gap-2 pt-1 border-t border-white/10">
+                        <label className="flex items-center gap-1.5 cursor-pointer text-[10px] font-medium text-blue-100 select-none">
+                          <input
+                            type="checkbox"
+                            checked={splitDayOnEnd}
+                            onChange={(e) => setSplitDayOnEnd(e.target.checked)}
+                            className="rounded border-blue-400/40 text-blue-600 focus:ring-blue-400 bg-slate-900/50 h-3.5 w-3.5 cursor-pointer"
+                          />
+                          <span>Split Day (8h Reg + OT) on End</span>
+                        </label>
+                        {!isOvertime && (
+                          <button
+                            type="button"
+                            onClick={handleTransitionToOvertime}
+                            className="text-[9px] font-mono px-2 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-400/40 transition cursor-pointer"
+                            title="Lock in regular shift up to this moment and switch active timer to Overtime"
+                          >
+                            Start OT Now
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
               </>
             ) : (
               <div className="text-center py-4 sm:py-5 rounded-2xl bg-app-bg/50 border border-main-border/60">
@@ -2193,6 +2502,9 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                       return sortedDates.map(dateStr => {
                         const dayEntries = groups[dateStr];
                         const dayTotalHours = dayEntries.reduce((sum, e) => sum + e.totalHours, 0);
+                        const enrichedDayEntries = enrichEntriesWithOvertime(dayEntries);
+                        const dayRegHours = enrichedDayEntries.reduce((sum, e) => sum + e.regularHours, 0);
+                        const dayOtHours = enrichedDayEntries.reduce((sum, e) => sum + e.overtimeHours, 0);
                         const hasMultipleTasks = dayEntries.length > 1;
                         const isExpanded = !!expandedDays[dateStr];
                         const singleEntry = dayEntries[0];
@@ -2232,6 +2544,11 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                                   {!hasMultipleTasks && singleEntry.isOvertime && (
                                     <span className="inline-flex items-center rounded bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-bold text-amber-500 border border-amber-500/20 uppercase tracking-wider">
                                       Overtime
+                                    </span>
+                                  )}
+                                  {dayOtHours > 0 && (
+                                    <span className="inline-flex items-center gap-1 rounded bg-amber-500/15 px-2 py-0.5 text-[9px] font-bold text-amber-500 border border-amber-500/30 uppercase tracking-wider font-mono">
+                                      {dayRegHours.toFixed(1)}h Reg • {dayOtHours.toFixed(1)}h OT
                                     </span>
                                   )}
                                   {!hasMultipleTasks && singleEntry.flhaImageUrl && (
@@ -2282,11 +2599,22 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                               </div>
                               
                               <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t border-main-border/30 sm:border-t-0">
-                                <div className="flex items-center gap-1.5">
-                                  <span className="text-[10px] uppercase font-bold text-muted-text/70 sm:hidden">Total:</span>
-                                  <span className="text-sm font-semibold font-mono text-main-text">
-                                    {dayTotalHours.toFixed(2)} hrs
-                                  </span>
+                                <div className="flex flex-col items-end gap-0.5">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-[10px] uppercase font-bold text-muted-text/70 sm:hidden">Total:</span>
+                                    <span className="text-sm font-semibold font-mono text-main-text">
+                                      {dayTotalHours.toFixed(2)} hrs
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-1 text-[10px] font-mono text-muted-text">
+                                    <span className="text-blue-500 font-semibold">{dayRegHours.toFixed(1)}h Reg</span>
+                                    {dayOtHours > 0 && (
+                                      <>
+                                        <span>•</span>
+                                        <span className="text-amber-500 font-bold">{dayOtHours.toFixed(1)}h OT</span>
+                                      </>
+                                    )}
+                                  </div>
                                 </div>
                                 
                                 {hasMultipleTasks ? (
@@ -2298,7 +2626,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                                     )}
                                   </div>
                                 ) : (
-                                  /* Inline Edit/Delete for single entry */
+                                  /* Inline Edit/Delete/Split for single entry */
                                   <div className="flex items-center gap-1 animate-fade-in" onClick={(e) => e.stopPropagation()}>
                                     {deletingId === singleEntry.id ? (
                                       <div className="flex items-center gap-1 bg-rose-500/10 px-2.5 py-1.5 rounded-xl border border-rose-500/20 animate-pulse shrink-0 min-h-[44px]">
@@ -2321,6 +2649,20 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                                       </div>
                                     ) : (
                                       <>
+                                        {singleEntry.totalHours > 8.0 && !singleEntry.isOvertime && (
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleSplitExistingEntry(singleEntry.id);
+                                            }}
+                                            title="Split this day into 8h regular time and remainder overtime"
+                                            className="min-h-[44px] px-2.5 flex items-center gap-1 rounded-xl text-amber-500 hover:text-amber-400 hover:bg-amber-500/10 border border-amber-500/30 text-[10px] font-semibold transition cursor-pointer"
+                                          >
+                                            <GitFork className="h-3.5 w-3.5" />
+                                            <span className="hidden sm:inline">Split Day (8h Reg / OT)</span>
+                                          </button>
+                                        )}
                                         <button
                                           onClick={() => handleEditClick(singleEntry)}
                                           title="Edit Entry"
@@ -2423,6 +2765,17 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                                         </div>
                                       ) : (
                                         <div className="flex items-center gap-1">
+                                          {entry.totalHours > 8.0 && !entry.isOvertime && (
+                                            <button
+                                              type="button"
+                                              onClick={() => handleSplitExistingEntry(entry.id)}
+                                              title="Split this shift: 8.00h Regular + Overtime"
+                                              className="min-h-[44px] px-2 flex items-center gap-1 rounded-xl text-amber-500 hover:text-amber-400 hover:bg-amber-500/10 border border-amber-500/30 text-[10px] font-semibold transition cursor-pointer"
+                                            >
+                                              <GitFork className="h-3 w-3" />
+                                              <span className="hidden md:inline">Split</span>
+                                            </button>
+                                          )}
                                           <button
                                             onClick={() => handleEditClick(entry)}
                                             title="Edit Task"
@@ -2738,6 +3091,55 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                   />
                 </div>
 
+                {/* DAY SPLIT (REGULAR & OVERTIME) */}
+                <div className="rounded-xl border border-main-border bg-input-bg p-3.5 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <GitFork className="h-4 w-4 text-amber-500 shrink-0" />
+                      <span className="text-xs font-semibold text-main-text">Split Day (Regular & Overtime)</span>
+                    </div>
+                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                      Total: {manualShiftPreview.totalHours.toFixed(2)} hrs
+                    </span>
+                  </div>
+
+                  <div className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      id="manual-split-day-toggle"
+                      checked={manualSplitDay}
+                      onChange={(e) => setManualSplitDay(e.target.checked)}
+                      disabled={manualShiftPreview.totalHours <= manualRegularThreshold}
+                      className="h-4 w-4 rounded border-main-border text-blue-600 focus:ring-blue-500/50 bg-[#121214] cursor-pointer mt-0.5 shrink-0 disabled:opacity-40"
+                    />
+                    <label htmlFor="manual-split-day-toggle" className={`text-xs text-main-text cursor-pointer select-none ${manualShiftPreview.totalHours <= manualRegularThreshold ? 'opacity-60 cursor-not-allowed' : ''}`}>
+                      <span className="font-medium">
+                        Split shift: {manualRegularThreshold}h Regular Time + {Math.max(0, manualShiftPreview.totalHours - manualRegularThreshold).toFixed(1)}h Overtime
+                      </span>
+                      <span className="block text-[10px] text-muted-text mt-0.5">
+                        {manualShiftPreview.totalHours > manualRegularThreshold
+                          ? `Will create 2 entries: ${manualRegularThreshold}h regular (${manualStart}–${manualShiftPreview.splitTime}) and ${(manualShiftPreview.totalHours - manualRegularThreshold).toFixed(2)}h overtime (${manualShiftPreview.splitTime}–${manualEnd})`
+                          : `Shift must exceed ${manualRegularThreshold} hours (currently ${manualShiftPreview.totalHours.toFixed(2)}h) to split.`}
+                      </span>
+                    </label>
+                  </div>
+
+                  {manualSplitDay && manualShiftPreview.overtimeHours > 0 && (
+                    <div className="pt-2 border-t border-main-border/50 grid grid-cols-2 gap-2 text-center text-xs font-mono">
+                      <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-300">
+                        <span className="block text-[9px] uppercase font-bold text-blue-400">Shift 1 • Regular</span>
+                        <span className="font-bold text-sm text-white">{manualShiftPreview.regularHours.toFixed(2)} hrs</span>
+                        <span className="block text-[9px] text-blue-200/70">{manualStart} – {manualShiftPreview.splitTime}</span>
+                      </div>
+                      <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300">
+                        <span className="block text-[9px] uppercase font-bold text-amber-400">Shift 2 • Overtime (1.5x)</span>
+                        <span className="font-bold text-sm text-white">{manualShiftPreview.overtimeHours.toFixed(2)} hrs</span>
+                        <span className="block text-[9px] text-amber-200/70">{manualShiftPreview.splitTime} – {manualEnd}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <div className="flex items-center gap-3 rounded-xl border border-main-border bg-input-bg p-3">
                   <input
                     type="checkbox"
@@ -2920,6 +3322,94 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                 </button>
 
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* END DAY SPLIT REVIEW MODAL */}
+      <AnimatePresence>
+        {endDaySplitModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setEndDaySplitModal(null)}
+              className="absolute inset-0 bg-black/75 backdrop-blur-md"
+            />
+
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="relative w-full max-w-lg flex flex-col overflow-hidden rounded-3xl border border-main-border bg-card-bg shadow-2xl z-10 p-5 sm:p-6 space-y-4"
+            >
+              <div className="flex items-center justify-between border-b border-main-border pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2.5 rounded-2xl bg-amber-500/15 text-amber-500 border border-amber-500/25">
+                    <GitFork className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-main-text">Split Day: Regular Time & Overtime</h3>
+                    <p className="text-xs text-muted-text font-mono">
+                      Shift duration: {endDaySplitModal.splitInfo.totalHours.toFixed(2)} hrs (Exceeds 8.0 hrs)
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEndDaySplitModal(null)}
+                  className="p-1.5 rounded-lg text-muted-text hover:text-main-text hover:bg-input-bg transition cursor-pointer"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                <p className="text-xs text-muted-text leading-relaxed">
+                  Alberta standard rules allow days exceeding 8 hours to be split into 8.0 hours regular time and the remainder as overtime. Choose how you would like to log this shift:
+                </p>
+
+                {/* 2 Split Cards Preview */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="p-3.5 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-left space-y-1">
+                    <span className="text-[10px] font-bold text-blue-400 uppercase font-mono tracking-wider">Shift 1 • Regular</span>
+                    <p className="text-2xl font-bold font-mono text-main-text">{endDaySplitModal.splitInfo.regularHours.toFixed(2)} hrs</p>
+                    <p className="text-[11px] font-mono text-muted-text">
+                      {timerStart} – {endDaySplitModal.splitInfo.splitTime}
+                    </p>
+                    <span className="inline-block text-[9px] text-blue-400 font-semibold uppercase bg-blue-500/15 px-2 py-0.5 rounded">Standard Rate</span>
+                  </div>
+
+                  <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-left space-y-1">
+                    <span className="text-[10px] font-bold text-amber-400 uppercase font-mono tracking-wider">Shift 2 • Overtime</span>
+                    <p className="text-2xl font-bold font-mono text-amber-400">{endDaySplitModal.splitInfo.overtimeHours.toFixed(2)} hrs</p>
+                    <p className="text-[11px] font-mono text-muted-text">
+                      {endDaySplitModal.splitInfo.splitTime} – {endDaySplitModal.endStr}
+                    </p>
+                    <span className="inline-block text-[9px] text-amber-400 font-semibold uppercase bg-amber-500/15 px-2 py-0.5 rounded">1.5x Overtime Rate</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-2 flex flex-col sm:flex-row gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => handleConfirmSplitClockOut(endDaySplitModal.splitInfo)}
+                  className="flex-1 min-h-[44px] flex items-center justify-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs py-2.5 transition cursor-pointer shadow-md shadow-blue-500/20"
+                >
+                  <GitFork className="h-4 w-4" />
+                  <span>Split Day ({endDaySplitModal.splitInfo.regularHours.toFixed(1)}h Reg + {endDaySplitModal.splitInfo.overtimeHours.toFixed(1)}h OT)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleStandardClockOut}
+                  className="min-h-[44px] flex items-center justify-center rounded-xl border border-main-border bg-input-bg text-main-text hover:bg-card-bg font-medium text-xs px-4 py-2.5 transition cursor-pointer"
+                >
+                  <span>Save Single {endDaySplitModal.splitInfo.totalHours.toFixed(2)}h Entry</span>
+                </button>
+              </div>
             </motion.div>
           </div>
         )}

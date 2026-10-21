@@ -1662,6 +1662,7 @@ export function stopOneTapTimer(options?: {
   project?: string;
   location?: string;
   isOvertime?: boolean;
+  autoSplitOvertime?: boolean;
 }): TimesheetEntry | null {
   const currentUsername = localStorage.getItem('timesheets_tracker_current_user');
   if (!currentUsername) return null;
@@ -1699,6 +1700,35 @@ export function stopOneTapTimer(options?: {
     entryPayload.flhaImageUrl = session.flhaImageUrl;
     entryPayload.flhaTimestamp = session.flhaTimestamp || now.toISOString();
     entryPayload.flhaLocation = session.flhaLocation || entryPayload.locationName;
+  }
+
+  // Automatic split into 8h regular and remainder overtime if requested
+  if (options?.autoSplitOvertime && !session.isOvertime) {
+    const splitResult = splitShiftIntoRegularAndOvertime({
+      date: entryPayload.date,
+      startTime: entryPayload.startTime,
+      endTime: entryPayload.endTime,
+      breakMinutes: entryPayload.breakMinutes,
+      project: entryPayload.project,
+      locationName: entryPayload.locationName,
+      notes: entryPayload.notes,
+      regularThreshold: 8.0,
+      flhaImageUrl: entryPayload.flhaImageUrl,
+      flhaTimestamp: entryPayload.flhaTimestamp,
+      flhaLocation: entryPayload.flhaLocation
+    });
+
+    if (splitResult && splitResult.overtimeHours > 0) {
+      const regEntry = addTimesheetEntry(splitResult.regularPayload);
+      addTimesheetEntry(splitResult.overtimePayload);
+
+      clearActiveSessionLocally(currentUsername);
+      deleteActiveSessionFromFirestore(currentUsername);
+
+      window.dispatchEvent(new Event('storage-sync'));
+      window.dispatchEvent(new CustomEvent('timer-state-changed', { detail: { isClockedIn: false, entry: regEntry } }));
+      return regEntry;
+    }
   }
 
   const entry = addTimesheetEntry(entryPayload);
@@ -1845,8 +1875,13 @@ export function enrichEntriesWithOvertime(entries: TimesheetEntry[], usersList?:
       let regularHours = 0;
       let overtimeHours = 0;
       
-      // If entry is explicitly marked as overtime work (e.g., manual override or toggle)
-      if (entry.isOvertime) {
+      // If entry has explicit split hours recorded
+      if (entry.regularHours !== undefined && entry.overtimeHours !== undefined) {
+        regularHours = entry.regularHours;
+        overtimeHours = entry.overtimeHours;
+        runningRegularHours += regularHours;
+      } else if (entry.isOvertime) {
+        // If entry is explicitly marked as overtime work (e.g., manual override or toggle)
         overtimeHours = entryHours;
         regularHours = 0;
         // CRITICAL: Manual overtime shifts DO NOT count toward the daily 8-hour regular threshold,
@@ -1887,6 +1922,184 @@ export function enrichEntriesWithOvertime(entries: TimesheetEntry[], usersList?:
     }
     return b.startTime.localeCompare(a.startTime);
   });
+}
+
+export interface SplitShiftResult {
+  regularPayload: Omit<TimesheetEntry, 'id' | 'totalHours' | 'earnings' | 'isSynced'> & {
+    regularHours: number;
+    overtimeHours: number;
+    isOvertime: boolean;
+  };
+  overtimePayload: Omit<TimesheetEntry, 'id' | 'totalHours' | 'earnings' | 'isSynced'> & {
+    regularHours: number;
+    overtimeHours: number;
+    isOvertime: boolean;
+  };
+  splitTime: string;
+  regularHours: number;
+  overtimeHours: number;
+  totalHours: number;
+}
+
+export function formatMinutesToHHMM(totalMinutes: number): string {
+  const normalized = ((Math.round(totalMinutes) % 1440) + 1440) % 1440;
+  const h = Math.floor(normalized / 60);
+  const m = normalized % 60;
+  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+}
+
+export function splitShiftIntoRegularAndOvertime(params: {
+  date: string;
+  startTime: string;
+  endTime: string;
+  breakMinutes?: number;
+  project?: string;
+  locationName?: string;
+  notes?: string;
+  hourlyRate?: number;
+  regularThreshold?: number; // default 8.0 hours
+  flhaImageUrl?: string;
+  flhaTimestamp?: string;
+  flhaLocation?: string;
+}): SplitShiftResult | null {
+  const {
+    date,
+    startTime,
+    endTime,
+    breakMinutes = 0,
+    project = 'General Work',
+    locationName = 'Job Site',
+    notes = '',
+    hourlyRate,
+    regularThreshold = 8.0,
+    flhaImageUrl,
+    flhaTimestamp,
+    flhaLocation
+  } = params;
+
+  if (!startTime || !endTime) return null;
+
+  const startMins = parseTimeToMinutes(startTime);
+  let endMins = parseTimeToMinutes(endTime);
+  if (endMins <= startMins) {
+    endMins += 1440; // overnight support
+  }
+
+  const grossMinutes = Math.max(0, endMins - startMins);
+  const effectiveBreakMinutes = grossMinutes < 300 ? 0 : Math.min(grossMinutes, breakMinutes || 0);
+  const grossHalfHours = Math.ceil(grossMinutes / 30);
+  const grossHours = grossHalfHours * 0.5;
+  const breakHours = effectiveBreakMinutes / 60;
+  const netHours = Math.max(0, Number((grossHours - breakHours).toFixed(2)));
+
+  const regularHours = Number(Math.min(regularThreshold, netHours).toFixed(2));
+  const overtimeHours = Number(Math.max(0, netHours - regularHours).toFixed(2));
+
+  // Determine split transition point in time
+  // Regular shift takes regularHours and the break
+  const regularGrossMinutes = (regularHours * 60) + effectiveBreakMinutes;
+  const splitMins = startMins + Math.round(regularGrossMinutes);
+  const splitTime = formatMinutesToHHMM(splitMins);
+
+  const cleanNotes = notes ? notes.trim() : '';
+
+  const regularPayload = {
+    date,
+    startTime,
+    endTime: splitTime,
+    breakMinutes: effectiveBreakMinutes,
+    project,
+    locationName,
+    notes: cleanNotes ? `${cleanNotes} [Regular Shift: ${regularHours}h]` : `Regular shift (${regularHours} hrs)`,
+    hourlyRate,
+    regularHours,
+    overtimeHours: 0,
+    isOvertime: false,
+    flhaImageUrl,
+    flhaTimestamp,
+    flhaLocation: flhaLocation || locationName,
+  };
+
+  const overtimePayload = {
+    date,
+    startTime: splitTime,
+    endTime,
+    breakMinutes: 0,
+    project,
+    locationName,
+    notes: cleanNotes ? `${cleanNotes} [Overtime Shift: ${overtimeHours}h @ 1.5x]` : `Overtime shift (${overtimeHours} hrs @ 1.5x)`,
+    hourlyRate,
+    regularHours: 0,
+    overtimeHours,
+    isOvertime: true,
+    flhaImageUrl,
+    flhaTimestamp,
+    flhaLocation: flhaLocation || locationName,
+  };
+
+  return {
+    regularPayload,
+    overtimePayload,
+    splitTime,
+    regularHours,
+    overtimeHours,
+    totalHours: netHours
+  };
+}
+
+export function splitExistingTimesheetEntry(entryId: string, regularThreshold: number = 8.0): { success: boolean; regularEntry?: TimesheetEntry; overtimeEntry?: TimesheetEntry; message?: string } {
+  const entries = getTimesheets();
+  const existing = entries.find(e => e.id === entryId);
+  if (!existing) {
+    return { success: false, message: 'Timesheet entry not found.' };
+  }
+
+  const splitResult = splitShiftIntoRegularAndOvertime({
+    date: existing.date,
+    startTime: existing.startTime,
+    endTime: existing.endTime,
+    breakMinutes: existing.breakMinutes,
+    project: existing.project,
+    locationName: existing.locationName,
+    notes: existing.notes,
+    hourlyRate: existing.hourlyRate,
+    regularThreshold,
+    flhaImageUrl: existing.flhaImageUrl,
+    flhaTimestamp: existing.flhaTimestamp,
+    flhaLocation: existing.flhaLocation
+  });
+
+  if (!splitResult || splitResult.overtimeHours <= 0) {
+    return { success: false, message: `This shift is ${existing.totalHours} hrs and does not exceed ${regularThreshold} regular hours to split.` };
+  }
+
+  // Update existing entry to be the regular portion
+  updateTimesheetEntry({
+    ...existing,
+    endTime: splitResult.splitTime,
+    breakMinutes: splitResult.regularPayload.breakMinutes,
+    notes: splitResult.regularPayload.notes,
+    isOvertime: false,
+    regularHours: splitResult.regularHours,
+    overtimeHours: 0,
+  });
+
+  // Create new entry for the overtime portion
+  const overtimeEntry = addTimesheetEntry(splitResult.overtimePayload);
+
+  addAuditRecord(
+    'EDIT',
+    'timesheet',
+    existing.id,
+    `Split day into 2 shifts: ${splitResult.regularHours} hrs regular (${existing.startTime}–${splitResult.splitTime}) + ${splitResult.overtimeHours} hrs overtime (${splitResult.splitTime}–${existing.endTime})`
+  );
+
+  window.dispatchEvent(new Event('storage-sync'));
+  return {
+    success: true,
+    overtimeEntry,
+    message: `Split into ${splitResult.regularHours} hrs regular and ${splitResult.overtimeHours} hrs overtime.`
+  };
 }
 
 export function acknowledgeFutureShift(id: string): boolean {

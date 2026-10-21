@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   User, Mail, Phone, Briefcase, DollarSign, Camera, Save, 
   Sparkles, CheckCircle2, RefreshCw, LogOut, Clock, Landmark,
-  Trash2, BellRing, Send, ShieldCheck, Smartphone, Share, PlusSquare, AlertTriangle
+  Trash2, BellRing, Send, ShieldCheck, Smartphone, Share, PlusSquare, AlertTriangle, ExternalLink
 } from 'lucide-react';
 import { 
   UserAccount, 
@@ -89,6 +89,7 @@ export default function AccountView({ currentUser, onUpdateUser, onLogout, isMob
     isSafari: boolean;
     isStandalone: boolean;
     iosNeedsHomeScreen: boolean;
+    isEmbeddedIframe: boolean;
   }>(() => {
     const iosInfo = getIOSNotificationInfo();
     return {
@@ -101,6 +102,7 @@ export default function AccountView({ currentUser, onUpdateUser, onLogout, isMob
   const [testingPush, setTestingPush] = useState(false);
   const [enablingPush, setEnablingPush] = useState(false);
   const [reminderToast, setReminderToast] = useState<string | null>(null);
+  const [diagnosticError, setDiagnosticError] = useState<string | null>(null);
 
   const refreshPushStatus = async () => {
     const s = await getPushSubscriptionState();
@@ -111,7 +113,8 @@ export default function AccountView({ currentUser, onUpdateUser, onLogout, isMob
       isIOS: s.isIOS,
       isSafari: s.isSafari,
       isStandalone: s.isStandalone,
-      iosNeedsHomeScreen: s.iosNeedsHomeScreen
+      iosNeedsHomeScreen: s.iosNeedsHomeScreen,
+      isEmbeddedIframe: s.isEmbeddedIframe
     });
     return s;
   };
@@ -121,9 +124,14 @@ export default function AccountView({ currentUser, onUpdateUser, onLogout, isMob
     refreshPushStatus();
   }, []);
 
-  const showTimedReminderToast = (msg: string) => {
+  const showTimedReminderToast = (msg: string, isError = false) => {
     setReminderToast(msg);
-    setTimeout(() => setReminderToast(null), 5000);
+    if (isError) {
+      setDiagnosticError(msg);
+    } else {
+      setDiagnosticError(null);
+    }
+    setTimeout(() => setReminderToast(null), 7000);
   };
 
   const handleSaveReminders = (updates: Partial<ReminderSettings>) => {
@@ -141,7 +149,13 @@ export default function AccountView({ currentUser, onUpdateUser, onLogout, isMob
         await subscribeToPushNotifications(currentUser.username);
       }
       await refreshPushStatus();
-      showTimedReminderToast(permCheck.message);
+      showTimedReminderToast(
+        permCheck.errorDetail ? `${permCheck.errorDetail} — ${permCheck.message}` : permCheck.message,
+        !permCheck.granted
+      );
+    } catch (err: any) {
+      const exactMsg = err instanceof Error ? `${err.name}: ${err.message}` : String(err || 'Permission Error');
+      showTimedReminderToast(exactMsg, true);
     } finally {
       setEnablingPush(false);
     }
@@ -158,12 +172,15 @@ export default function AccountView({ currentUser, onUpdateUser, onLogout, isMob
           if (ok) {
             showTimedReminderToast('Push Notifications enabled! You will be reminded at 5:00 PM.');
           } else if (s.iosNeedsHomeScreen) {
-            showTimedReminderToast('On iOS Safari, save the app to your Home Screen (Share → Add to Home Screen) to enable notifications.');
+            showTimedReminderToast('IOS_HOMESCREEN_REQUIRED: Save the app to your Home Screen (Share → Add to Home Screen) to enable notifications.', true);
           } else if (s.permission === 'denied') {
-            showTimedReminderToast('Notifications are blocked in browser settings. Enable them in site settings to receive alerts.');
+            showTimedReminderToast('Permission Denied: Notifications are blocked in browser settings.', true);
           } else {
-            showTimedReminderToast('Daily 5:00 PM reminder saved (grant notification access to receive alerts).');
+            showTimedReminderToast('Permission Required: Grant notification access to receive alerts.', true);
           }
+        } catch (err: any) {
+          const exactMsg = err instanceof Error ? `${err.name}: ${err.message}` : String(err || 'Subscription Error');
+          showTimedReminderToast(exactMsg, true);
         } finally {
           setEnablingPush(false);
         }
@@ -180,7 +197,10 @@ export default function AccountView({ currentUser, onUpdateUser, onLogout, isMob
     try {
       const result = await sendTestNotification(currentUser.username);
       await refreshPushStatus();
-      showTimedReminderToast(result.message);
+      showTimedReminderToast(result.message, !result.ok);
+    } catch (err: any) {
+      const exactMsg = err instanceof Error ? `${err.name}: ${err.message}` : String(err || 'Notification Error');
+      showTimedReminderToast(exactMsg, true);
     } finally {
       setTestingPush(false);
     }
@@ -192,10 +212,13 @@ export default function AccountView({ currentUser, onUpdateUser, onLogout, isMob
       const result = await trigger5pmShiftReminder(currentUser.username);
       await refreshPushStatus();
       if (result.ok) {
-        showTimedReminderToast('5:00 PM Shift Reminder dispatched via Service Worker! Tap the notification to open the shift logger.');
+        showTimedReminderToast(result.message, false);
       } else {
-        showTimedReminderToast(result.message);
+        showTimedReminderToast(result.message, true);
       }
+    } catch (err: any) {
+      const exactMsg = err instanceof Error ? `${err.name}: ${err.message}` : String(err || 'Push Error');
+      showTimedReminderToast(exactMsg, true);
     } finally {
       setTestingPush(false);
     }
@@ -512,11 +535,35 @@ export default function AccountView({ currentUser, onUpdateUser, onLogout, isMob
             </div>
 
             {reminderToast && (
-              <span className="text-xs font-medium text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-lg border border-emerald-500/20 animate-fade-in">
+              <span className={`text-xs font-mono font-medium px-3 py-1.5 rounded-lg border animate-fade-in ${
+                diagnosticError
+                  ? 'text-rose-300 bg-rose-500/15 border-rose-500/30'
+                  : 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
+              }`}>
                 {reminderToast}
               </span>
             )}
           </div>
+
+          {/* Visible On-Screen Diagnostic Alert Toast */}
+          {diagnosticError && (
+            <div className="rounded-2xl border border-rose-500/40 bg-rose-500/10 p-4 flex items-start justify-between gap-3 text-left">
+              <div className="flex items-start gap-2.5">
+                <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <p className="text-xs font-bold text-rose-300 font-mono">Notification Diagnostic Alert</p>
+                  <p className="text-xs text-main-text font-mono break-words">{diagnosticError}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDiagnosticError(null)}
+                className="text-xs text-muted-text hover:text-main-text font-mono px-2 py-0.5 rounded border border-main-border/60 cursor-pointer shrink-0"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
 
           {activeTab === 'reminders' ? (
             /* SHIFT REMINDERS & WEB PUSH NOTIFICATIONS TAB */
@@ -542,6 +589,32 @@ export default function AccountView({ currentUser, onUpdateUser, onLogout, isMob
                   <span>{testingPush ? 'Sending...' : 'Test Notification'}</span>
                 </button>
               </div>
+
+              {/* Embedded Iframe Warning (window.self !== window.top) */}
+              {pushState.isEmbeddedIframe && (
+                <div className="rounded-2xl border border-amber-500/45 bg-amber-500/10 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-start gap-3 text-left">
+                    <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <h4 className="text-xs font-bold text-amber-300">
+                        Embedded Preview Detected (window.self !== window.top)
+                      </h4>
+                      <p className="text-xs text-muted-text leading-relaxed">
+                        Browsers block Notification permission prompts and Service Worker alerts inside embedded iframes. Open WORKSPACE in a separate browser tab to enable and test push notifications.
+                      </p>
+                    </div>
+                  </div>
+                  <a
+                    href={typeof window !== 'undefined' ? window.location.href : '/'}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition shrink-0 shadow-sm"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    <span>Open in Separate Tab</span>
+                  </a>
+                </div>
+              )}
 
               {/* iOS Safari Setup Info Banner */}
               <div className={`rounded-2xl border p-4 space-y-2 ${
@@ -991,6 +1064,27 @@ export default function AccountView({ currentUser, onUpdateUser, onLogout, isMob
                 </button>
               </div>
             </div>
+
+            {/* Embedded Iframe Warning directly visible in Account Settings */}
+            {pushState.isEmbeddedIframe && (
+              <div className="rounded-xl border border-amber-500/45 bg-amber-500/10 px-3.5 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-left">
+                <div className="flex items-start gap-2.5">
+                  <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+                  <p className="text-[11px] text-muted-text leading-relaxed">
+                    <strong className="text-amber-300">Embedded Iframe Detected:</strong> Notifications require opening the app in a separate browser tab (browsers block notifications inside iframes).
+                  </p>
+                </div>
+                <a
+                  href={typeof window !== 'undefined' ? window.location.href : '/'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-[11px] font-bold transition shrink-0"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                  <span>Open in New Tab</span>
+                </a>
+              </div>
+            )}
 
             {/* iOS Safari Setup Info Banner directly visible in Account Settings */}
             <div className={`rounded-xl border px-3.5 py-2.5 flex items-start gap-2.5 text-left ${

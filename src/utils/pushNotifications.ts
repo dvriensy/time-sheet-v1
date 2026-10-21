@@ -5,8 +5,10 @@
 
 /**
  * Push & Service Worker Notification Utility for WORKSPACE
- * Uses Service Worker (public/sw.js) and navigator.serviceWorker.ready.then(reg => reg.showNotification(...))
- * to handle local and push alerts reliably across mobile (iOS Home Screen PWA / Android) and desktop.
+ * Uses a 2-second Promise.race timeout on navigator.serviceWorker.ready,
+ * automatically falls back to `new Notification(title, options)` if the Service Worker
+ * times out or throws, detects embedded iframes (`window.self !== window.top`),
+ * and emits visible on-screen diagnostic toasts with exact error details.
  */
 
 import { safeSetItem, getReminderSettings } from './storage';
@@ -21,30 +23,87 @@ export interface PushSubscriptionState {
   isSafari: boolean;
   isStandalone: boolean;
   iosNeedsHomeScreen: boolean;
+  isEmbeddedIframe: boolean;
 }
 
 export interface NotificationDispatchResult {
   ok: boolean;
+  method?: 'service_worker' | 'direct_notification_fallback';
   status: 'sent' | 'denied' | 'default' | 'unsupported' | 'ios_needs_homescreen' | 'error';
   permission: NotificationPermission | 'unsupported';
   message: string;
+  errorDetail?: string;
+}
+
+export interface DiagnosticToastPayload {
+  type: 'success' | 'warning' | 'error';
+  title: string;
+  message: string;
+  errorCode?: string;
 }
 
 /**
- * Detect iOS, Safari, and Standalone Home Screen mode
+ * Emit a visible on-screen diagnostic toast event so notification errors/fallbacks
+ * are always visible without opening browser developer tools.
+ */
+export function emitNotificationDiagnosticToast(payload: DiagnosticToastPayload): void {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent<DiagnosticToastPayload>('workspace-notification-toast', {
+        detail: payload
+      })
+    );
+  }
+}
+
+/**
+ * Format any caught error into an explicit diagnostic string (e.g., "SecurityError: ...", "Permission Denied", "SW Not Registered")
+ */
+function formatExactError(err: unknown, fallbackLabel = 'UnknownNotificationError'): string {
+  if (!err) return fallbackLabel;
+  if (err instanceof Error) {
+    const name = err.name || 'Error';
+    const msg = err.message || fallbackLabel;
+    return msg.startsWith(name) ? msg : `${name}: ${msg}`;
+  }
+  if (typeof err === 'string') return err;
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return String(err);
+  }
+}
+
+/**
+ * Check if the app is running inside an embedded iframe (`window.self !== window.top`)
+ */
+export function isRunningInEmbeddedIframe(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.self !== window.top;
+  } catch {
+    // Accessing window.top across origins throws SecurityError when inside an iframe
+    return true;
+  }
+}
+
+/**
+ * Detect iOS, Safari, Standalone Home Screen mode, and Embedded Iframe state
  */
 export function getIOSNotificationInfo(): {
   isIOS: boolean;
   isSafari: boolean;
   isStandalone: boolean;
   iosNeedsHomeScreen: boolean;
+  isEmbeddedIframe: boolean;
 } {
   if (typeof window === 'undefined' || typeof navigator === 'undefined') {
     return {
       isIOS: false,
       isSafari: false,
       isStandalone: false,
-      iosNeedsHomeScreen: false
+      iosNeedsHomeScreen: false,
+      isEmbeddedIframe: false
     };
   }
 
@@ -66,19 +125,18 @@ export function getIOSNotificationInfo(): {
     isIOS,
     isSafari,
     isStandalone,
-    iosNeedsHomeScreen: isIOS && !isStandalone
+    iosNeedsHomeScreen: isIOS && !isStandalone,
+    isEmbeddedIframe: isRunningInEmbeddedIframe()
   };
 }
 
 /**
- * Safely check if Service Worker & Notification APIs are supported in the current browser/webview
+ * Safely check if the Notification API is supported in the current browser/webview
  */
 export function isNotificationSupported(): boolean {
   try {
     return (
       typeof window !== 'undefined' &&
-      typeof navigator !== 'undefined' &&
-      'serviceWorker' in navigator &&
       'Notification' in window &&
       typeof window.Notification !== 'undefined'
     );
@@ -106,35 +164,74 @@ export function getNotificationPermission(): NotificationPermission {
 }
 
 /**
+ * Wait for `navigator.serviceWorker.ready` with a strict 2-second `Promise.race` timeout.
+ * Throws a descriptive timeout/unavailable error if the Service Worker does not respond within 2 seconds.
+ */
+export async function getServiceWorkerReadyWithTimeout(
+  timeoutMs = 2000
+): Promise<ServiceWorkerRegistration> {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
+    throw new Error('SW Not Registered: navigator.serviceWorker is unavailable in this browser');
+  }
+
+  // Kick off registration non-blockingly in case it hasn't been registered yet
+  navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {
+    // Handled by Promise.race below
+  });
+
+  let timerId: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timerId = setTimeout(() => {
+      reject(new Error(`SW Timeout: navigator.serviceWorker.ready did not respond within ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+
+  try {
+    const reg = await Promise.race([navigator.serviceWorker.ready, timeoutPromise]);
+    if (!reg) {
+      throw new Error('SW Not Registered: ServiceWorkerRegistration resolved empty');
+    }
+    return reg;
+  } finally {
+    if (timerId !== null) {
+      clearTimeout(timerId);
+    }
+  }
+}
+
+/**
  * Check Notification.permission, request access if set to 'default',
- * and handle 'denied' or unsupported browsers cleanly without throwing errors.
+ * and handle 'denied' or unsupported browsers cleanly while surfacing exact diagnostic messages.
  */
 export async function ensureNotificationPermission(): Promise<{
   supported: boolean;
   permission: NotificationPermission | 'unsupported';
   granted: boolean;
   iosNeedsHomeScreen: boolean;
+  isEmbeddedIframe: boolean;
   message: string;
+  errorDetail?: string;
 }> {
-  const iosInfo = getIOSNotificationInfo();
+  const envInfo = getIOSNotificationInfo();
 
   if (!isNotificationSupported()) {
-    if (iosInfo.iosNeedsHomeScreen) {
-      return {
-        supported: false,
-        permission: 'unsupported',
-        granted: false,
-        iosNeedsHomeScreen: true,
-        message:
-          'On iOS Safari, notifications require saving WORKSPACE to your Home Screen first (Share → Add to Home Screen).'
-      };
-    }
+    const errMsg = envInfo.iosNeedsHomeScreen
+      ? 'Unsupported Context (iOS Safari Tab): Save WORKSPACE to your Home Screen (Share → Add to Home Screen) to enable notifications.'
+      : 'UnsupportedError: window.Notification API is not available in this browser.';
+    emitNotificationDiagnosticToast({
+      type: 'error',
+      title: 'Notification API Unavailable',
+      message: errMsg,
+      errorCode: envInfo.iosNeedsHomeScreen ? 'IOS_HOMESCREEN_REQUIRED' : 'UNSUPPORTED_BROWSER'
+    });
     return {
       supported: false,
       permission: 'unsupported',
       granted: false,
-      iosNeedsHomeScreen: false,
-      message: 'Notifications are not supported in this browser environment.'
+      iosNeedsHomeScreen: envInfo.iosNeedsHomeScreen,
+      isEmbeddedIframe: envInfo.isEmbeddedIframe,
+      message: errMsg,
+      errorDetail: errMsg
     };
   }
 
@@ -142,17 +239,16 @@ export async function ensureNotificationPermission(): Promise<{
     let currentPermission = window.Notification.permission;
 
     if (currentPermission === 'default') {
-      // Handle both Promise-based and legacy callback-based requestPermission cleanly
-      const result = await new Promise<NotificationPermission>((resolve) => {
+      const result = await new Promise<NotificationPermission>((resolve, reject) => {
         try {
           const maybePromise = window.Notification.requestPermission((perm) => {
             resolve(perm);
           });
           if (maybePromise && typeof maybePromise.then === 'function') {
-            maybePromise.then(resolve).catch(() => resolve(getNotificationPermission()));
+            maybePromise.then(resolve).catch(reject);
           }
-        } catch {
-          resolve(getNotificationPermission());
+        } catch (err) {
+          reject(err);
         }
       });
       currentPermission = result;
@@ -164,38 +260,117 @@ export async function ensureNotificationPermission(): Promise<{
         permission: 'granted',
         granted: true,
         iosNeedsHomeScreen: false,
+        isEmbeddedIframe: envInfo.isEmbeddedIframe,
         message: 'Notification permission granted.'
       };
     }
 
     if (currentPermission === 'denied') {
+      const deniedDetail = envInfo.isEmbeddedIframe
+        ? 'Permission Denied (Embedded Iframe): Browsers block notifications inside iframes. Open the app in a separate browser tab.'
+        : 'Permission Denied: Notification.permission is "denied". Enable notifications in your browser site settings.';
+      emitNotificationDiagnosticToast({
+        type: 'error',
+        title: 'Permission Denied',
+        message: deniedDetail,
+        errorCode: 'Permission Denied'
+      });
       return {
         supported: true,
         permission: 'denied',
         granted: false,
-        iosNeedsHomeScreen: false,
-        message:
-          'Notifications are blocked in your browser settings. Enable Notifications for this site in your browser or device settings to receive alerts.'
+        iosNeedsHomeScreen: envInfo.iosNeedsHomeScreen,
+        isEmbeddedIframe: envInfo.isEmbeddedIframe,
+        message: deniedDetail,
+        errorDetail: 'Permission Denied'
       };
     }
 
+    const dismissedDetail = envInfo.isEmbeddedIframe
+      ? 'Permission Dismissed (Embedded Iframe): Open the app in a separate browser tab to allow notifications.'
+      : `Permission Not Granted: Notification.permission is "${currentPermission}".`;
+    emitNotificationDiagnosticToast({
+      type: 'warning',
+      title: 'Permission Required',
+      message: dismissedDetail,
+      errorCode: `Permission: ${currentPermission}`
+    });
     return {
       supported: true,
       permission: currentPermission,
       granted: false,
-      iosNeedsHomeScreen: iosInfo.iosNeedsHomeScreen,
-      message: 'Notification permission request was dismissed.'
+      iosNeedsHomeScreen: envInfo.iosNeedsHomeScreen,
+      isEmbeddedIframe: envInfo.isEmbeddedIframe,
+      message: dismissedDetail,
+      errorDetail: `Permission: ${currentPermission}`
     };
   } catch (err) {
-    console.warn('[PushNotifications] Cleanly caught permission check error:', err);
+    const exactErr = formatExactError(err, 'SecurityError: Failed to request Notification permission');
+    emitNotificationDiagnosticToast({
+      type: 'error',
+      title: 'Notification Permission Error',
+      message: exactErr,
+      errorCode: exactErr
+    });
     return {
       supported: false,
-      permission: 'unsupported',
+      permission: getNotificationPermission(),
       granted: false,
-      iosNeedsHomeScreen: iosInfo.iosNeedsHomeScreen,
-      message: 'Could not request notification permission in this browser context.'
+      iosNeedsHomeScreen: envInfo.iosNeedsHomeScreen,
+      isEmbeddedIframe: envInfo.isEmbeddedIframe,
+      message: exactErr,
+      errorDetail: exactErr
     };
   }
+}
+
+/**
+ * Direct `new Notification(title, options)` fallback helper.
+ * Strips ServiceWorker-only fields (like `actions`) if necessary and wires up click navigation.
+ */
+function showDirectNotificationFallback(
+  title: string,
+  options?: NotificationOptions & Record<string, unknown>
+): Notification {
+  if (typeof window === 'undefined' || !('Notification' in window)) {
+    throw new Error('ReferenceError: Notification API is not defined on window');
+  }
+
+  const cleanOptions: NotificationOptions = {
+    body: typeof options?.body === 'string' ? options.body : undefined,
+    icon: typeof options?.icon === 'string' ? options.icon : '/icon-192.png',
+    badge: typeof options?.badge === 'string' ? options.badge : '/icon-192.png',
+    tag: typeof options?.tag === 'string' ? options.tag : undefined,
+    data: options?.data,
+    requireInteraction: typeof options?.requireInteraction === 'boolean' ? options.requireInteraction : false,
+    silent: typeof options?.silent === 'boolean' ? options.silent : undefined
+  };
+
+  let notif: Notification;
+  try {
+    notif = new window.Notification(title, cleanOptions);
+  } catch {
+    // Ultra-minimal fallback if browser rejects specific NotificationOptions properties
+    notif = new window.Notification(title, {
+      body: cleanOptions.body,
+      icon: cleanOptions.icon
+    });
+  }
+
+  notif.onclick = () => {
+    try {
+      window.focus();
+      const targetUrl = (options?.data as { url?: string } | undefined)?.url;
+      if (targetUrl && targetUrl.includes('log-shift')) {
+        window.dispatchEvent(new CustomEvent('workspace-open-shift-logger'));
+      }
+      notif.close();
+    } catch {
+      // Ignore focus errors
+    }
+  };
+
+  return notif;
 }
 
 // Convert base64 VAPID public key to Uint8Array for PushManager
@@ -213,7 +388,7 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
 }
 
 /**
- * Register the Service Worker in public/sw.js
+ * Register the Service Worker in public/sw.js with a 2-second timeout on ready
  */
 export async function registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (typeof window === 'undefined' || typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
@@ -221,26 +396,30 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
   }
 
   try {
-    const registration = await navigator.serviceWorker.register('/sw.js', {
+    await navigator.serviceWorker.register('/sw.js', {
       scope: '/'
     });
-
-    await navigator.serviceWorker.ready;
+    const registration = await getServiceWorkerReadyWithTimeout(2000);
     return registration;
   } catch (error) {
-    console.warn('[PushNotifications] Service Worker registration failed:', error);
+    console.warn('[PushNotifications] Service Worker registration/ready warning:', error);
     return null;
   }
 }
 
 /**
- * Dispatch a local notification strictly through the Service Worker:
- * navigator.serviceWorker.ready.then(reg => reg.showNotification(title, options))
- * Never calls `new Notification()` directly so mobile browsers do not block or throw.
+ * Dispatch a local notification with:
+ * 1. 2-second Promise.race timeout on `navigator.serviceWorker.ready`
+ * 2. Automatic fallback to `new Notification(title, options)` if SW times out or `reg.showNotification()` throws
+ * 3. Visible on-screen diagnostic toast for any error or fallback event
  */
 export async function dispatchServiceWorkerNotification(
   title: string,
-  options?: NotificationOptions & { vibrate?: number[]; actions?: Array<{ action: string; title: string }>; renotify?: boolean }
+  options?: NotificationOptions & {
+    vibrate?: number[];
+    actions?: Array<{ action: string; title: string }>;
+    renotify?: boolean;
+  }
 ): Promise<NotificationDispatchResult> {
   const permCheck = await ensureNotificationPermission();
   if (!permCheck.supported) {
@@ -248,7 +427,8 @@ export async function dispatchServiceWorkerNotification(
       ok: false,
       status: permCheck.iosNeedsHomeScreen ? 'ios_needs_homescreen' : 'unsupported',
       permission: permCheck.permission,
-      message: permCheck.message
+      message: permCheck.message,
+      errorDetail: permCheck.errorDetail
     };
   }
 
@@ -257,51 +437,95 @@ export async function dispatchServiceWorkerNotification(
       ok: false,
       status: permCheck.permission === 'denied' ? 'denied' : 'default',
       permission: permCheck.permission,
-      message: permCheck.message
+      message: permCheck.message,
+      errorDetail: permCheck.errorDetail
     };
   }
 
+  const notificationOptions: NotificationOptions & Record<string, unknown> = {
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
+    vibrate: [200, 100, 200],
+    data: {
+      url: '/?tab=timesheet&action=log-shift',
+      dateOfArrival: Date.now()
+    },
+    ...options
+  };
+
+  // Step 1: Attempt Service Worker dispatch with a 2-second Promise.race timeout
+  let swErrorDetail = '';
   try {
-    // Ensure service worker registration is active before waiting on ready
-    await registerServiceWorker();
+    const reg = await getServiceWorkerReadyWithTimeout(2000);
+    if (typeof reg.showNotification !== 'function') {
+      throw new Error('SW Not Registered: reg.showNotification is not available');
+    }
+    await reg.showNotification(title, notificationOptions);
 
-    const notificationOptions: NotificationOptions & Record<string, unknown> = {
-      icon: '/icon-192.png',
-      badge: '/icon-192.png',
-      vibrate: [200, 100, 200],
-      data: {
-        url: '/?tab=timesheet&action=log-shift',
-        dateOfArrival: Date.now()
-      },
-      ...options
-    };
-
-    await navigator.serviceWorker.ready.then((reg) =>
-      reg.showNotification(title, notificationOptions)
-    );
+    emitNotificationDiagnosticToast({
+      type: 'success',
+      title: 'Notification Sent (Service Worker)',
+      message: `"${title}" dispatched via Service Worker.`
+    });
 
     return {
       ok: true,
+      method: 'service_worker',
       status: 'sent',
       permission: 'granted',
       message: 'Notification dispatched via Service Worker.'
     };
-  } catch (err) {
-    console.warn('[PushNotifications] Service Worker showNotification failed cleanly:', err);
+  } catch (swErr) {
+    swErrorDetail = formatExactError(swErr, 'SW Not Registered');
+    console.warn('[PushNotifications] Service Worker dispatch failed/timed out, attempting direct Notification() fallback:', swErrorDetail);
+  }
+
+  // Step 2: Immediate Fallback to standard `new Notification(title, options)`
+  try {
+    showDirectNotificationFallback(title, notificationOptions);
+
+    const fallbackMsg = `Sent via Direct Notification API fallback (${swErrorDetail}).`;
+    emitNotificationDiagnosticToast({
+      type: 'warning',
+      title: 'Notification Sent via Direct Fallback',
+      message: fallbackMsg,
+      errorCode: swErrorDetail
+    });
+
+    return {
+      ok: true,
+      method: 'direct_notification_fallback',
+      status: 'sent',
+      permission: 'granted',
+      message: fallbackMsg,
+      errorDetail: swErrorDetail
+    };
+  } catch (directErr) {
+    const directErrorDetail = formatExactError(directErr, 'SecurityError');
+    const combinedError = `SW Failure (${swErrorDetail}) | Direct API Failure (${directErrorDetail})`;
+
+    emitNotificationDiagnosticToast({
+      type: 'error',
+      title: 'Notification Dispatch Failed',
+      message: combinedError,
+      errorCode: directErrorDetail
+    });
+
     return {
       ok: false,
       status: 'error',
       permission: getNotificationPermission(),
-      message: 'Service Worker could not display the notification. Try reloading the page.'
+      message: combinedError,
+      errorDetail: combinedError
     };
   }
 }
 
 /**
- * Query current push notification state cleanly without throwing
+ * Query current push notification state cleanly with a 2-second SW timeout
  */
 export async function getPushSubscriptionState(): Promise<PushSubscriptionState> {
-  const iosInfo = getIOSNotificationInfo();
+  const envInfo = getIOSNotificationInfo();
 
   if (!isNotificationSupported()) {
     return {
@@ -310,13 +534,12 @@ export async function getPushSubscriptionState(): Promise<PushSubscriptionState>
       isSubscribed: false,
       registration: null,
       subscription: null,
-      ...iosInfo
+      ...envInfo
     };
   }
 
   try {
-    await registerServiceWorker();
-    const registration = await navigator.serviceWorker.ready;
+    const registration = await getServiceWorkerReadyWithTimeout(2000);
     let subscription: PushSubscription | null = null;
     if ('pushManager' in registration && registration.pushManager) {
       try {
@@ -333,23 +556,23 @@ export async function getPushSubscriptionState(): Promise<PushSubscriptionState>
       isSubscribed: !!subscription || currentPerm === 'granted',
       registration,
       subscription,
-      ...iosInfo
+      ...envInfo
     };
-  } catch (err) {
-    console.warn('[PushNotifications] Error reading push subscription state:', err);
+  } catch {
+    const currentPerm = getNotificationPermission();
     return {
       supported: true,
-      permission: getNotificationPermission(),
-      isSubscribed: false,
+      permission: currentPerm,
+      isSubscribed: currentPerm === 'granted',
       registration: null,
       subscription: null,
-      ...iosInfo
+      ...envInfo
     };
   }
 }
 
 /**
- * Request notification permission and subscribe to Service Worker notifications cleanly without throwing
+ * Request notification permission and subscribe to notifications with automatic fallback
  */
 export async function subscribeToPushNotifications(username?: string): Promise<boolean> {
   const permResult = await ensureNotificationPermission();
@@ -357,14 +580,9 @@ export async function subscribeToPushNotifications(username?: string): Promise<b
     return false;
   }
 
-  const registration = await registerServiceWorker();
-  if (!registration) {
-    return false;
-  }
-
-  // Optional Web Push subscription if PushManager is supported by the browser
-  if ('pushManager' in registration && registration.pushManager) {
-    try {
+  try {
+    const registration = await getServiceWorkerReadyWithTimeout(2000);
+    if (registration && 'pushManager' in registration && registration.pushManager) {
       let applicationServerKey: Uint8Array | undefined;
       try {
         const resp = await fetch('/api/push/vapid-public-key');
@@ -375,21 +593,18 @@ export async function subscribeToPushNotifications(username?: string): Promise<b
           }
         }
       } catch {
-        // Optional backend VAPID endpoint
+        // Optional VAPID endpoint
       }
 
-      const subscribeOptions: PushSubscriptionOptionsInit = {
-        userVisibleOnly: true,
-        ...(applicationServerKey ? { applicationServerKey } : {})
-      };
-
-      let subscription = await registration.pushManager.getSubscription();
-      if (!subscription && applicationServerKey) {
-        subscription = await registration.pushManager.subscribe(subscribeOptions);
-      }
-
-      if (subscription) {
-        try {
+      if (applicationServerKey) {
+        let subscription = await registration.pushManager.getSubscription();
+        if (!subscription) {
+          subscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey
+          });
+        }
+        if (subscription) {
           await fetch('/api/push/subscribe', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -397,17 +612,14 @@ export async function subscribeToPushNotifications(username?: string): Promise<b
               subscription,
               username: username || 'current_user'
             })
-          });
-        } catch {
-          // Local Service Worker notifications still work offline/without backend push
+          }).catch(() => {});
         }
       }
-    } catch (pushErr) {
-      console.warn('[PushNotifications] Optional PushManager subscription skipped, using Service Worker notifications:', pushErr);
     }
+  } catch (pushErr) {
+    console.warn('[PushNotifications] Optional PushManager setup skipped, continuing with notification fallback:', pushErr);
   }
 
-  // Dispatch initial confirmation notification strictly through Service Worker
   const dispatchRes = await dispatchServiceWorkerNotification('WORKSPACE Notifications Enabled', {
     body: 'Notifications are active on this device. You will receive workday shift reminders.',
     tag: 'workspace-setup-success',
@@ -423,38 +635,40 @@ export async function subscribeToPushNotifications(username?: string): Promise<b
 export async function unsubscribeFromPushNotifications(username?: string): Promise<boolean> {
   if (!isNotificationSupported()) return false;
   try {
-    const registration = await navigator.serviceWorker.ready;
+    const registration = await getServiceWorkerReadyWithTimeout(2000);
     if ('pushManager' in registration && registration.pushManager) {
       const subscription = await registration.pushManager.getSubscription();
       if (subscription) {
         await subscription.unsubscribe();
-        try {
-          await fetch('/api/push/unsubscribe', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              endpoint: subscription.endpoint,
-              username: username || 'current_user'
-            })
-          });
-        } catch {
-          // Ignore backend network error
-        }
+        await fetch('/api/push/unsubscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            endpoint: subscription.endpoint,
+            username: username || 'current_user'
+          })
+        }).catch(() => {});
       }
     }
     return true;
   } catch (err) {
-    console.warn('[PushNotifications] Error unsubscribing:', err);
+    const exactErr = formatExactError(err, 'SW Unsubscribe Error');
+    emitNotificationDiagnosticToast({
+      type: 'warning',
+      title: 'Unsubscribe Warning',
+      message: exactErr,
+      errorCode: exactErr
+    });
     return false;
   }
 }
 
 /**
- * Send an immediate Test Notification through the Service Worker
+ * Send an immediate Test Notification (2s SW timeout -> automatic `new Notification()` fallback)
  */
 export async function sendTestNotification(username?: string): Promise<NotificationDispatchResult> {
-  const result = await dispatchServiceWorkerNotification('WORKSPACE • Test Notification', {
-    body: `Push & Service Worker notifications are working for ${username ? `@${username}` : 'your account'}! Tap to open your timesheet ledger.`,
+  return dispatchServiceWorkerNotification('WORKSPACE • Test Notification', {
+    body: `Push & local notifications are working for ${username ? `@${username}` : 'your account'}! Tap to open your timesheet ledger.`,
     tag: `workspace-test-notification-${Date.now()}`,
     renotify: true,
     data: {
@@ -466,16 +680,12 @@ export async function sendTestNotification(username?: string): Promise<Notificat
       { action: 'dismiss', title: 'Dismiss' }
     ]
   });
-
-  return result;
 }
 
 /**
  * Trigger the 5:00 PM Workday Shift Reminder Push Notification
- * Dispatches through navigator.serviceWorker.ready.then(reg => reg.showNotification(...))
  */
 export async function trigger5pmShiftReminder(username?: string): Promise<NotificationDispatchResult> {
-  // Optional server push trigger
   try {
     await fetch('/api/push/trigger-5pm-reminder', {
       method: 'POST',
@@ -483,7 +693,7 @@ export async function trigger5pmShiftReminder(username?: string): Promise<Notifi
       body: JSON.stringify({ username })
     });
   } catch {
-    // Local Service Worker handles notification delivery
+    // Handled by local Service Worker / Direct Notification fallback below
   }
 
   return dispatchServiceWorkerNotification('WORKSPACE • 5:00 PM Shift Reminder', {
@@ -504,7 +714,6 @@ export async function trigger5pmShiftReminder(username?: string): Promise<Notifi
 
 /**
  * Client-Side Workday & Shift Alarm Scheduler
- * Dispatches 5:00 PM reminder, Clock-In alarm, and Clock-Out alarm via Service Worker
  */
 let schedulerIntervalId: number | null = null;
 const KEY_LAST_TRIGGERED_5PM = 'workspace_push_5pm_last_date';
@@ -524,12 +733,11 @@ export function startWorkday5pmScheduler(
     if (!isNotificationSupported() || getNotificationPermission() !== 'granted') return;
 
     const now = new Date();
-    const dayOfWeek = now.getDay(); // 0 = Sunday, 1 = Monday, ..., 5 = Friday, 6 = Saturday
+    const dayOfWeek = now.getDay();
     const isWorkday = dayOfWeek >= 1 && dayOfWeek <= 5;
     const todayStr = now.toISOString().slice(0, 10);
     const currentHHMM = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
-    // 1. 5:00 PM Workday Reminder
     if (isEnabled() && isWorkday && now.getHours() === 17 && now.getMinutes() === 0) {
       const lastTriggered = localStorage.getItem(KEY_LAST_TRIGGERED_5PM);
       if (lastTriggered !== todayStr) {
@@ -539,7 +747,6 @@ export function startWorkday5pmScheduler(
       }
     }
 
-    // 2. Custom Clock-In & Clock-Out Alarms from ReminderSettings
     try {
       const reminders = getReminderSettings();
       if (reminders.clockInReminder && reminders.clockInTime === currentHHMM) {

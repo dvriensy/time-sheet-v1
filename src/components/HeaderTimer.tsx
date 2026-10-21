@@ -84,7 +84,7 @@ export const HeaderTimer: React.FC<HeaderTimerProps> = ({ currentUser, onShiftLo
   const handleStop = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!currentUser) return;
-    const entry = stopOneTapTimer();
+    const entry = stopOneTapTimer({ autoSplitOvertime: true });
     setActiveSession(null);
     setSecondsElapsed(0);
     if (entry) {

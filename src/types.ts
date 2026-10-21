@@ -19,6 +19,8 @@ export interface TimesheetEntry {
   geofencedClockIn?: boolean;
   geofencedClockOut?: boolean;
   totalHours: number; // calculated
+  regularHours?: number; // split or calculated regular hours
+  overtimeHours?: number; // split or calculated overtime hours
   earnings?: number; // calculated
   isSynced: boolean;
   isOvertime?: boolean;

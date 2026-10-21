@@ -5,7 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Clock, User, Sun, Moon, Users, CalendarDays, Bell, Share, X } from 'lucide-react';
+import { Clock, User, Sun, Moon, Users, CalendarDays, Bell, Share, X, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { 
   getTimesheets, 
   getAppSettings, 
@@ -23,7 +23,8 @@ import {
 import { 
   registerServiceWorker, 
   startWorkday5pmScheduler,
-  getIOSNotificationInfo
+  getIOSNotificationInfo,
+  DiagnosticToastPayload
 } from './utils/pushNotifications';
 import { applyDeviceProfileToDocument } from './utils/deviceProfile';
 import { TimesheetEntry } from './types';
@@ -97,6 +98,26 @@ export default function App() {
     const info = getIOSNotificationInfo();
     return info.iosNeedsHomeScreen;
   });
+  const [diagnosticToast, setDiagnosticToast] = useState<DiagnosticToastPayload | null>(null);
+
+  useEffect(() => {
+    let toastTimer: ReturnType<typeof setTimeout> | null = null;
+    const handleDiagnosticToast = (e: Event) => {
+      const customEvent = e as CustomEvent<DiagnosticToastPayload>;
+      if (customEvent.detail) {
+        setDiagnosticToast(customEvent.detail);
+        if (toastTimer) clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => {
+          setDiagnosticToast(null);
+        }, 7000);
+      }
+    };
+    window.addEventListener('workspace-notification-toast', handleDiagnosticToast);
+    return () => {
+      window.removeEventListener('workspace-notification-toast', handleDiagnosticToast);
+      if (toastTimer) clearTimeout(toastTimer);
+    };
+  }, []);
 
   useEffect(() => {
     const handleResize = () => {
@@ -549,6 +570,49 @@ export default function App() {
           isOpen={isPhoneSizingOpen}
           onClose={() => setIsPhoneSizingOpen(false)}
         />
+
+        {/* Visible On-Screen Notification Diagnostic Toast */}
+        <AnimatePresence>
+          {diagnosticToast && (
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 16 }}
+              transition={{ duration: 0.15 }}
+              className={`fixed bottom-4 right-4 left-4 sm:left-auto sm:max-w-md z-50 rounded-2xl border p-3.5 shadow-2xl flex items-start justify-between gap-3 ${
+                diagnosticToast.type === 'error'
+                  ? 'bg-card-bg border-rose-500/50 text-main-text'
+                  : diagnosticToast.type === 'warning'
+                  ? 'bg-card-bg border-amber-500/50 text-main-text'
+                  : 'bg-card-bg border-emerald-500/50 text-main-text'
+              }`}
+            >
+              <div className="flex items-start gap-2.5 min-w-0 text-left">
+                {diagnosticToast.type === 'error' ? (
+                  <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
+                ) : diagnosticToast.type === 'warning' ? (
+                  <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+                ) : (
+                  <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
+                )}
+                <div className="space-y-0.5 min-w-0">
+                  <p className="text-xs font-bold text-main-text">{diagnosticToast.title}</p>
+                  <p className="text-[11px] font-mono text-muted-text break-words leading-snug">
+                    {diagnosticToast.message}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDiagnosticToast(null)}
+                className="p-1 rounded-lg text-muted-text hover:text-main-text cursor-pointer shrink-0"
+                aria-label="Dismiss notification toast"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Footer info line (hidden on mobile app viewports to maximize vertical space) */}
         <footer className="hidden md:block mt-2 shrink-0 border-t border-main-border/30 py-2 text-center text-[9px] text-muted-text font-mono tracking-wider uppercase select-none">
