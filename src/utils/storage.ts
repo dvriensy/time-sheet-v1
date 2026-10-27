@@ -1088,8 +1088,8 @@ export function calculateHoursAndEarnings(startTime: string, endTime: string, br
   if (!startTime || !endTime) {
     return { totalHours: 0, earnings: 0 };
   }
-  const [startH, startM] = startTime.split(':').map(Number);
-  const [endH, endM] = endTime.split(':').map(Number);
+  const [startH, startM] = startTime.trim().split(':').map(Number);
+  const [endH, endM] = endTime.trim().split(':').map(Number);
   
   if (isNaN(startH) || isNaN(startM) || isNaN(endH) || isNaN(endM)) {
     return { totalHours: 0, earnings: 0 };
@@ -1109,14 +1109,24 @@ export function calculateHoursAndEarnings(startTime: string, endTime: string, br
   const grossHalfHours = Math.ceil(grossMinutes / 30);
   const grossHours = grossHalfHours * 0.5;
   
-  // Any shift under 5 hours (300 minutes) will not have auto lunch removal.
-  // Prevent negative hours on short shifts with lunch deductions by clamping effective deduction.
-  const effectiveBreakMinutes = grossMinutes < 300 ? 0 : Math.min(grossMinutes, (breakMinutes || 0));
+  // Shifts under 5 hours (300 minutes) will not have lunch deduction (clamped to 0).
+  // Clamp break deductions to zero to prevent negative hours on short shifts,
+  // and ensure effective break never exceeds gross duration or gross hours.
+  const rawBreak = Math.max(0, breakMinutes || 0);
+  const effectiveBreakMinutes = grossMinutes < 300 
+    ? 0 
+    : Math.max(0, Math.min(grossMinutes, Math.min(grossHours * 60, rawBreak)));
   const breakHours = effectiveBreakMinutes / 60;
-  const totalHours = Math.max(0, Number(Math.max(0, grossHours - breakHours).toFixed(2)));
+  const netHours = Math.max(0, grossHours - breakHours);
+  const totalHours = Math.max(0, Number(netHours.toFixed(2)));
   
   return { totalHours, earnings: 0 };
 }
+
+export function calculateNetShiftDuration(startTime: string, endTime: string, breakMinutes: number = 0): number {
+  return calculateHoursAndEarnings(startTime, endTime, breakMinutes).totalHours;
+}
+
 
 export function addTimesheetEntry(entry: Omit<TimesheetEntry, 'id' | 'totalHours' | 'earnings' | 'isSynced'>): TimesheetEntry {
   const currentUser = localStorage.getItem(KEY_CURRENT_USER) || 'guest';
@@ -1847,82 +1857,344 @@ export interface EnrichedTimesheetEntry extends TimesheetEntry {
   earnings: number;
 }
 
-export function enrichEntriesWithOvertime(entries: TimesheetEntry[], usersList?: UserAccount[]): EnrichedTimesheetEntry[] {
-  // 1. Group entries by username and date
-  const groups: Record<string, TimesheetEntry[]> = {};
-  for (const entry of entries) {
-    const key = `${entry.username || 'guest'}_${entry.date}`;
-    if (!groups[key]) {
-      groups[key] = [];
-    }
-    groups[key].push(entry);
+/**
+ * Returns the work week start date (Monday YYYY-MM-DD) for a given date string.
+ * Standard work week runs Monday to Sunday (Alberta Employment Standards / payroll standard).
+ */
+export function getWorkWeekStart(dateStr: string): string {
+  if (!dateStr || !dateStr.includes('-')) return 'unknown';
+  const parts = dateStr.split('-');
+  if (parts.length !== 3) return dateStr;
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10);
+  const day = parseInt(parts[2], 10);
+  if (isNaN(year) || isNaN(month) || isNaN(day)) return dateStr;
+  
+  // Use noon to avoid timezone or DST transitions shifting the date
+  const d = new Date(year, month - 1, day, 12, 0, 0);
+  const dayOfWeek = d.getDay(); // 0 is Sunday, 1 is Monday, ..., 6 is Saturday
+  // Monday is day 1. If Sunday (0), shift -6 days. Otherwise shift (1 - dayOfWeek) days.
+  const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  const monday = new Date(d);
+  monday.setDate(d.getDate() + diffToMonday);
+  
+  const y = monday.getFullYear();
+  const m = String(monday.getMonth() + 1).padStart(2, '0');
+  const dt = String(monday.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dt}`;
+}
+
+export interface OvertimeCalculationBreakdown {
+  totalHours: number;
+  regularHours: number;
+  overtimeHours: number;
+  dailyOvertimeHours: number;
+  weeklyOvertimeHours: number;
+  manualOvertimeHours: number;
+  appliedOvertimeRule: 'daily' | 'weekly' | 'none';
+  earnings: number;
+}
+
+/**
+ * Calculates overtime breakdown for a collection of shifts within a work week:
+ * - Daily overtime after 8.0 hours per day
+ * - Weekly overtime after 44.0 hours per week
+ * - Applies whichever total is greater without double-counting hours.
+ * - Excludes manually flagged overtime shifts from auto-threshold calculations to avoid double-counting.
+ */
+export function calculateWorkWeekOvertime(
+  entries: TimesheetEntry[],
+  defaultHourlyRate: number = 45
+): OvertimeCalculationBreakdown {
+  let manualOvertimeHours = 0;
+  let manualEarnings = 0;
+  
+  interface AutoShiftMeta {
+    entry: TimesheetEntry;
+    hours: number;
+    rate: number;
+    dailyReg: number;
+    dailyOT: number;
   }
-  
-  const enriched: EnrichedTimesheetEntry[] = [];
-  const users = usersList || getAllUsers();
-  
-  // 2. Process each group
-  for (const key in groups) {
-    const groupEntries = groups[key];
-    // Sort chronologically by startTime
-    groupEntries.sort((a, b) => a.startTime.localeCompare(b.startTime));
-    
-    let runningRegularHours = 0;
-    for (const entry of groupEntries) {
-      const rate = entry.hourlyRate || users.find(u => u.username === entry.username)?.hourlyRate || 45;
-      const entryHours = Math.max(0, entry.totalHours);
-      
-      let regularHours = 0;
-      let overtimeHours = 0;
-      
-      // If entry has explicit split hours recorded
-      if (entry.regularHours !== undefined && entry.overtimeHours !== undefined) {
-        regularHours = entry.regularHours;
-        overtimeHours = entry.overtimeHours;
-        runningRegularHours += regularHours;
-      } else if (entry.isOvertime) {
-        // If entry is explicitly marked as overtime work (e.g., manual override or toggle)
-        overtimeHours = entryHours;
-        regularHours = 0;
-        // CRITICAL: Manual overtime shifts DO NOT count toward the daily 8-hour regular threshold,
-        // preventing manual overtime hours from prematurely forcing subsequent regular shifts into overtime.
-      } else {
-        // Automatic calculation: First 8 regular hours on a date are regular; hours exceeding 8 are automatically overtime
-        const remainingRegular = Math.max(0, 8 - runningRegularHours);
-        if (remainingRegular <= 0) {
-          overtimeHours = entryHours;
-          regularHours = 0;
-        } else if (entryHours <= remainingRegular) {
-          regularHours = entryHours;
-          overtimeHours = 0;
-          runningRegularHours += entryHours;
-        } else {
-          regularHours = remainingRegular;
-          overtimeHours = entryHours - regularHours;
-          runningRegularHours += regularHours;
-        }
-      }
-      
-      const computedEarnings = (regularHours * rate) + (overtimeHours * rate * 1.5);
-      
-      enriched.push({
-        ...entry,
-        regularHours: Number(regularHours.toFixed(2)),
-        overtimeHours: Number(overtimeHours.toFixed(2)),
-        earnings: Number(computedEarnings.toFixed(2)),
-        isOvertime: !!entry.isOvertime || overtimeHours > 0
+  const autoList: AutoShiftMeta[] = [];
+
+  for (const entry of entries) {
+    const rate = entry.hourlyRate || defaultHourlyRate;
+    const hours = Math.max(0, typeof entry.totalHours === 'number'
+      ? entry.totalHours
+      : calculateHoursAndEarnings(entry.startTime, entry.endTime, entry.breakMinutes).totalHours);
+
+    // Identify manually flagged overtime shifts (explicit isOvertime or split overtime portion)
+    const isManualOT = !!entry.isOvertime || (entry.regularHours === 0 && (entry.overtimeHours || 0) > 0);
+
+    if (isManualOT) {
+      // Excluded from auto-threshold calculations to avoid double counting
+      manualOvertimeHours += hours;
+      manualEarnings += hours * rate * 1.5;
+    } else {
+      autoList.push({
+        entry,
+        hours,
+        rate,
+        dailyReg: 0,
+        dailyOT: 0,
       });
     }
   }
+
+  // 1. Calculate Daily Overtime (> 8h/day) for non-manual shifts
+  const autoByDate: Record<string, AutoShiftMeta[]> = {};
+  for (const item of autoList) {
+    if (!autoByDate[item.entry.date]) {
+      autoByDate[item.entry.date] = [];
+    }
+    autoByDate[item.entry.date].push(item);
+  }
+
+  let totalDailyOT = 0;
+  let totalAutoHours = 0;
+
+  for (const date in autoByDate) {
+    const dayItems = autoByDate[date];
+    dayItems.sort((a, b) => a.entry.startTime.localeCompare(b.entry.startTime));
+    let runningDayHours = 0;
+    for (const item of dayItems) {
+      totalAutoHours += item.hours;
+      const availableDailyReg = Math.max(0, 8.0 - runningDayHours);
+      const reg = Math.min(item.hours, availableDailyReg);
+      const ot = Math.max(0, item.hours - reg);
+      item.dailyReg = reg;
+      item.dailyOT = ot;
+      runningDayHours += item.hours;
+      totalDailyOT += ot;
+    }
+  }
+
+  // 2. Calculate Weekly Overtime (> 44h/week) for non-manual shifts
+  const totalWeeklyOT = Math.max(0, totalAutoHours - 44.0);
+
+  // 3. Apply whichever total is greater without double-counting hours
+  let autoOvertimeHours = 0;
+  let autoRegularHours = 0;
+  let appliedRule: 'daily' | 'weekly' | 'none' = 'none';
+
+  if (totalWeeklyOT > totalDailyOT) {
+    appliedRule = 'weekly';
+    autoOvertimeHours = totalWeeklyOT;
+    autoRegularHours = Math.max(0, totalAutoHours - totalWeeklyOT);
+  } else if (totalDailyOT > 0) {
+    appliedRule = 'daily';
+    autoOvertimeHours = totalDailyOT;
+    autoRegularHours = Math.max(0, totalAutoHours - totalDailyOT);
+  } else {
+    appliedRule = 'none';
+    autoOvertimeHours = 0;
+    autoRegularHours = totalAutoHours;
+  }
+
+  let autoEarnings = 0;
+  if (appliedRule === 'weekly') {
+    autoList.sort((a, b) => {
+      if (a.entry.date !== b.entry.date) return a.entry.date.localeCompare(b.entry.date);
+      return a.entry.startTime.localeCompare(b.entry.startTime);
+    });
+    let runningWeeklyReg = 0;
+    for (const item of autoList) {
+      const allowedReg = Math.max(0, 44.0 - runningWeeklyReg);
+      const reg = Math.min(item.dailyReg, allowedReg);
+      const ot = Math.max(0, item.hours - reg);
+      runningWeeklyReg += reg;
+      autoEarnings += (reg * item.rate) + (ot * item.rate * 1.5);
+    }
+  } else {
+    for (const item of autoList) {
+      autoEarnings += (item.dailyReg * item.rate) + (item.dailyOT * item.rate * 1.5);
+    }
+  }
+
+  return {
+    totalHours: Number((autoRegularHours + autoOvertimeHours + manualOvertimeHours).toFixed(2)),
+    regularHours: Number(autoRegularHours.toFixed(2)),
+    overtimeHours: Number((autoOvertimeHours + manualOvertimeHours).toFixed(2)),
+    dailyOvertimeHours: Number(totalDailyOT.toFixed(2)),
+    weeklyOvertimeHours: Number(totalWeeklyOT.toFixed(2)),
+    manualOvertimeHours: Number(manualOvertimeHours.toFixed(2)),
+    appliedOvertimeRule: appliedRule,
+    earnings: Number((autoEarnings + manualEarnings).toFixed(2)),
+  };
+}
+
+/**
+ * Enriches a list of timesheet entries with daily and weekly overtime calculations:
+ * - Daily overtime: hours > 8.0 per day
+ * - Weekly overtime: hours > 44.0 per work week (Monday to Sunday)
+ * - Applies whichever total is greater without double-counting hours.
+ * - Manually flagged overtime shifts are excluded from auto-threshold calculations.
+ */
+export function enrichEntriesWithOvertime(entries: TimesheetEntry[], usersList?: UserAccount[]): EnrichedTimesheetEntry[] {
+  if (!entries || entries.length === 0) return [];
+  const users = usersList || (typeof localStorage !== 'undefined' ? getAllUsers() : []);
   
-  // Maintain the newest first order (by date and startTime descending)
-  return enriched.sort((a, b) => {
+  // 1. Group entries by user and by work week (Monday to Sunday)
+  const userWeekGroups: Record<string, TimesheetEntry[]> = {};
+  for (const entry of entries) {
+    const user = entry.username || 'guest';
+    const weekStart = getWorkWeekStart(entry.date);
+    const key = `${user}__${weekStart}`;
+    if (!userWeekGroups[key]) {
+      userWeekGroups[key] = [];
+    }
+    userWeekGroups[key].push(entry);
+  }
+
+  const enrichedResult: EnrichedTimesheetEntry[] = [];
+
+  // 2. Process each (user, work week) group
+  for (const key in userWeekGroups) {
+    const weekEntries = userWeekGroups[key];
+    const username = key.split('__')[0];
+    const defaultRate = users.find(u => u.username === username)?.hourlyRate || 45;
+
+    // Separate manual overtime shifts from auto shifts
+    const manualList: EnrichedTimesheetEntry[] = [];
+    interface AutoShiftMeta {
+      entry: TimesheetEntry;
+      hours: number;
+      rate: number;
+      dailyReg: number;
+      dailyOT: number;
+    }
+    const autoList: AutoShiftMeta[] = [];
+
+    for (const entry of weekEntries) {
+      const rate = entry.hourlyRate || defaultRate;
+      const hours = Math.max(0, typeof entry.totalHours === 'number'
+        ? entry.totalHours
+        : calculateHoursAndEarnings(entry.startTime, entry.endTime, entry.breakMinutes).totalHours);
+
+      const isManualOT = !!entry.isOvertime || (entry.regularHours === 0 && (entry.overtimeHours || 0) > 0);
+
+      if (isManualOT) {
+        // Manually flagged overtime shift:
+        // Excluded from auto-threshold calculations to avoid double-counting.
+        const earnings = Number((hours * rate * 1.5).toFixed(2));
+        manualList.push({
+          ...entry,
+          totalHours: hours,
+          regularHours: 0,
+          overtimeHours: hours,
+          earnings,
+          isOvertime: true,
+        });
+      } else {
+        autoList.push({
+          entry,
+          hours,
+          rate,
+          dailyReg: 0,
+          dailyOT: 0,
+        });
+      }
+    }
+
+    // Step A: Calculate Daily Overtime (> 8h / day) on auto shifts
+    // Group auto shifts by date
+    const autoByDate: Record<string, AutoShiftMeta[]> = {};
+    for (const item of autoList) {
+      if (!autoByDate[item.entry.date]) {
+        autoByDate[item.entry.date] = [];
+      }
+      autoByDate[item.entry.date].push(item);
+    }
+
+    let totalDailyOT = 0;
+    let totalAutoHours = 0;
+
+    for (const date in autoByDate) {
+      const dayItems = autoByDate[date];
+      dayItems.sort((a, b) => a.entry.startTime.localeCompare(b.entry.startTime));
+      let runningDayHours = 0;
+      for (const item of dayItems) {
+        totalAutoHours += item.hours;
+        const availableDailyReg = Math.max(0, 8.0 - runningDayHours);
+        const reg = Math.min(item.hours, availableDailyReg);
+        const ot = Math.max(0, item.hours - reg);
+        item.dailyReg = reg;
+        item.dailyOT = ot;
+        runningDayHours += item.hours;
+        totalDailyOT += ot;
+      }
+    }
+
+    // Step B: Calculate Weekly Overtime (> 44h / week) on auto shifts
+    const totalWeeklyOT = Math.max(0, totalAutoHours - 44.0);
+
+    // Step C: Apply whichever total is greater without double counting
+    if (totalWeeklyOT > totalDailyOT) {
+      // Weekly overtime is greater than daily overtime!
+      // Total regular hours for the auto shifts are capped at 44.
+      // Sort auto shifts chronologically across the week
+      autoList.sort((a, b) => {
+        if (a.entry.date !== b.entry.date) {
+          return a.entry.date.localeCompare(b.entry.date);
+        }
+        return a.entry.startTime.localeCompare(b.entry.startTime);
+      });
+
+      let runningWeeklyReg = 0;
+      for (const item of autoList) {
+        const remainingWeeklyCap = Math.max(0, 44.0 - runningWeeklyReg);
+        const finalReg = Math.min(item.dailyReg, remainingWeeklyCap);
+        const finalOT = item.hours - finalReg;
+        runningWeeklyReg += finalReg;
+
+        const regH = Number(finalReg.toFixed(2));
+        const otH = Number(finalOT.toFixed(2));
+        const earnings = Number(((regH * item.rate) + (otH * item.rate * 1.5)).toFixed(2));
+
+        enrichedResult.push({
+          ...item.entry,
+          totalHours: item.hours,
+          regularHours: regH,
+          overtimeHours: otH,
+          earnings,
+          isOvertime: otH > 0,
+        });
+      }
+    } else {
+      // Daily overtime is greater than or equal to weekly overtime!
+      // Keep the daily allocation
+      for (const item of autoList) {
+        const regH = Number(item.dailyReg.toFixed(2));
+        const otH = Number(item.dailyOT.toFixed(2));
+        const earnings = Number(((regH * item.rate) + (otH * item.rate * 1.5)).toFixed(2));
+
+        enrichedResult.push({
+          ...item.entry,
+          totalHours: item.hours,
+          regularHours: regH,
+          overtimeHours: otH,
+          earnings,
+          isOvertime: otH > 0,
+        });
+      }
+    }
+
+    // Add all manual entries
+    for (const item of manualList) {
+      enrichedResult.push(item);
+    }
+  }
+
+  // Maintain chronological descending order (newest date and latest startTime first)
+  return enrichedResult.sort((a, b) => {
     if (a.date !== b.date) {
       return b.date.localeCompare(a.date);
     }
     return b.startTime.localeCompare(a.startTime);
   });
 }
+
 
 export interface SplitShiftResult {
   regularPayload: Omit<TimesheetEntry, 'id' | 'totalHours' | 'earnings' | 'isSynced'> & {
@@ -1981,16 +2253,19 @@ export function splitShiftIntoRegularAndOvertime(params: {
 
   const startMins = parseTimeToMinutes(startTime);
   let endMins = parseTimeToMinutes(endTime);
-  if (endMins <= startMins) {
-    endMins += 1440; // overnight support
+  if (endMins < startMins) {
+    endMins += 1440; // overnight midnight rollover support
   }
 
   const grossMinutes = Math.max(0, endMins - startMins);
-  const effectiveBreakMinutes = grossMinutes < 300 ? 0 : Math.min(grossMinutes, breakMinutes || 0);
+  const rawBreak = Math.max(0, breakMinutes || 0);
+  const effectiveBreakMinutes = grossMinutes < 300 
+    ? 0 
+    : Math.max(0, Math.min(grossMinutes, rawBreak));
   const grossHalfHours = Math.ceil(grossMinutes / 30);
   const grossHours = grossHalfHours * 0.5;
   const breakHours = effectiveBreakMinutes / 60;
-  const netHours = Math.max(0, Number((grossHours - breakHours).toFixed(2)));
+  const netHours = Math.max(0, Number(Math.max(0, grossHours - breakHours).toFixed(2)));
 
   const regularHours = Number(Math.min(regularThreshold, netHours).toFixed(2));
   const overtimeHours = Number(Math.max(0, netHours - regularHours).toFixed(2));

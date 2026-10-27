@@ -16,6 +16,7 @@ import {
   getSecurityLogs, clearSecurityLogs, 
   exportTimesheetsAsCSV, exportAllDataAsJSON, wipeAllLocalData 
 } from '../utils/storage';
+import GoogleCalendarSyncCard from './GoogleCalendarSyncCard';
 import { ReminderSettings, AppSettings, SecurityAuditLog } from '../types';
 import {
   registerServiceWorker,
@@ -451,6 +452,9 @@ export default function SettingsView({ onSettingsChanged, privacyMode, onToggleP
 
             </div>
           </div>
+
+          {/* Section: Google Calendar Sync & External Integration */}
+          <GoogleCalendarSyncCard />
 
           {/* Section 2: GDPR & Industry Data Portability Controls */}
           <div className="rounded-3xl border border-main-border bg-card-bg p-6 shadow-xl">

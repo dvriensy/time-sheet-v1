@@ -8,8 +8,9 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   User, Mail, Phone, Briefcase, DollarSign, Camera, Save, 
   Sparkles, CheckCircle2, RefreshCw, LogOut, Clock, Landmark,
-  Trash2, BellRing, Send, ShieldCheck, Smartphone, Share, PlusSquare, AlertTriangle, ExternalLink
+  Trash2, BellRing, Send, ShieldCheck, Smartphone, Share, PlusSquare, AlertTriangle, ExternalLink, Calendar
 } from 'lucide-react';
+import GoogleCalendarSyncCard from './GoogleCalendarSyncCard';
 import { 
   UserAccount, 
   updateUserAccount, 
@@ -77,7 +78,7 @@ export default function AccountView({ currentUser, onUpdateUser, onLogout, isMob
   const [role, setRole] = useState<'employee' | 'manager'>(currentUser.role || 'employee');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
-  const [activeTab, setActiveTab] = useState<'profile' | 'reminders'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'reminders' | 'calendar'>('profile');
 
   // Push notification and shift reminder states
   const [reminders, setReminders] = useState<ReminderSettings>(() => getReminderSettings());
@@ -509,7 +510,18 @@ export default function AccountView({ currentUser, onUpdateUser, onLogout, isMob
                 <User className="h-4 w-4" />
                 <span>Profile Information</span>
               </button>
-
+              <button
+                type="button"
+                onClick={() => setActiveTab('calendar')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer transition ${
+                  activeTab === 'calendar'
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+                    : 'bg-card-bg text-muted-text hover:text-main-text hover:bg-main-border/20 border border-main-border'
+                }`}
+              >
+                <Calendar className="h-4 w-4 text-sky-400" />
+                <span>Google Calendar Sync</span>
+              </button>
               <button
                 type="button"
                 onClick={() => setActiveTab('reminders')}
@@ -565,7 +577,9 @@ export default function AccountView({ currentUser, onUpdateUser, onLogout, isMob
             </div>
           )}
 
-          {activeTab === 'reminders' ? (
+          {activeTab === 'calendar' ? (
+            <GoogleCalendarSyncCard />
+          ) : activeTab === 'reminders' ? (
             /* SHIFT REMINDERS & WEB PUSH NOTIFICATIONS TAB */
             <div className="bg-card-bg border border-main-border rounded-2xl p-6 md:p-8 shadow-xl space-y-6 text-left">
               <div className="border-b border-main-border/60 pb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">

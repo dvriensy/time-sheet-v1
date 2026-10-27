@@ -43,6 +43,8 @@ import { TimesheetEntry, FutureShift, SubmittedTimesheet } from '../types';
 import JobTimeSheetPrintout from './JobTimeSheetPrintout';
 import PrintPreviewZoomContainer from './PrintPreviewZoomContainer';
 import ReportPictureViewer from './ReportPictureViewer';
+import GoogleCalendarSyncCard from './GoogleCalendarSyncCard';
+import { subscribeCalendarState } from '../services/googleCalendar';
 import { getAlbertaHoliday } from '../utils/albertaHolidays';
 import { SHIFT_PRESETS, ShiftPreset, roundTimeString, getCurrentRoundedTime, calculateEndTimeFromDuration } from '../utils/shiftPresets';
 import { compressImageToDataUrl } from '../utils/imageCompressor';
@@ -195,6 +197,14 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
 
   // UI state
   const [showManualForm, setShowManualForm] = useState(false);
+  const [showGoogleCalendar, setShowGoogleCalendar] = useState(false);
+  const [calendarHasError, setCalendarHasError] = useState(false);
+
+  useEffect(() => {
+    return subscribeCalendarState((cState) => {
+      setCalendarHasError(!!cState.error);
+    });
+  }, []);
   const [editingEntry, setEditingEntry] = useState<TimesheetEntry | null>(null);
   const [showPdfPreview, setShowPdfPreview] = useState<PayPeriodGroup | null>(null);
   const [printTemplateMode, setPrintTemplateMode] = useState<'job_timesheet' | 'summary'>('job_timesheet');
@@ -1949,27 +1959,65 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
               </div>
             </div>
             
-            {/* Month selector controls */}
-            <div className="flex items-center gap-3">
-              <button 
-                onClick={() => setCurrentMonthDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
-                className="p-1.5 rounded-lg border border-main-border hover:bg-main-border/30 text-muted-text hover:text-main-text transition cursor-pointer"
-                title="Previous Month"
+            {/* Month selector controls & Google Calendar Sync Toggle */}
+            <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-end">
+              <button
+                onClick={() => setShowGoogleCalendar(prev => !prev)}
+                className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer ${
+                  showGoogleCalendar
+                    ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                    : calendarHasError
+                    ? 'border-rose-500/50 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20'
+                    : 'border-main-border hover:bg-main-border/30 text-muted-text hover:text-main-text'
+                }`}
+                title="Google Calendar Integration & Sync"
               >
-                <ChevronLeft className="h-4 w-4" />
+                <Calendar className="h-3.5 w-3.5 text-blue-400" />
+                <span>Google Calendar</span>
+                {calendarHasError && (
+                  <span className="h-2 w-2 rounded-full bg-rose-500 animate-pulse" title="Connection error detected" />
+                )}
               </button>
-              <span className="text-xs font-semibold font-mono text-main-text select-none min-w-[100px] text-center">
-                {currentMonthDate.toLocaleString(undefined, { month: 'long', year: 'numeric' })}
-              </span>
-              <button 
-                onClick={() => setCurrentMonthDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
-                className="p-1.5 rounded-lg border border-main-border hover:bg-main-border/30 text-muted-text hover:text-main-text transition cursor-pointer"
-                title="Next Month"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </button>
+
+              <div className="flex items-center gap-1.5">
+                <button 
+                  onClick={() => setCurrentMonthDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
+                  className="p-1.5 rounded-lg border border-main-border hover:bg-main-border/30 text-muted-text hover:text-main-text transition cursor-pointer"
+                  title="Previous Month"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <span className="text-xs font-semibold font-mono text-main-text select-none min-w-[95px] text-center">
+                  {currentMonthDate.toLocaleString(undefined, { month: 'long', year: 'numeric' })}
+                </span>
+                <button 
+                  onClick={() => setCurrentMonthDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
+                  className="p-1.5 rounded-lg border border-main-border hover:bg-main-border/30 text-muted-text hover:text-main-text transition cursor-pointer"
+                  title="Next Month"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
             </div>
           </div>
+
+          {/* Collapsible Google Calendar Sync Card */}
+          <AnimatePresence>
+            {showGoogleCalendar && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="overflow-hidden"
+              >
+                <GoogleCalendarSyncCard
+                  shifts={futureShifts}
+                  timeOffs={timeOffRequests}
+                  onSyncComplete={() => {}}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Calendar Grid wrapper */}
           <div className="overflow-x-auto pb-2">

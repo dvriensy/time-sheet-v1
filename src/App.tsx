@@ -37,6 +37,7 @@ import ManagerView from './components/ManagerView';
 import TimeOffSidebar from './components/TimeOffSidebar';
 import HeaderTimer from './components/HeaderTimer';
 import PhoneSizingModal from './components/PhoneSizingModal';
+import { initGoogleCalendarAuth } from './services/googleCalendar';
 
 export default function App() {
   // Initialize standard LocalStorage templates on mount
@@ -83,7 +84,11 @@ export default function App() {
       }
     }, 30000);
 
+    // Initialize Google Calendar Auth listener (safely purges in-memory token on logout)
+    const unsubscribeCalendar = initGoogleCalendarAuth();
+
     return () => {
+      unsubscribeCalendar();
       window.removeEventListener('storage-sync', handleSync);
       window.removeEventListener('focus', handleFocusOrVisibility);
       document.removeEventListener('visibilitychange', handleFocusOrVisibility);
