@@ -432,6 +432,21 @@ html[data-compact-ui="true"] #account-page-view {
     visibility: visible !important;
   }
   
+  /* Zoom preview container resets during physical printing or PDF export */
+  .print-zoom-outer,
+  .print-zoom-sizer,
+  .print-zoom-content {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    transform: none !important;
+    zoom: 1 !important;
+  }
+  
   /* Ensure the print container is isolated at the top-left, takes 100% width, has white background and crisp dark text */
   #payperiod-printout {
     position: absolute !important;

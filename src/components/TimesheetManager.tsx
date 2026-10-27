@@ -41,6 +41,7 @@ import { db } from '../lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { TimesheetEntry, FutureShift, SubmittedTimesheet } from '../types';
 import JobTimeSheetPrintout from './JobTimeSheetPrintout';
+import PrintPreviewZoomContainer from './PrintPreviewZoomContainer';
 import { getAlbertaHoliday } from '../utils/albertaHolidays';
 import { SHIFT_PRESETS, ShiftPreset, roundTimeString, getCurrentRoundedTime, calculateEndTimeFromDuration } from '../utils/shiftPresets';
 import { compressImageToDataUrl } from '../utils/imageCompressor';
@@ -3535,14 +3536,14 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
       {/* MODAL 2: VECTOR PRINT PREVIEW OVERLAY (Supervisor Pay Period PDF Export) */}
       <AnimatePresence>
         {showPdfPreview && (
-          <div className="fixed inset-0 z-50 flex flex-col bg-app-bg/98 backdrop-blur overflow-y-auto p-3 sm:p-6 md:p-8 transition-colors duration-200">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between w-full max-w-4xl mx-auto mb-4 text-main-text pb-3 border-b border-main-border print:hidden gap-3">
+          <div className="fixed inset-0 z-50 flex flex-col bg-app-bg/98 backdrop-blur overflow-hidden p-2 sm:p-4 md:p-6 transition-colors duration-200">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between w-full max-w-4xl mx-auto mb-2 text-main-text pb-2.5 border-b border-main-border print:hidden gap-2">
               <div>
                 <h3 className="text-base font-semibold">Pay Period Report Export Portal</h3>
                 <p className="text-xs text-muted-text">Print-ready standard timesheet layout and detailed summary breakdown.</p>
               </div>
 
-              {/* Template Mode & Mobile Scale Switchers */}
+              {/* Template Mode Switcher */}
               <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto justify-between sm:justify-end">
                 <div className="flex items-center gap-1 bg-card-bg p-1 border border-main-border rounded-xl">
                   <button
@@ -3568,17 +3569,6 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                     Breakdown
                   </button>
                 </div>
-
-                {/* Mobile Fit Width / 100% Zoom Toggle */}
-                <button
-                  type="button"
-                  onClick={() => setMobileFitWidth(!mobileFitWidth)}
-                  className="sm:hidden min-h-[38px] px-3 py-1.5 rounded-xl border border-main-border bg-card-bg text-main-text text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs"
-                  title="Toggle fit-to-screen vs full pinch-and-zoom preview"
-                >
-                  <Maximize2 className="h-3.5 w-3.5 text-blue-500" />
-                  <span>{mobileFitWidth ? '100% Size' : 'Fit Width'}</span>
-                </button>
               </div>
 
               <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto justify-end">
@@ -3639,41 +3629,22 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
-                className="w-full max-w-4xl mx-auto mb-4 bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 p-3.5 rounded-xl text-xs font-medium flex items-center gap-2 print:hidden"
+                className="w-full max-w-4xl mx-auto mb-3 bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 p-3.5 rounded-xl text-xs font-medium flex items-center gap-2 print:hidden"
               >
                 <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
                 <span>{submitSuccess}</span>
               </motion.div>
             )}
 
-            {/* Printable Document Core */}
-            <div 
-              className="w-full max-w-4xl mx-auto overflow-x-auto pb-8 touch-pan-x"
-              style={{ touchAction: 'pan-x pan-y pinch-zoom', WebkitOverflowScrolling: 'touch' }}
-            >
-              <div 
-                className={`transition-all duration-200 ${
-                  mobileFitWidth 
-                    ? 'w-[720px] max-w-none origin-top-left sm:w-full sm:origin-top' 
-                    : 'min-w-[700px] sm:min-w-0'
-                }`}
-                style={
-                  mobileFitWidth && isMobileView
-                    ? {
-                        transform: `scale(calc((100vw - 28px) / 720))`,
-                        transformOrigin: 'top left',
-                        marginBottom: `calc((100vw - 28px) - 720px)`
-                      }
-                    : undefined
-                }
-              >
-                {printTemplateMode === 'job_timesheet' ? (
-                  <JobTimeSheetPrintout
-                    employeeName={getCurrentUser()?.fullName || getCurrentUser()?.username || 'Employee'}
-                    dateRange={`${showPdfPreview.start} to ${showPdfPreview.end}`}
-                    entries={showPdfPreview.entries}
-                  />
-                ) : (
+            {/* Printable Document Core with Full Interactive Zooming */}
+            <PrintPreviewZoomContainer initialMode="fit-screen">
+              {printTemplateMode === 'job_timesheet' ? (
+                <JobTimeSheetPrintout
+                  employeeName={getCurrentUser()?.fullName || getCurrentUser()?.username || 'Employee'}
+                  dateRange={`${showPdfPreview.start} to ${showPdfPreview.end}`}
+                  entries={showPdfPreview.entries}
+                />
+              ) : (
                 <div id="payperiod-printout" className="print-sheet w-full max-w-4xl mx-auto bg-white text-slate-950 p-4 sm:p-8 md:p-12 rounded-2xl shadow-2xl print:shadow-none print:p-0 print:m-0 print:bg-white print:text-black">
               
               {/* Report Header */}
@@ -3813,8 +3784,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
 
             </div>
             )}
-              </div>
-            </div>
+            </PrintPreviewZoomContainer>
           </div>
         )}
       </AnimatePresence>
