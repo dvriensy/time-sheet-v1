@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
-  FileText, Image as ImageIcon, Share2, Copy, Download, 
-  Printer, Check, AlertCircle, RefreshCw, ZoomIn, ZoomOut, 
+  FileText, Image as ImageIcon, Copy, Download, 
+  Check, AlertCircle, RefreshCw, ZoomIn, ZoomOut, 
   Maximize2, RotateCcw, ExternalLink, Smartphone, Monitor,
-  MessageCircle, Send
+  MessageCircle
 } from 'lucide-react';
 import { 
   captureReportToImage, 
@@ -11,7 +11,6 @@ import {
   copyImageToClipboard, 
   downloadImage, 
   isMobileDevice,
-  canShareReportFiles,
   GeneratedReportImage 
 } from '../utils/reportImageExporter';
 
@@ -56,6 +55,7 @@ export const ReportPictureViewer: React.FC<ReportPictureViewerProps> = ({
   useEffect(() => {
     if (captureKey) {
       setCapturedImage(null);
+      setGenerateError(null);
     }
   }, [captureKey]);
 
@@ -65,9 +65,6 @@ export const ReportPictureViewer: React.FC<ReportPictureViewerProps> = ({
   const picContainerRef = useRef<HTMLDivElement>(null);
   const picImageRef = useRef<HTMLImageElement>(null);
 
-  // Hidden container ref where the live DOM report is rendered
-  const hiddenDomRef = useRef<HTMLDivElement>(null);
-
   const showToast = (msg: string, type: 'success' | 'info' | 'error' = 'info', durationMs: number = 3500) => {
     setToastMessage(msg);
     setToastType(type);
@@ -76,31 +73,42 @@ export const ReportPictureViewer: React.FC<ReportPictureViewerProps> = ({
     }, durationMs);
   };
 
-  // Convert DOM to image
-  const generateImageFromDom = useCallback(async (forced: boolean = false) => {
+  // Convert DOM to image with robust element location and multi-engine capture
+  const generateImageFromDom = useCallback(async (forced: boolean = false): Promise<GeneratedReportImage | null> => {
     if (capturedImage && !forced) return capturedImage;
 
     setIsGenerating(true);
     setGenerateError(null);
 
     try {
-      // Find the element by ID or inside hiddenDomRef
+      // Find the element by ID or fall back to .print-sheet
       let targetEl = document.getElementById(reportElementId);
-      if (!targetEl && hiddenDomRef.current) {
-        targetEl = hiddenDomRef.current.querySelector(`#${reportElementId}`) || (hiddenDomRef.current.firstElementChild as HTMLElement);
+      if (!targetEl) {
+        targetEl = document.querySelector('.print-sheet') as HTMLElement;
+      }
+
+      // If still mounting, wait a brief tick
+      if (!targetEl) {
+        await new Promise(resolve => setTimeout(resolve, 150));
+        targetEl = document.getElementById(reportElementId) || (document.querySelector('.print-sheet') as HTMLElement);
       }
 
       if (!targetEl) {
-        throw new Error('Report document not found in DOM.');
+        throw new Error('Timesheet report document is currently preparing. Please tap "Try Again".');
       }
 
       const generated = await captureReportToImage(targetEl, filename);
       setCapturedImage(generated);
       setIsGenerating(false);
+      setGenerateError(null);
       return generated;
     } catch (err: any) {
       console.error('Error generating report picture:', err);
-      setGenerateError(err.message || 'Failed to convert report to picture');
+      const rawMsg = err?.message || '';
+      const msg = rawMsg && !rawMsg.includes('parse@') && !rawMsg.includes('CSSParsedDeclaration')
+        ? rawMsg
+        : 'Could not create picture preview. Please tap "Try Again" or switch to PDF view.';
+      setGenerateError(msg);
       setIsGenerating(false);
       return null;
     }
@@ -108,14 +116,13 @@ export const ReportPictureViewer: React.FC<ReportPictureViewerProps> = ({
 
   // When switching to picture mode, auto-generate if not available
   useEffect(() => {
-    if (activeFormat === 'picture' && !capturedImage && !isGenerating) {
-      // Small timeout to ensure DOM is fully painted
+    if (activeFormat === 'picture' && !capturedImage && !isGenerating && !generateError) {
       const timer = setTimeout(() => {
         generateImageFromDom();
-      }, 100);
+      }, 120);
       return () => clearTimeout(timer);
     }
-  }, [activeFormat, capturedImage, isGenerating, generateImageFromDom]);
+  }, [activeFormat, capturedImage, isGenerating, generateError, generateImageFromDom]);
 
   // Reset picture zoom to fit screen
   const handleFitScreen = useCallback(() => {
@@ -158,14 +165,14 @@ export const ReportPictureViewer: React.FC<ReportPictureViewerProps> = ({
       img = await generateImageFromDom(true);
     }
     if (!img) {
-      showToast('Could not generate picture to share.', 'error');
+      showToast('Could not generate picture to share. Please tap Try Again.', 'error');
       return;
     }
 
     const shareTitle = `${reportTitle} - ${employeeName}`;
     const shareText = `Pay Period Timesheet Report (${dateRange || 'Current'}) for ${employeeName}`;
 
-    showToast('Preparing picture for Messenger / Share...', 'info', 2000);
+    showToast('Opening Messenger / Share Drawer...', 'info', 2000);
 
     const result = await shareReportImage(img.blob, img.filename, shareTitle, shareText);
 
@@ -185,7 +192,7 @@ export const ReportPictureViewer: React.FC<ReportPictureViewerProps> = ({
       img = await generateImageFromDom(true);
     }
     if (!img) {
-      showToast('Failed to create picture.', 'error');
+      showToast('Failed to create picture. Please tap Try Again.', 'error');
       return;
     }
 
@@ -195,7 +202,7 @@ export const ReportPictureViewer: React.FC<ReportPictureViewerProps> = ({
     } else {
       // Fallback download if browser blocks clipboard image
       downloadImage(img.blob, img.filename);
-      showToast('Clipboard blocked by browser. Picture downloaded to device instead!', 'info');
+      showToast('Clipboard blocked by browser. Picture saved to downloads instead!', 'info');
     }
   };
 
@@ -206,7 +213,7 @@ export const ReportPictureViewer: React.FC<ReportPictureViewerProps> = ({
       img = await generateImageFromDom(true);
     }
     if (!img) {
-      showToast('Failed to create picture.', 'error');
+      showToast('Failed to create picture. Please tap Try Again.', 'error');
       return;
     }
     downloadImage(img.blob, img.filename);
@@ -216,6 +223,7 @@ export const ReportPictureViewer: React.FC<ReportPictureViewerProps> = ({
   // Regenerate picture
   const handleRefresh = async () => {
     setCapturedImage(null);
+    setGenerateError(null);
     showToast('Regenerating high-resolution picture...', 'info', 1500);
     await generateImageFromDom(true);
   };
@@ -391,12 +399,18 @@ export const ReportPictureViewer: React.FC<ReportPictureViewerProps> = ({
 
       {/* VIEWPORT AREA */}
       <div className="flex-1 min-h-0 w-full relative flex flex-col items-center">
-        {/* PDF VIEW: Render children directly, or mount offscreen during picture mode so html2canvas can capture it cleanly */}
+        {/* PDF VIEW:
+            When activeFormat === 'pdf': Mounted normally in relative flow.
+            When activeFormat === 'picture': Mounted at fixed (0, 0) with width 850px, z-index -50,
+            opacity 1, so layout and styles remain intact for capture, but hidden from the user behind
+            the picture view. In print mode, print CSS takes precedence.
+        */}
         <div
+          aria-hidden={activeFormat === 'picture'}
           className={`w-full flex-1 min-h-0 flex flex-col ${
             activeFormat === 'pdf'
               ? 'relative'
-              : 'absolute -top-[9999px] -left-[9999px] w-[850px] opacity-0 pointer-events-none print:relative print:top-auto print:left-auto print:w-full print:opacity-100 print:pointer-events-auto'
+              : 'fixed top-0 left-0 w-[850px] -z-50 pointer-events-none opacity-100 overflow-hidden print:relative print:top-auto print:left-auto print:w-full print:z-auto print:opacity-100 print:pointer-events-auto'
           }`}
         >
           {children}
@@ -404,7 +418,7 @@ export const ReportPictureViewer: React.FC<ReportPictureViewerProps> = ({
 
         {/* PICTURE VIEW: Render crisp high-res picture with zoom controls */}
         {activeFormat === 'picture' && (
-          <div className="print:hidden w-full flex-1 min-h-0 flex flex-col">
+          <div className="print:hidden w-full flex-1 min-h-0 flex flex-col relative z-10 bg-app-bg">
             {/* Picture Controls Toolbar */}
             <div className="w-full max-w-4xl mx-auto mb-2 flex items-center justify-between gap-1.5 flex-wrap px-1">
               <div className="flex items-center gap-1 sm:gap-1.5">
@@ -489,24 +503,40 @@ export const ReportPictureViewer: React.FC<ReportPictureViewerProps> = ({
                 <div className="flex flex-col items-center justify-center p-8 space-y-3 text-center">
                   <div className="w-10 h-10 border-3 border-blue-500 border-t-transparent rounded-full animate-spin" />
                   <p className="text-sm font-semibold text-main-text">
-                    Converting Timesheet to High-Resolution Picture...
+                    Formatting Timesheet for Messenger...
                   </p>
                   <p className="text-xs text-muted-text max-w-sm">
-                    Formatting layout for mobile screens, Messenger, and photo sharing.
+                    Creating a crisp, high-resolution picture ready to send in Messenger, WhatsApp, or text messages.
                   </p>
                 </div>
               ) : generateError ? (
-                <div className="flex flex-col items-center justify-center p-8 space-y-3 text-center bg-card-bg rounded-2xl border border-rose-500/30 max-w-md">
-                  <AlertCircle className="h-8 w-8 text-rose-500" />
-                  <p className="text-sm font-bold text-main-text">Image Generation Issue</p>
-                  <p className="text-xs text-muted-text">{generateError}</p>
-                  <button
-                    type="button"
-                    onClick={() => generateImageFromDom(true)}
-                    className="min-h-[38px] px-4 py-1.5 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-500 cursor-pointer"
-                  >
-                    Try Again
-                  </button>
+                <div className="flex flex-col items-center justify-center p-6 space-y-3 text-center bg-card-bg rounded-2xl border border-rose-500/30 max-w-md shadow-xl">
+                  <div className="p-3 rounded-full bg-rose-500/10 text-rose-500 border border-rose-500/20">
+                    <AlertCircle className="h-7 w-7" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-main-text">Picture Generation Paused</p>
+                    <p className="text-xs text-muted-text mt-1 leading-relaxed">
+                      {generateError}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => generateImageFromDom(true)}
+                      className="min-h-[38px] px-4 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-sm"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" />
+                      <span>Try Again</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveFormat('pdf')}
+                      className="min-h-[38px] px-4 py-1.5 rounded-xl bg-card-bg hover:bg-main-border/30 text-main-text border border-main-border text-xs font-medium transition cursor-pointer"
+                    >
+                      Switch to PDF View
+                    </button>
+                  </div>
                 </div>
               ) : capturedImage ? (
                 <div
@@ -541,16 +571,6 @@ export const ReportPictureViewer: React.FC<ReportPictureViewerProps> = ({
             </div>
           </div>
         )}
-      </div>
-
-      {/* Hidden DOM Holder for Live Element Capture if activeFormat is 'picture' but element isn't in main DOM */}
-      <div
-        ref={hiddenDomRef}
-        aria-hidden="true"
-        className="fixed -left-[9999px] -top-[9999px] pointer-events-none opacity-0"
-        style={{ width: '850px' }}
-      >
-        {/* Mirror copy so it's always ready for html2canvas */}
       </div>
     </div>
   );
