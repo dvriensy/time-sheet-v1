@@ -42,6 +42,7 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { TimesheetEntry, FutureShift, SubmittedTimesheet } from '../types';
 import JobTimeSheetPrintout from './JobTimeSheetPrintout';
 import PrintPreviewZoomContainer from './PrintPreviewZoomContainer';
+import ReportPictureViewer from './ReportPictureViewer';
 import { getAlbertaHoliday } from '../utils/albertaHolidays';
 import { SHIFT_PRESETS, ShiftPreset, roundTimeString, getCurrentRoundedTime, calculateEndTimeFromDuration } from '../utils/shiftPresets';
 import { compressImageToDataUrl } from '../utils/imageCompressor';
@@ -3636,155 +3637,166 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
               </motion.div>
             )}
 
-            {/* Printable Document Core with Full Interactive Zooming */}
-            <PrintPreviewZoomContainer initialMode="fit-screen">
-              {printTemplateMode === 'job_timesheet' ? (
-                <JobTimeSheetPrintout
-                  employeeName={getCurrentUser()?.fullName || getCurrentUser()?.username || 'Employee'}
-                  dateRange={`${showPdfPreview.start} to ${showPdfPreview.end}`}
-                  entries={showPdfPreview.entries}
-                />
-              ) : (
-                <div id="payperiod-printout" className="print-sheet w-full max-w-4xl mx-auto bg-white text-slate-950 p-4 sm:p-8 md:p-12 rounded-2xl shadow-2xl print:shadow-none print:p-0 print:m-0 print:bg-white print:text-black">
-              
-              {/* Report Header */}
-              <div className="flex flex-col md:flex-row justify-between items-start border-b-2 border-slate-300 pb-6 mb-6 print-border-slate-300">
-                <div>
-                  <h1 className="text-2xl font-bold uppercase tracking-tight text-slate-900">Pay Period Timesheet Report</h1>
-                  <p className="text-xs text-slate-500 uppercase tracking-widest font-mono mt-1">INDUSTRY DATA COMPLIANCE ID: #TS-{showPdfPreview.start.replace(/-/g,'')}</p>
+            {/* Report Viewer with Picture (Messenger) & PDF Modes */}
+            <ReportPictureViewer
+              reportElementId="payperiod-printout"
+              filename={`Timesheet_${user?.username || 'user'}_${showPdfPreview.start}_to_${showPdfPreview.end}.png`}
+              reportTitle="Pay Period Timesheet Report"
+              employeeName={getCurrentUser()?.fullName || getCurrentUser()?.username || 'Employee'}
+              dateRange={`${showPdfPreview.start} to ${showPdfPreview.end}`}
+              captureKey={`${printTemplateMode}_${showPdfPreview.start}_${showPdfPreview.end}_${showPdfPreview.entries.length}`}
+              onPrint={() => window.print()}
+              onClose={() => setShowPdfPreview(null)}
+            >
+              <PrintPreviewZoomContainer initialMode="fit-screen">
+                {printTemplateMode === 'job_timesheet' ? (
+                  <JobTimeSheetPrintout
+                    employeeName={getCurrentUser()?.fullName || getCurrentUser()?.username || 'Employee'}
+                    dateRange={`${showPdfPreview.start} to ${showPdfPreview.end}`}
+                    entries={showPdfPreview.entries}
+                  />
+                ) : (
+                  <div id="payperiod-printout" className="print-sheet w-full max-w-4xl mx-auto bg-white text-slate-950 p-4 sm:p-8 md:p-12 rounded-2xl shadow-2xl print:shadow-none print:p-0 print:m-0 print:bg-white print:text-black">
+                
+                {/* Report Header */}
+                <div className="flex flex-col md:flex-row justify-between items-start border-b-2 border-slate-300 pb-6 mb-6 print-border-slate-300">
+                  <div>
+                    <h1 className="text-2xl font-bold uppercase tracking-tight text-slate-900">Pay Period Timesheet Report</h1>
+                    <p className="text-xs text-slate-500 uppercase tracking-widest font-mono mt-1">INDUSTRY DATA COMPLIANCE ID: #TS-{showPdfPreview.start.replace(/-/g,'')}</p>
+                  </div>
+                  <div className="mt-4 md:mt-0 text-left md:text-right text-xs space-y-1">
+                    <p><strong>Employee:</strong> {getCurrentUser()?.username || 'user'}</p>
+                    <p><strong>Cycle:</strong> {showPdfPreview.start} to {showPdfPreview.end}</p>
+                    <p><strong>Export Date:</strong> {new Date().toLocaleDateString()}</p>
+                  </div>
                 </div>
-                <div className="mt-4 md:mt-0 text-left md:text-right text-xs space-y-1">
-                  <p><strong>Employee:</strong> {getCurrentUser()?.username || 'user'}</p>
-                  <p><strong>Cycle:</strong> {showPdfPreview.start} to {showPdfPreview.end}</p>
-                  <p><strong>Export Date:</strong> {new Date().toLocaleDateString()}</p>
+
+                {/* Aggregates Summary */}
+                <div className="grid grid-cols-2 gap-4 border border-slate-200 rounded-xl p-4 bg-slate-50 mb-8 print-bg-slate-50 print-border-slate-200">
+                  <div>
+                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Total Period Hours</span>
+                    <span className="text-lg font-bold text-slate-950">{reportHoursSummary.total} hrs</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Total Logged Shifts</span>
+                    <span className="text-lg font-bold text-slate-950">{showPdfPreview.entries.length} shifts</span>
+                  </div>
                 </div>
-              </div>
 
-              {/* Aggregates Summary */}
-              <div className="grid grid-cols-2 gap-4 border border-slate-200 rounded-xl p-4 bg-slate-50 mb-8 print-bg-slate-50 print-border-slate-200">
-                <div>
-                  <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Total Period Hours</span>
-                  <span className="text-lg font-bold text-slate-950">{reportHoursSummary.total} hrs</span>
-                </div>
-                <div>
-                  <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Total Logged Shifts</span>
-                  <span className="text-lg font-bold text-slate-950">{showPdfPreview.entries.length} shifts</span>
-                </div>
-              </div>
+                {/* Data Table */}
+                <div className="overflow-x-auto mb-6">
+                  <table className="w-full min-w-[540px] text-left border-collapse text-xs table-fixed">
+                    <thead>
+                      <tr className="border-b border-slate-300 bg-slate-100 text-[10px] font-bold text-slate-500 uppercase tracking-wider print-bg-slate-100 print-border-slate-300">
+                        <th className="py-2.5 px-3 w-[18%]">Date</th>
+                        <th className="py-2.5 px-3 w-[45%]">Task / Explanation</th>
+                        <th className="py-2.5 px-3 w-[25%]">Interval (Break)</th>
+                        <th className="py-2.5 px-3 w-[12%] text-right">Hours</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
+                      {(() => {
+                        const groups: Record<string, TimesheetEntry[]> = {};
+                        showPdfPreview.entries.forEach(entry => {
+                          if (!groups[entry.date]) groups[entry.date] = [];
+                          groups[entry.date].push(entry);
+                        });
+                        const sortedDates = Object.keys(groups).sort((a, b) => b.localeCompare(a));
 
-              {/* Data Table */}
-              <div className="overflow-x-auto mb-6">
-                <table className="w-full min-w-[540px] text-left border-collapse text-xs table-fixed">
-                  <thead>
-                    <tr className="border-b border-slate-300 bg-slate-100 text-[10px] font-bold text-slate-500 uppercase tracking-wider print-bg-slate-100 print-border-slate-300">
-                      <th className="py-2.5 px-3 w-[18%]">Date</th>
-                      <th className="py-2.5 px-3 w-[45%]">Task / Explanation</th>
-                      <th className="py-2.5 px-3 w-[25%]">Interval (Break)</th>
-                      <th className="py-2.5 px-3 w-[12%] text-right">Hours</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200">
-                    {(() => {
-                      const groups: Record<string, TimesheetEntry[]> = {};
-                      showPdfPreview.entries.forEach(entry => {
-                        if (!groups[entry.date]) groups[entry.date] = [];
-                        groups[entry.date].push(entry);
-                      });
-                      const sortedDates = Object.keys(groups).sort((a, b) => b.localeCompare(a));
+                        return sortedDates.flatMap(dateStr => {
+                          const dayEntries = groups[dateStr];
+                          const isMultiTask = dayEntries.length > 1;
+                          const dayTotal = dayEntries.reduce((sum, e) => sum + e.totalHours, 0);
 
-                      return sortedDates.flatMap(dateStr => {
-                        const dayEntries = groups[dateStr];
-                        const isMultiTask = dayEntries.length > 1;
-                        const dayTotal = dayEntries.reduce((sum, e) => sum + e.totalHours, 0);
-
-                        const rows = dayEntries.map(entry => (
-                          <tr key={entry.id} className="align-top hover:bg-slate-50/50">
-                            <td className="py-3 px-3 font-semibold text-slate-900 whitespace-nowrap">
-                              {entry.date}
-                            </td>
-                            <td className="py-3 px-3">
-                              <p className="font-semibold text-slate-800 break-words">
-                                {entry.project}
-                                {entry.isOvertime && (
-                                  <span className="ml-2 inline-flex items-center rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-800 ring-1 ring-inset ring-amber-600/20 uppercase tracking-wider print:bg-slate-100 print:text-black shrink-0">
-                                    Overtime
-                                  </span>
-                                )}
-                              </p>
-                              <p className="text-[10px] text-slate-500">Where: {entry.locationName}</p>
-                              {entry.notes && (
-                                <p className="text-[10px] text-slate-400 italic mt-1 break-words leading-relaxed">{entry.notes}</p>
-                              )}
-                            </td>
-                            <td className="py-3 px-3 text-slate-600">
-                              <div className="font-medium">{entry.startTime} – {entry.endTime}</div>
-                              <div className="text-[10px] text-slate-400 font-mono">break: {entry.breakMinutes}m</div>
-                            </td>
-                            <td className={`py-3 px-3 text-right font-mono font-semibold text-xs ${entry.isOvertime ? 'text-amber-600' : 'text-slate-800'}`}>
-                              {entry.totalHours} hrs
-                            </td>
-                          </tr>
-                        ));
-
-                        if (isMultiTask) {
-                          rows.push(
-                            <tr key={`day-total-${dateStr}`} className="bg-blue-50/70 border-b-2 border-slate-300 font-bold">
-                              <td colSpan={3} className="py-2 px-3 text-right text-slate-700 uppercase tracking-wider text-[10px] font-mono">
-                                Day Total ({dateStr}):
+                          const rows = dayEntries.map(entry => (
+                            <tr key={entry.id} className="align-top hover:bg-slate-50/50">
+                              <td className="py-3 px-3 font-semibold text-slate-900 whitespace-nowrap">
+                                {entry.date}
                               </td>
-                              <td className="py-2 px-3 text-right font-mono text-blue-700 text-xs font-extrabold">
-                                Day Total: {Number(dayTotal.toFixed(2))}h
+                              <td className="py-3 px-3">
+                                <p className="font-semibold text-slate-800 break-words">
+                                  {entry.project}
+                                  {entry.isOvertime && (
+                                    <span className="ml-2 inline-flex items-center rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-800 ring-1 ring-inset ring-amber-600/20 uppercase tracking-wider print:bg-slate-100 print:text-black shrink-0">
+                                      Overtime
+                                    </span>
+                                  )}
+                                </p>
+                                <p className="text-[10px] text-slate-500">Where: {entry.locationName}</p>
+                                {entry.notes && (
+                                  <p className="text-[10px] text-slate-400 italic mt-1 break-words leading-relaxed">{entry.notes}</p>
+                                )}
+                              </td>
+                              <td className="py-3 px-3 text-slate-600">
+                                <div className="font-medium">{entry.startTime} – {entry.endTime}</div>
+                                <div className="text-[10px] text-slate-400 font-mono">break: {entry.breakMinutes}m</div>
+                              </td>
+                              <td className={`py-3 px-3 text-right font-mono font-semibold text-xs ${entry.isOvertime ? 'text-amber-600' : 'text-slate-800'}`}>
+                                {entry.totalHours} hrs
                               </td>
                             </tr>
-                          );
-                        }
+                          ));
 
-                        return rows;
-                      });
-                    })()}
-                  </tbody>
-                </table>
-              </div>
+                          if (isMultiTask) {
+                            rows.push(
+                              <tr key={`day-total-${dateStr}`} className="bg-blue-50/70 border-b-2 border-slate-300 font-bold">
+                                <td colSpan={3} className="py-2 px-3 text-right text-slate-700 uppercase tracking-wider text-[10px] font-mono">
+                                  Day Total ({dateStr}):
+                                </td>
+                                <td className="py-2 px-3 text-right font-mono text-blue-700 text-xs font-extrabold">
+                                  Day Total: {Number(dayTotal.toFixed(2))}h
+                                </td>
+                              </tr>
+                            );
+                          }
 
-              {/* Three Specific Hourly Categories at the End of the Report */}
-              <div className="mt-6 border-t border-slate-200 pt-6 mb-8 print-border-slate-200 print-avoid-break">
-                <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-3">Pay Period Hours Breakdown</h4>
-                <div className="grid grid-cols-3 gap-4 border border-slate-200 rounded-xl p-4 bg-slate-50 print-bg-slate-50 print-border-slate-200">
-                  <div className="border-r border-slate-200 pr-4 print-border-slate-200">
-                    <span className="text-[9px] font-semibold text-slate-500 uppercase tracking-wider block">Regular Hours</span>
-                    <span className="text-base font-bold text-slate-900 font-mono">{reportHoursSummary.regular} hrs</span>
-                  </div>
-                  <div className="border-r border-slate-200 px-4 print-border-slate-200">
-                    <span className="text-[9px] font-semibold text-amber-700 uppercase tracking-wider block">Overtime Hours</span>
-                    <span className="text-base font-bold text-amber-700 font-mono">{reportHoursSummary.overtime} hrs</span>
-                  </div>
-                  <div className="pl-4">
-                    <span className="text-[9px] font-semibold text-blue-700 uppercase tracking-wider block">Total Time</span>
-                    <span className="text-base font-bold text-blue-700 font-mono">{reportHoursSummary.total} hrs</span>
+                          return rows;
+                        });
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Three Specific Hourly Categories at the End of the Report */}
+                <div className="mt-6 border-t border-slate-200 pt-6 mb-8 print-border-slate-200 print-avoid-break">
+                  <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-3">Pay Period Hours Breakdown</h4>
+                  <div className="grid grid-cols-3 gap-4 border border-slate-200 rounded-xl p-4 bg-slate-50 print-bg-slate-50 print-border-slate-200">
+                    <div className="border-r border-slate-200 pr-4 print-border-slate-200">
+                      <span className="text-[9px] font-semibold text-slate-500 uppercase tracking-wider block">Regular Hours</span>
+                      <span className="text-base font-bold text-slate-900 font-mono">{reportHoursSummary.regular} hrs</span>
+                    </div>
+                    <div className="border-r border-slate-200 px-4 print-border-slate-200">
+                      <span className="text-[9px] font-semibold text-amber-700 uppercase tracking-wider block">Overtime Hours</span>
+                      <span className="text-base font-bold text-amber-700 font-mono">{reportHoursSummary.overtime} hrs</span>
+                    </div>
+                    <div className="pl-4">
+                      <span className="text-[9px] font-semibold text-blue-700 uppercase tracking-wider block">Total Time</span>
+                      <span className="text-base font-bold text-blue-700 font-mono">{reportHoursSummary.total} hrs</span>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Signature Blocks */}
-              <div className="grid grid-cols-2 gap-12 pt-12 border-t border-slate-200 mt-12 text-xs print-border-slate-200 print-avoid-break">
-                <div>
-                  <div className="border-b border-slate-400 h-12" />
-                  <p className="mt-2 text-slate-500 font-medium">Employee Signature / Date</p>
+                {/* Signature Blocks */}
+                <div className="grid grid-cols-2 gap-12 pt-12 border-t border-slate-200 mt-12 text-xs print-border-slate-200 print-avoid-break">
+                  <div>
+                    <div className="border-b border-slate-400 h-12" />
+                    <p className="mt-2 text-slate-500 font-medium">Employee Signature / Date</p>
+                  </div>
+                  <div>
+                    <div className="border-b border-slate-400 h-12" />
+                    <p className="mt-2 text-slate-500 font-medium">Supervisor Sign-off / Date</p>
+                  </div>
                 </div>
-                <div>
-                  <div className="border-b border-slate-400 h-12" />
-                  <p className="mt-2 text-slate-500 font-medium">Supervisor Sign-off / Date</p>
+
+                {/* System Compliance Disclaimer */}
+                <div className="mt-12 text-[10px] leading-relaxed text-slate-400 border-t border-slate-100 pt-6 print-border-slate-200 print-avoid-break">
+                  <strong>System Integrity Disclaimer:</strong> This timesheet report was compiled from decentralized client logs, cryptographically matched via biometrics, and verified with optional GPS positioning metrics. GDPR non-disclosure and privacy constraints prevent third-party logging without manual explicit supervisor synchronization, preserving compliance with global ISO-27001 data integrity standards.
                 </div>
-              </div>
 
-              {/* System Compliance Disclaimer */}
-              <div className="mt-12 text-[10px] leading-relaxed text-slate-400 border-t border-slate-100 pt-6 print-border-slate-200 print-avoid-break">
-                <strong>System Integrity Disclaimer:</strong> This timesheet report was compiled from decentralized client logs, cryptographically matched via biometrics, and verified with optional GPS positioning metrics. GDPR non-disclosure and privacy constraints prevent third-party logging without manual explicit supervisor synchronization, preserving compliance with global ISO-27001 data integrity standards.
               </div>
-
-            </div>
-            )}
-            </PrintPreviewZoomContainer>
+              )}
+              </PrintPreviewZoomContainer>
+            </ReportPictureViewer>
           </div>
         )}
       </AnimatePresence>

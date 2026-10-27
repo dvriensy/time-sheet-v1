@@ -46,6 +46,7 @@ import TimeOffCalendar from './TimeOffCalendar';
 import WorkDispatchChat from './WorkDispatchChat';
 import JobTimeSheetPrintout from './JobTimeSheetPrintout';
 import PrintPreviewZoomContainer from './PrintPreviewZoomContainer';
+import ReportPictureViewer from './ReportPictureViewer';
 
 interface ManagerViewProps {
   currentUser: UserAccount;
@@ -3157,156 +3158,172 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
               </div>
             </div>
 
-            {/* Printable Document Core with Interactive Zoom */}
-            <PrintPreviewZoomContainer initialMode="fit-screen">
-              {managerPrintMode === 'job_timesheet' ? (
-                <JobTimeSheetPrintout
-                  employeeName={
-                    (() => {
-                      const u = allUsers.find(userItem => userItem.username === selectedManagerPrint.username);
-                      return u ? u.fullName : selectedManagerPrint.username;
-                    })()
-                  }
-                  dateRange={`${selectedManagerPrint.startDate} to ${selectedManagerPrint.endDate}`}
-                  entries={selectedManagerPrint.entries || []}
-                />
-              ) : (
-                <div id="payperiod-printout" className="print-sheet w-full max-w-4xl mx-auto bg-white text-slate-950 p-4 sm:p-8 md:p-12 rounded-2xl shadow-2xl print:shadow-none print:p-0 print:m-0 print:bg-white print:text-black">
-              
-              {/* Report Header */}
-              <div className="flex flex-col md:flex-row justify-between items-start border-b-2 border-slate-300 pb-6 mb-6 print-border-slate-300">
-                <div>
-                  <h1 className="text-2xl font-bold uppercase tracking-tight text-slate-900">Pay Period Timesheet Report</h1>
-                  <p className="text-xs text-slate-500 uppercase tracking-widest font-mono mt-1">SUBMISSION ID: #{selectedManagerPrint.id}</p>
+            {/* Report Viewer with Picture (Messenger) & PDF Modes */}
+            <ReportPictureViewer
+              reportElementId="payperiod-printout"
+              filename={`Timesheet_${selectedManagerPrint.username}_${selectedManagerPrint.startDate}_to_${selectedManagerPrint.endDate}.png`}
+              reportTitle="Supervisor Timesheet Document Review"
+              employeeName={
+                (() => {
+                  const u = allUsers.find(userItem => userItem.username === selectedManagerPrint.username);
+                  return u ? u.fullName : selectedManagerPrint.username;
+                })()
+              }
+              dateRange={`${selectedManagerPrint.startDate} to ${selectedManagerPrint.endDate}`}
+              captureKey={`${managerPrintMode}_${selectedManagerPrint.id}_${selectedManagerPrint.entries?.length || 0}`}
+              onPrint={() => window.print()}
+              onClose={() => setSelectedManagerPrint(null)}
+            >
+              <PrintPreviewZoomContainer initialMode="fit-screen">
+                {managerPrintMode === 'job_timesheet' ? (
+                  <JobTimeSheetPrintout
+                    employeeName={
+                      (() => {
+                        const u = allUsers.find(userItem => userItem.username === selectedManagerPrint.username);
+                        return u ? u.fullName : selectedManagerPrint.username;
+                      })()
+                    }
+                    dateRange={`${selectedManagerPrint.startDate} to ${selectedManagerPrint.endDate}`}
+                    entries={selectedManagerPrint.entries || []}
+                  />
+                ) : (
+                  <div id="payperiod-printout" className="print-sheet w-full max-w-4xl mx-auto bg-white text-slate-950 p-4 sm:p-8 md:p-12 rounded-2xl shadow-2xl print:shadow-none print:p-0 print:m-0 print:bg-white print:text-black">
+                
+                {/* Report Header */}
+                <div className="flex flex-col md:flex-row justify-between items-start border-b-2 border-slate-300 pb-6 mb-6 print-border-slate-300">
+                  <div>
+                    <h1 className="text-2xl font-bold uppercase tracking-tight text-slate-900">Pay Period Timesheet Report</h1>
+                    <p className="text-xs text-slate-500 uppercase tracking-widest font-mono mt-1">SUBMISSION ID: #{selectedManagerPrint.id}</p>
+                  </div>
+                  <div className="mt-4 md:mt-0 text-left md:text-right text-xs space-y-1">
+                    <p className="text-slate-800 font-bold">Employee Name: <span className="text-slate-950 font-sans font-medium">{
+                      (() => {
+                        const u = allUsers.find(userItem => userItem.username === selectedManagerPrint.username);
+                        return u ? u.fullName : selectedManagerPrint.username;
+                      })()
+                    }</span></p>
+                    <p className="text-slate-600 font-mono">Username: @{selectedManagerPrint.username}</p>
+                    <p className="text-slate-600">Period range: <strong className="font-mono">{selectedManagerPrint.startDate} to {selectedManagerPrint.endDate}</strong></p>
+                    <p className="text-slate-600">Verification date: {new Date(selectedManagerPrint.submittedAt).toLocaleDateString()}</p>
+                  </div>
                 </div>
-                <div className="mt-4 md:mt-0 text-left md:text-right text-xs space-y-1">
-                  <p className="text-slate-800 font-bold">Employee Name: <span className="text-slate-950 font-sans font-medium">{
-                    (() => {
-                      const u = allUsers.find(userItem => userItem.username === selectedManagerPrint.username);
-                      return u ? u.fullName : selectedManagerPrint.username;
-                    })()
-                  }</span></p>
-                  <p className="text-slate-600 font-mono">Username: @{selectedManagerPrint.username}</p>
-                  <p className="text-slate-600">Period range: <strong className="font-mono">{selectedManagerPrint.startDate} to {selectedManagerPrint.endDate}</strong></p>
-                  <p className="text-slate-600">Verification date: {new Date(selectedManagerPrint.submittedAt).toLocaleDateString()}</p>
-                </div>
-              </div>
 
-              {/* Summary Metrics cards */}
-              <div className="grid grid-cols-3 gap-4 mb-6">
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-left print-bg-slate-50 print-border-slate-200">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-mono">Total Hours</span>
-                  <span className="block text-xl font-bold text-slate-900 mt-1">{selectedManagerPrint.totalHours.toFixed(2)}</span>
+                {/* Summary Metrics cards */}
+                <div className="grid grid-cols-3 gap-4 mb-6">
+                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-left print-bg-slate-50 print-border-slate-200">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-mono">Total Hours</span>
+                    <span className="block text-xl font-bold text-slate-900 mt-1">{selectedManagerPrint.totalHours.toFixed(2)}</span>
+                  </div>
+                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-left print-bg-slate-50 print-border-slate-200">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-mono">Regular Hours</span>
+                    <span className="block text-xl font-bold text-slate-900 mt-1">{selectedManagerPrint.regularHours.toFixed(2)}</span>
+                  </div>
+                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-left print-bg-slate-50 print-border-slate-200">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-mono">Overtime Hours</span>
+                    <span className="block text-xl font-bold text-slate-900 mt-1">{selectedManagerPrint.overtimeHours.toFixed(2)}</span>
+                  </div>
                 </div>
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-left print-bg-slate-50 print-border-slate-200">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-mono">Regular Hours</span>
-                  <span className="block text-xl font-bold text-slate-900 mt-1">{selectedManagerPrint.regularHours.toFixed(2)}</span>
-                </div>
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-left print-bg-slate-50 print-border-slate-200">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-mono">Overtime Hours</span>
-                  <span className="block text-xl font-bold text-slate-900 mt-1">{selectedManagerPrint.overtimeHours.toFixed(2)}</span>
-                </div>
-              </div>
 
-              {/* Table of shifts */}
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[560px] text-left border-collapse">
-                  <thead>
-                    <tr className="border-b-2 border-slate-300 font-mono text-slate-500 text-[10px] uppercase tracking-wider print-border-slate-300">
-                      <th className="py-2.5 px-3 font-semibold text-left">Date</th>
-                      <th className="py-2.5 px-3 font-semibold text-left">Project / Task</th>
-                      <th className="py-2.5 px-3 font-semibold text-center">Interval</th>
-                      <th className="py-2.5 px-3 font-semibold text-right">Hours</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200 text-slate-800 text-xs">
-                    {(() => {
-                      const groups: Record<string, typeof selectedManagerPrint.entries> = {};
-                      selectedManagerPrint.entries.forEach(entry => {
-                        if (!groups[entry.date]) groups[entry.date] = [];
-                        groups[entry.date].push(entry);
-                      });
-                      const sortedDates = Object.keys(groups).sort((a, b) => b.localeCompare(a));
-
-                      return sortedDates.flatMap((dateStr) => {
-                        const dayEntries = groups[dateStr];
-                        const isMultiTask = dayEntries.length > 1;
-                        const dayTotal = dayEntries.reduce((sum, e) => sum + e.totalHours, 0);
-
-                        const rows = dayEntries.map((entry, idx) => {
-                          const isHoliday = getAlbertaHoliday(entry.date);
-                          const baseBg = idx % 2 === 1 ? 'bg-slate-50/50 print-bg-slate-50' : 'bg-transparent';
-                          const rowBg = isHoliday ? 'bg-rose-50/40 print-bg-rose-50' : baseBg;
-                          return (
-                            <tr key={entry.id || idx} className={`${rowBg}`}>
-                              <td className="py-2.5 px-3 font-mono font-medium text-slate-950 text-left">
-                                <span className="block">{new Date(entry.date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</span>
-                                {isHoliday && (
-                                  <span className="inline-block mt-0.5 rounded bg-rose-100 print-bg-rose-100 text-[8px] font-extrabold text-rose-700 px-1.5 py-0.5 uppercase tracking-tight border border-rose-200">
-                                    Stat Holiday: {isHoliday}
-                                  </span>
-                                )}
-                              </td>
-                              <td className="py-2.5 px-3 text-left">
-                                <span className="font-semibold text-slate-900 block">{entry.project || 'General Operations'}</span>
-                                {entry.notes && <span className="text-[10px] text-slate-500 italic block mt-0.5">{entry.notes}</span>}
-                              </td>
-                              <td className="py-2.5 px-3 text-center font-mono text-slate-600">
-                                {entry.startTime} - {entry.endTime}
-                              </td>
-                              <td className="py-2.5 px-3 text-right font-mono font-semibold text-slate-950">
-                                {entry.totalHours.toFixed(2)} {entry.isOvertime && <span className="text-[9px] font-extrabold text-blue-600 uppercase tracking-wider">OT</span>}
-                              </td>
-                            </tr>
-                          );
+                {/* Table of shifts */}
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[560px] text-left border-collapse">
+                    <thead>
+                      <tr className="border-b-2 border-slate-300 font-mono text-slate-500 text-[10px] uppercase tracking-wider print-border-slate-300">
+                        <th className="py-2.5 px-3 font-semibold text-left">Date</th>
+                        <th className="py-2.5 px-3 font-semibold text-left">Project / Task</th>
+                        <th className="py-2.5 px-3 font-semibold text-center">Interval</th>
+                        <th className="py-2.5 px-3 font-semibold text-right">Hours</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 text-slate-800 text-xs">
+                      {(() => {
+                        const groups: Record<string, typeof selectedManagerPrint.entries> = {};
+                        selectedManagerPrint.entries.forEach(entry => {
+                          if (!groups[entry.date]) groups[entry.date] = [];
+                          groups[entry.date].push(entry);
                         });
+                        const sortedDates = Object.keys(groups).sort((a, b) => b.localeCompare(a));
 
-                        if (isMultiTask) {
-                          rows.push(
-                            <tr key={`day-total-${dateStr}`} className="bg-blue-50/70 border-b-2 border-slate-300 font-bold">
-                              <td colSpan={3} className="py-2 px-3 text-right text-slate-700 uppercase tracking-wider text-[10px] font-mono">
-                                Day Total ({dateStr}):
-                              </td>
-                              <td className="py-2 px-3 text-right font-mono text-blue-700 text-xs font-extrabold">
-                                Day Total: {Number(dayTotal.toFixed(2))}h
-                              </td>
-                            </tr>
-                          );
-                        }
+                        return sortedDates.flatMap((dateStr) => {
+                          const dayEntries = groups[dateStr];
+                          const isMultiTask = dayEntries.length > 1;
+                          const dayTotal = dayEntries.reduce((sum, e) => sum + e.totalHours, 0);
 
-                        return rows;
-                      });
-                    })()}
-                  </tbody>
-                </table>
-              </div>
+                          const rows = dayEntries.map((entry, idx) => {
+                            const isHoliday = getAlbertaHoliday(entry.date);
+                            const baseBg = idx % 2 === 1 ? 'bg-slate-50/50 print-bg-slate-50' : 'bg-transparent';
+                            const rowBg = isHoliday ? 'bg-rose-50/40 print-bg-rose-50' : baseBg;
+                            return (
+                              <tr key={entry.id || idx} className={`${rowBg}`}>
+                                <td className="py-2.5 px-3 font-mono font-medium text-slate-950 text-left">
+                                  <span className="block">{new Date(entry.date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</span>
+                                  {isHoliday && (
+                                    <span className="inline-block mt-0.5 rounded bg-rose-100 print-bg-rose-100 text-[8px] font-extrabold text-rose-700 px-1.5 py-0.5 uppercase tracking-tight border border-rose-200">
+                                      Stat Holiday: {isHoliday}
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="py-2.5 px-3 text-left">
+                                  <span className="font-semibold text-slate-900 block">{entry.project || 'General Operations'}</span>
+                                  {entry.notes && <span className="text-[10px] text-slate-500 italic block mt-0.5">{entry.notes}</span>}
+                                </td>
+                                <td className="py-2.5 px-3 text-center font-mono text-slate-600">
+                                  {entry.startTime} - {entry.endTime}
+                                </td>
+                                <td className="py-2.5 px-3 text-right font-mono font-semibold text-slate-950">
+                                  {entry.totalHours.toFixed(2)} {entry.isOvertime && <span className="text-[9px] font-extrabold text-blue-600 uppercase tracking-wider">OT</span>}
+                                </td>
+                              </tr>
+                            );
+                          });
 
-              {/* Signature and Verification lines */}
-              <div className="mt-8 pt-8 border-t border-slate-300 grid grid-cols-2 gap-8 print-border-slate-200 print-avoid-break">
-                <div className="text-left">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">Employee Digital Signature</span>
-                  <div className="h-10 border-b border-slate-300 mt-4 flex items-end pb-1 font-serif text-slate-700 italic">
-                    {(() => {
-                      const u = allUsers.find(userItem => userItem.username === selectedManagerPrint.username);
-                      return u ? u.fullName : selectedManagerPrint.username;
-                    })()}
-                  </div>
-                  <span className="text-[9px] text-slate-400 mt-1 block">Digitally verified and sealed on submission</span>
+                          if (isMultiTask) {
+                            rows.push(
+                              <tr key={`day-total-${dateStr}`} className="bg-blue-50/70 border-b-2 border-slate-300 font-bold">
+                                <td colSpan={3} className="py-2 px-3 text-right text-slate-700 uppercase tracking-wider text-[10px] font-mono">
+                                  Day Total ({dateStr}):
+                                </td>
+                                <td className="py-2 px-3 text-right font-mono text-blue-700 text-xs font-extrabold">
+                                  Day Total: {Number(dayTotal.toFixed(2))}h
+                                </td>
+                              </tr>
+                            );
+                          }
+
+                          return rows;
+                        });
+                      })()}
+                    </tbody>
+                  </table>
                 </div>
-                <div className="text-left">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">Manager Approval Authorization</span>
-                  <div className="h-10 border-b border-slate-300 mt-4 flex items-end pb-1 font-serif text-slate-700 italic font-semibold">
-                    {selectedManagerPrint.status === 'approved' ? currentUser.fullName : ''}
-                  </div>
-                  <span className="text-[9px] text-slate-400 mt-1 block uppercase font-mono tracking-widest">
-                    Status: {selectedManagerPrint.status}
-                  </span>
-                </div>
-              </div>
 
-            </div>
-            )}
-            </PrintPreviewZoomContainer>
+                {/* Signature and Verification lines */}
+                <div className="mt-8 pt-8 border-t border-slate-300 grid grid-cols-2 gap-8 print-border-slate-200 print-avoid-break">
+                  <div className="text-left">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">Employee Digital Signature</span>
+                    <div className="h-10 border-b border-slate-300 mt-4 flex items-end pb-1 font-serif text-slate-700 italic">
+                      {(() => {
+                        const u = allUsers.find(userItem => userItem.username === selectedManagerPrint.username);
+                        return u ? u.fullName : selectedManagerPrint.username;
+                      })()}
+                    </div>
+                    <span className="text-[9px] text-slate-400 mt-1 block">Digitally verified and sealed on submission</span>
+                  </div>
+                  <div className="text-left">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">Manager Approval Authorization</span>
+                    <div className="h-10 border-b border-slate-300 mt-4 flex items-end pb-1 font-serif text-slate-700 italic font-semibold">
+                      {selectedManagerPrint.status === 'approved' ? currentUser.fullName : ''}
+                    </div>
+                    <span className="text-[9px] text-slate-400 mt-1 block uppercase font-mono tracking-widest">
+                      Status: {selectedManagerPrint.status}
+                    </span>
+                  </div>
+                </div>
+
+              </div>
+              )}
+              </PrintPreviewZoomContainer>
+            </ReportPictureViewer>
           </div>
         )}
       </AnimatePresence>
