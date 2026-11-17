@@ -24,6 +24,7 @@ export interface TimesheetEntry {
   earnings?: number; // calculated
   isSynced: boolean;
   isOvertime?: boolean;
+  isOutOfTown?: boolean;
   flhaImageUrl?: string; // Base64 data URL or photo of Field Level Hazard Assessment card
   flhaTimestamp?: string; // Date & time when FLHA was captured
   flhaLocation?: string; // Jobsite / location metadata for FLHA

@@ -84,6 +84,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     initialTaskStartTimestamp,
     initialClockInTimestamp,
     initialIsOvertime,
+    initialIsOutOfTown,
     initialFlhaImage,
     initialFlhaTimestamp
   } = useMemo(() => {
@@ -118,6 +119,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
           initialTaskStartTimestamp: taskStart,
           initialClockInTimestamp: clockInStart,
           initialIsOvertime: !!session.isOvertime,
+          initialIsOutOfTown: !!session.isOutOfTown,
           initialFlhaImage: session.flhaImageUrl || null,
           initialFlhaTimestamp: session.flhaTimestamp || null,
         };
@@ -137,6 +139,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
       initialTaskStartTimestamp: null as number | null,
       initialClockInTimestamp: null as number | null,
       initialIsOvertime: false,
+      initialIsOutOfTown: false,
       initialFlhaImage: null as string | null,
       initialFlhaTimestamp: null as string | null,
     };
@@ -150,6 +153,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
   const [daySecondsElapsed, setDaySecondsElapsed] = useState(initialDaySecondsElapsed);
   const [timerStart, setTimerStart] = useState<string>(initialTimerStart);
   const [isOvertime, setIsOvertime] = useState<boolean>(initialIsOvertime);
+  const [isOutOfTown, setIsOutOfTown] = useState<boolean>(initialIsOutOfTown);
   const [bypassLunch, setBypassLunch] = useState<boolean>(false);
   const [splitDayOnEnd, setSplitDayOnEnd] = useState<boolean>(true);
   const [endDaySplitModal, setEndDaySplitModal] = useState<{
@@ -338,6 +342,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
   const [manualLocation, setManualLocation] = useState('');
   const [manualNotes, setManualNotes] = useState('');
   const [manualIsOvertime, setManualIsOvertime] = useState(false);
+  const [manualIsOutOfTown, setManualIsOutOfTown] = useState(false);
   const [selectedPresetId, setSelectedPresetId] = useState<string | null>('standard_8h');
   const [manualSplitDay, setManualSplitDay] = useState(false);
   const [manualRegularThreshold, setManualRegularThreshold] = useState<number>(8.0);
@@ -501,6 +506,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     setManualEnd(preset.endTime);
     setManualBypassLunch(preset.bypassLunch);
     setManualIsOvertime(preset.isOvertime);
+    setManualIsOutOfTown(false);
     setManualProject(preset.project);
     setManualLocation(preset.location);
     setManualNotes(preset.notes);
@@ -595,6 +601,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
         setActiveLocation(session.location || '');
         setActiveNotes(session.notes || '');
         setIsOvertime(!!session.isOvertime);
+        setIsOutOfTown(!!session.isOutOfTown);
         setActiveFlhaImage(session.flhaImageUrl || null);
         setActiveFlhaTimestamp(session.flhaTimestamp || null);
         setTaskStartTimestamp(incomingTaskStart);
@@ -614,6 +621,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
         setDaySecondsElapsed(0);
         setTimerStart('');
         setIsOvertime(false);
+        setIsOutOfTown(false);
         setBypassLunch(false);
         setActiveFlhaImage(null);
         setActiveFlhaTimestamp(null);
@@ -657,6 +665,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
         const projectChanged = activeProject !== (session.project || '');
         const locationChanged = activeLocation !== (session.location || '');
         const notesChanged = activeNotes !== (session.notes || '');
+        const outOfTownChanged = isOutOfTown !== !!session.isOutOfTown;
         const flhaChanged = (activeFlhaImage || '') !== (session.flhaImageUrl || '');
 
         if (
@@ -665,6 +674,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
           projectChanged ||
           locationChanged ||
           notesChanged ||
+          outOfTownChanged ||
           flhaChanged
         ) {
           setIsClockedIn(true);
@@ -673,6 +683,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
           setActiveLocation(session.location || '');
           setActiveNotes(session.notes || '');
           setIsOvertime(!!session.isOvertime);
+          setIsOutOfTown(!!session.isOutOfTown);
           setActiveFlhaImage(session.flhaImageUrl || null);
           setActiveFlhaTimestamp(session.flhaTimestamp || null);
           setTaskStartTimestamp(incomingTaskStart);
@@ -690,6 +701,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
           setDaySecondsElapsed(0);
           setTimerStart('');
           setIsOvertime(false);
+          setIsOutOfTown(false);
           setBypassLunch(false);
           setActiveFlhaImage(null);
           setActiveFlhaTimestamp(null);
@@ -711,6 +723,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     activeProject,
     activeLocation,
     activeNotes,
+    isOutOfTown,
     activeFlhaImage,
     taskStartTimestamp,
     clockInTimestamp,
@@ -731,6 +744,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
         location: activeLocation || 'Office',
         notes: activeNotes || 'Working...',
         isOvertime,
+        ...(isOutOfTown ? { isOutOfTown: true } : { isOutOfTown: false }),
         secondsElapsed,
         breakSecondsElapsed: 0,
         daySecondsElapsed,
@@ -745,7 +759,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
       clearActiveSession();
       deleteActiveSessionFromFirestore(currentUser.username);
     }
-  }, [isClockedIn, timerStart, activeProject, activeLocation, activeNotes, isOvertime, activeFlhaImage, activeFlhaTimestamp, taskStartTimestamp, clockInTimestamp]);
+  }, [isClockedIn, timerStart, activeProject, activeLocation, activeNotes, isOvertime, isOutOfTown, activeFlhaImage, activeFlhaTimestamp, taskStartTimestamp, clockInTimestamp]);
 
   // Periodically sync seconds elapsed to Firestore (every 10 seconds) to avoid quota issues, but keep localStorage updated every second
   useEffect(() => {
@@ -897,7 +911,8 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
         notes: activeNotes || (bypassLunch ? 'Standard shift (Worked through lunch).' : isUnder5Hours ? 'Shift under 5 hours (No lunch deduction).' : 'Standard shift logged via active timer (30m lunch auto-deducted).'),
         geofencedClockIn: simulatedGeoTrigger || false,
         geofencedClockOut: simulatedGeoTrigger || false,
-        isOvertime: isOvertime
+        isOvertime: isOvertime,
+        ...(isOutOfTown ? { isOutOfTown: true } : {})
       };
 
       if (activeFlhaImage) {
@@ -922,6 +937,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
       setDaySecondsElapsed(0);
       setBypassLunch(false);
       setIsOvertime(false);
+      setIsOutOfTown(false);
       setTimerStart('');
       setActiveNotes('');
       setActiveFlhaImage(null);
@@ -953,6 +969,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
       setDaySecondsElapsed(0);
       setBypassLunch(false);
       setIsOvertime(false);
+      setIsOutOfTown(false);
       setTimerStart('');
       setActiveNotes('');
       setActiveFlhaImage(null);
@@ -998,6 +1015,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
         locationName: activeLocation || 'Site',
         notes: activeNotes || '',
         regularThreshold: 8.0,
+        isOutOfTown,
         flhaImageUrl: activeFlhaImage || undefined,
         flhaTimestamp: activeFlhaTimestamp || undefined,
         flhaLocation: activeLocation || 'Site'
@@ -1037,7 +1055,8 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
         notes: activeNotes ? `${activeNotes} [Regular Shift locked in]` : 'Regular shift completed.',
         geofencedClockIn: simulatedGeoTrigger || false,
         geofencedClockOut: false,
-        isOvertime: false
+        isOvertime: false,
+        ...(isOutOfTown ? { isOutOfTown: true } : {})
       };
 
       if (activeFlhaImage) {
@@ -1099,7 +1118,8 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
         notes: activeNotes || 'Work segment completed.',
         geofencedClockIn: false,
         geofencedClockOut: false,
-        isOvertime: isOvertime
+        isOvertime: isOvertime,
+        ...(isOutOfTown ? { isOutOfTown: true } : {})
       };
 
       if (activeFlhaImage) {
@@ -1149,6 +1169,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
           locationName: locationVal,
           notes: notesVal,
           regularThreshold: manualRegularThreshold,
+          isOutOfTown: manualIsOutOfTown,
           flhaImageUrl: manualFlhaImage || editingEntry?.flhaImageUrl || undefined,
           flhaTimestamp: manualFlhaTimestamp || editingEntry?.flhaTimestamp || undefined,
           flhaLocation: locationVal
@@ -1166,6 +1187,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
               locationName: locationVal,
               notes: splitResult.regularPayload.notes,
               isOvertime: false,
+              isOutOfTown: manualIsOutOfTown,
               regularHours: splitResult.regularHours,
               overtimeHours: 0,
               flhaImageUrl: manualFlhaImage || editingEntry.flhaImageUrl,
@@ -1184,6 +1206,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
           setManualLocation('');
           setManualNotes('');
           setManualIsOvertime(false);
+          setManualIsOutOfTown(false);
           setManualBypassLunch(false);
           setManualFlhaImage(null);
           setManualFlhaTimestamp(null);
@@ -1207,6 +1230,11 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
           notes: notesVal,
           isOvertime: manualIsOvertime
         };
+        if (manualIsOutOfTown) {
+          updatedPayload.isOutOfTown = true;
+        } else {
+          delete updatedPayload.isOutOfTown;
+        }
         if (manualFlhaImage) {
           updatedPayload.flhaImageUrl = manualFlhaImage;
           updatedPayload.flhaTimestamp = manualFlhaTimestamp || editingEntry.flhaTimestamp || new Date().toISOString();
@@ -1228,6 +1256,9 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
           notes: notesVal,
           isOvertime: manualIsOvertime
         };
+        if (manualIsOutOfTown) {
+          addPayload.isOutOfTown = true;
+        }
         if (manualFlhaImage) {
           addPayload.flhaImageUrl = manualFlhaImage;
           addPayload.flhaTimestamp = manualFlhaTimestamp || new Date().toISOString();
@@ -1242,6 +1273,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
       setManualLocation('');
       setManualNotes('');
       setManualIsOvertime(false);
+      setManualIsOutOfTown(false);
       setManualBypassLunch(false);
       setManualFlhaImage(null);
       setManualFlhaTimestamp(null);
@@ -1263,6 +1295,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     setManualLocation(entry.locationName);
     setManualNotes(entry.notes);
     setManualIsOvertime(!!entry.isOvertime);
+    setManualIsOutOfTown(!!entry.isOutOfTown);
     setManualFlhaImage(entry.flhaImageUrl || null);
     setManualFlhaTimestamp(entry.flhaTimestamp || null);
     setManualSplitDay(false);
@@ -1291,6 +1324,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
     setManualFlhaTimestamp(null);
     setManualSplitDay(false);
     setManualRegularThreshold(8.0);
+    setManualIsOutOfTown(false);
     if (preset) {
       handleApplyPreset(preset);
     } else {
@@ -1655,6 +1689,28 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                 }`}
               />
             </div>
+
+            <label
+              className={`flex items-center gap-2.5 rounded-xl px-3 py-2.5 border cursor-pointer select-none transition min-h-[44px] ${
+                isClockedIn
+                  ? isOutOfTown
+                    ? 'bg-sky-500/20 border-sky-300/60 text-white'
+                    : 'bg-blue-900/25 border-blue-400/25 text-blue-100 hover:bg-blue-900/40'
+                  : isOutOfTown
+                  ? 'bg-sky-500/10 border-sky-500/40 text-main-text'
+                  : 'bg-input-bg border-main-border text-muted-text hover:text-main-text'
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={isOutOfTown}
+                onChange={(e) => setIsOutOfTown(e.target.checked)}
+                className="h-4 w-4 rounded border-main-border text-sky-600 focus:ring-sky-500/50 bg-[#121214] cursor-pointer shrink-0"
+              />
+              <div className="min-w-0 flex-1">
+                <span className="text-xs font-semibold block">Out of Town Work</span>
+              </div>
+            </label>
 
             {isClockedIn && (
               <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}>
@@ -2596,6 +2652,16 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                                       Overtime
                                     </span>
                                   )}
+                                  {!hasMultipleTasks && singleEntry.isOutOfTown && (
+                                    <span className="inline-flex items-center rounded bg-sky-500/15 px-1.5 py-0.5 text-[9px] font-bold text-sky-500 border border-sky-500/30 uppercase tracking-wider">
+                                      Out of Town
+                                    </span>
+                                  )}
+                                  {hasMultipleTasks && dayEntries.some(e => e.isOutOfTown) && (
+                                    <span className="inline-flex items-center rounded bg-sky-500/15 px-1.5 py-0.5 text-[9px] font-bold text-sky-500 border border-sky-500/30 uppercase tracking-wider">
+                                      Out of Town
+                                    </span>
+                                  )}
                                   {dayOtHours > 0 && (
                                     <span className="inline-flex items-center gap-1 rounded bg-amber-500/15 px-2 py-0.5 text-[9px] font-bold text-amber-500 border border-amber-500/30 uppercase tracking-wider font-mono">
                                       {dayRegHours.toFixed(1)}h Reg • {dayOtHours.toFixed(1)}h OT
@@ -2752,6 +2818,11 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                                         {entry.isOvertime && (
                                           <span className="inline-flex items-center rounded bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-bold text-amber-500 border border-amber-500/20 uppercase tracking-wider">
                                             Overtime
+                                          </span>
+                                        )}
+                                        {entry.isOutOfTown && (
+                                          <span className="inline-flex items-center rounded bg-sky-500/15 px-1.5 py-0.5 text-[9px] font-bold text-sky-500 border border-sky-500/30 uppercase tracking-wider">
+                                            Out of Town
                                           </span>
                                         )}
                                         {entry.flhaImageUrl && (
@@ -3200,6 +3271,20 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                   />
                   <label htmlFor="manual-overtime-toggle" className="text-xs font-medium text-main-text cursor-pointer select-none">
                     Mark this shift as <strong className="text-amber-500">Overtime Hours</strong>
+                  </label>
+                </div>
+
+                <div className={`flex items-center gap-3 rounded-xl border p-3 transition-colors ${manualIsOutOfTown ? 'border-sky-500/50 bg-sky-500/10' : 'border-main-border bg-input-bg'}`}>
+                  <input
+                    type="checkbox"
+                    id="manual-out-of-town-toggle"
+                    checked={manualIsOutOfTown}
+                    onChange={(e) => setManualIsOutOfTown(e.target.checked)}
+                    className="h-4 w-4 rounded border-main-border text-sky-600 focus:ring-sky-500/50 bg-[#121214] cursor-pointer shrink-0"
+                  />
+                  <label htmlFor="manual-out-of-town-toggle" className="text-xs font-medium text-main-text cursor-pointer select-none">
+                    <span>Mark this shift as <strong className="text-sky-400">Out of Town Work</strong></span>
+                    <span className="block text-[10px] text-muted-text mt-0.5">Optional. Clearly highlighted on the final PDF report only when selected.</span>
                   </label>
                 </div>
 
@@ -3692,7 +3777,7 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
               reportTitle="Pay Period Timesheet Report"
               employeeName={getCurrentUser()?.fullName || getCurrentUser()?.username || 'Employee'}
               dateRange={`${showPdfPreview.start} to ${showPdfPreview.end}`}
-              captureKey={`${printTemplateMode}_${showPdfPreview.start}_${showPdfPreview.end}_${showPdfPreview.entries.length}`}
+              captureKey={`${printTemplateMode}_${showPdfPreview.start}_${showPdfPreview.end}_${showPdfPreview.entries.length}_${showPdfPreview.entries.filter(e => e.isOutOfTown).length}`}
               onPrint={() => window.print()}
               onClose={() => setShowPdfPreview(null)}
             >
@@ -3718,6 +3803,31 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                     <p><strong>Export Date:</strong> {new Date().toLocaleDateString()}</p>
                   </div>
                 </div>
+
+                {showPdfPreview.entries.some(e => e.isOutOfTown) && (() => {
+                  const ootEntries = showPdfPreview.entries.filter(e => e.isOutOfTown);
+                  const ootHours = ootEntries.reduce((sum, e) => sum + (e.totalHours || 0), 0);
+                  return (
+                    <div
+                      data-out-of-town-banner="true"
+                      className="mb-6 px-4 py-3 rounded-xl border-2 border-sky-700 bg-sky-50 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-sky-950"
+                      style={{ backgroundColor: '#f0f9ff', borderColor: '#0369a1', color: '#0c4a6e' }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="inline-block px-2 py-0.5 rounded bg-sky-700 text-white font-black text-[10px] uppercase tracking-wider shrink-0"
+                          style={{ backgroundColor: '#0369a1', color: '#ffffff' }}
+                        >
+                          OUT OF TOWN WORK
+                        </span>
+                        <span className="font-bold text-xs">Includes Out of Town Work Shifts</span>
+                      </div>
+                      <span className="font-mono font-bold text-xs">
+                        {ootEntries.length} shift{ootEntries.length > 1 ? 's' : ''} • {ootHours.toFixed(2)} hrs
+                      </span>
+                    </div>
+                  );
+                })()}
 
                 {/* Aggregates Summary */}
                 <div className="grid grid-cols-2 gap-4 border border-slate-200 rounded-xl p-4 bg-slate-50 mb-8 print-bg-slate-50 print-border-slate-200">
@@ -3757,7 +3867,11 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                           const dayTotal = dayEntries.reduce((sum, e) => sum + e.totalHours, 0);
 
                           const rows = dayEntries.map(entry => (
-                            <tr key={entry.id} className="align-top hover:bg-slate-50/50">
+                            <tr
+                              key={entry.id}
+                              data-out-of-town={entry.isOutOfTown ? 'true' : undefined}
+                              className={`align-top hover:bg-slate-50/50 ${entry.isOutOfTown ? 'bg-sky-50/40' : ''}`}
+                            >
                               <td className="py-3 px-3 font-semibold text-slate-900 whitespace-nowrap">
                                 {entry.date}
                               </td>
@@ -3767,6 +3881,14 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                                   {entry.isOvertime && (
                                     <span className="ml-2 inline-flex items-center rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-800 ring-1 ring-inset ring-amber-600/20 uppercase tracking-wider print:bg-slate-100 print:text-black shrink-0">
                                       Overtime
+                                    </span>
+                                  )}
+                                  {entry.isOutOfTown && (
+                                    <span
+                                      className="ml-2 inline-flex items-center rounded bg-sky-100 px-1.5 py-0.5 text-[9px] font-extrabold text-sky-900 border border-sky-600 uppercase tracking-wider shrink-0"
+                                      style={{ backgroundColor: '#e0f2fe', borderColor: '#0284c7', color: '#0c4a6e' }}
+                                    >
+                                      OUT OF TOWN
                                     </span>
                                   )}
                                 </p>
@@ -4010,6 +4132,11 @@ export default function TimesheetManager({ entries, onRefreshEntries, privacyMod
                                               <span className="inline-flex items-center gap-0.5 rounded-md bg-app-bg px-1.5 py-0.5 text-[9px] font-medium text-main-text border border-main-border">
                                                 Where: {entry.locationName}
                                               </span>
+                                              {entry.isOutOfTown && (
+                                                <span className="inline-flex items-center rounded bg-sky-500/15 px-1.5 py-0.5 text-[9px] font-bold text-sky-500 border border-sky-500/30 uppercase tracking-wider">
+                                                  Out of Town
+                                                </span>
+                                              )}
                                               {entry.flhaImageUrl && (
                                                 <button
                                                   type="button"

@@ -1752,6 +1752,11 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                                           <MapPin className="h-3 w-3 text-blue-500" />
                                           Site: {entry.locationName}
                                         </span>
+                                        {entry.isOutOfTown && (
+                                          <span className="inline-flex items-center rounded bg-sky-500/15 px-1.5 py-0.5 text-[9px] font-bold text-sky-500 border border-sky-500/30 uppercase tracking-wider">
+                                            Out of Town
+                                          </span>
+                                        )}
                                         {entry.flhaImageUrl && (
                                           <button
                                             type="button"
@@ -3170,7 +3175,7 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                 })()
               }
               dateRange={`${selectedManagerPrint.startDate} to ${selectedManagerPrint.endDate}`}
-              captureKey={`${managerPrintMode}_${selectedManagerPrint.id}_${selectedManagerPrint.entries?.length || 0}`}
+              captureKey={`${managerPrintMode}_${selectedManagerPrint.id}_${selectedManagerPrint.entries?.length || 0}_${(selectedManagerPrint.entries || []).filter(e => e.isOutOfTown).length}`}
               onPrint={() => window.print()}
               onClose={() => setSelectedManagerPrint(null)}
             >
@@ -3207,6 +3212,31 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                     <p className="text-slate-600">Verification date: {new Date(selectedManagerPrint.submittedAt).toLocaleDateString()}</p>
                   </div>
                 </div>
+
+                {(selectedManagerPrint.entries || []).some(e => e.isOutOfTown) && (() => {
+                  const ootEntries = (selectedManagerPrint.entries || []).filter(e => e.isOutOfTown);
+                  const ootHours = ootEntries.reduce((sum, e) => sum + (e.totalHours || 0), 0);
+                  return (
+                    <div
+                      data-out-of-town-banner="true"
+                      className="mb-6 px-4 py-3 rounded-xl border-2 border-sky-700 bg-sky-50 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-sky-950"
+                      style={{ backgroundColor: '#f0f9ff', borderColor: '#0369a1', color: '#0c4a6e' }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="inline-block px-2 py-0.5 rounded bg-sky-700 text-white font-black text-[10px] uppercase tracking-wider shrink-0"
+                          style={{ backgroundColor: '#0369a1', color: '#ffffff' }}
+                        >
+                          OUT OF TOWN WORK
+                        </span>
+                        <span className="font-bold text-xs">Includes Out of Town Work Shifts</span>
+                      </div>
+                      <span className="font-mono font-bold text-xs">
+                        {ootEntries.length} shift{ootEntries.length > 1 ? 's' : ''} • {ootHours.toFixed(2)} hrs
+                      </span>
+                    </div>
+                  );
+                })()}
 
                 {/* Summary Metrics cards */}
                 <div className="grid grid-cols-3 gap-4 mb-6">
@@ -3252,9 +3282,9 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                           const rows = dayEntries.map((entry, idx) => {
                             const isHoliday = getAlbertaHoliday(entry.date);
                             const baseBg = idx % 2 === 1 ? 'bg-slate-50/50 print-bg-slate-50' : 'bg-transparent';
-                            const rowBg = isHoliday ? 'bg-rose-50/40 print-bg-rose-50' : baseBg;
+                            const rowBg = isHoliday ? 'bg-rose-50/40 print-bg-rose-50' : entry.isOutOfTown ? 'bg-sky-50/40' : baseBg;
                             return (
-                              <tr key={entry.id || idx} className={`${rowBg}`}>
+                              <tr key={entry.id || idx} data-out-of-town={entry.isOutOfTown ? 'true' : undefined} className={`${rowBg}`}>
                                 <td className="py-2.5 px-3 font-mono font-medium text-slate-950 text-left">
                                   <span className="block">{new Date(entry.date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</span>
                                   {isHoliday && (
@@ -3264,7 +3294,17 @@ export default function ManagerView({ currentUser, isMobileView = false, onLogin
                                   )}
                                 </td>
                                 <td className="py-2.5 px-3 text-left">
-                                  <span className="font-semibold text-slate-900 block">{entry.project || 'General Operations'}</span>
+                                  <span className="font-semibold text-slate-900 inline-flex items-center gap-2 flex-wrap">
+                                    <span>{entry.project || 'General Operations'}</span>
+                                    {entry.isOutOfTown && (
+                                      <span
+                                        className="inline-flex items-center rounded bg-sky-100 px-1.5 py-0.5 text-[9px] font-extrabold text-sky-900 border border-sky-600 uppercase tracking-wider shrink-0"
+                                        style={{ backgroundColor: '#e0f2fe', borderColor: '#0284c7', color: '#0c4a6e' }}
+                                      >
+                                        OUT OF TOWN
+                                      </span>
+                                    )}
+                                  </span>
                                   {entry.notes && <span className="text-[10px] text-slate-500 italic block mt-0.5">{entry.notes}</span>}
                                 </td>
                                 <td className="py-2.5 px-3 text-center font-mono text-slate-600">

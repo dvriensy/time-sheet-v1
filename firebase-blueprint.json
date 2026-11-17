@@ -41,6 +41,7 @@
         "geofencedClockOut": { "type": "boolean" },
         "isSynced": { "type": "boolean" },
         "isOvertime": { "type": "boolean" },
+        "isOutOfTown": { "type": "boolean" },
         "flhaImageUrl": { "type": "string" },
         "flhaTimestamp": { "type": "string" },
         "flhaLocation": { "type": "string" }
@@ -64,6 +65,7 @@
         "secondsElapsed": { "type": "number" },
         "breakSecondsElapsed": { "type": "number" },
         "isOvertime": { "type": "boolean" },
+        "isOutOfTown": { "type": "boolean" },
         "flhaImageUrl": { "type": "string" },
         "flhaTimestamp": { "type": "string" },
         "flhaLocation": { "type": "string" }

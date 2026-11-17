@@ -258,6 +258,7 @@ async function captureViaDirectCanvas2D(
     client: string;
     hours: string;
     hasOt: boolean;
+    isOutOfTown: boolean;
   }> = [];
 
   let grandTotalStr = '0.00';
@@ -291,12 +292,14 @@ async function captureViaDirectCanvas2D(
         return;
       }
 
+      const isOutOfTownRow = tr.getAttribute('data-out-of-town') === 'true' || /OUT OF TOWN/i.test(textContent);
+
       if (tds.length >= 6) {
         const d = tds[0].textContent?.trim() || '';
         const st = tds[1].textContent?.trim() || '';
         const sp = tds[2].textContent?.trim() || '';
         const tk = tds[3].textContent?.trim() || '';
-        const cl = tds[4].textContent?.trim() || '';
+        const cl = (tds[4].textContent?.trim() || '').replace(/\s*OUT OF TOWN\s*/gi, '').trim();
         const hr = tds[5].textContent?.trim() || '';
         const isOt = hr.includes('OT') || tr.className.includes('amber');
 
@@ -308,13 +311,14 @@ async function captureViaDirectCanvas2D(
             task: tk.replace('FLHA', '').trim(),
             client: cl,
             hours: hr.replace('OT', '').trim(),
-            hasOt: isOt
+            hasOt: isOt,
+            isOutOfTown: isOutOfTownRow
           });
         }
       } else if (tds.length >= 4) {
         // Breakdown layout
         const d = tds[0].textContent?.trim() || '';
-        const tk = tds[1].textContent?.trim() || '';
+        const tk = (tds[1].textContent?.trim() || '').replace(/\s*OUT OF TOWN\s*/gi, '').trim();
         const iv = tds[2].textContent?.trim() || '';
         const hr = tds[3].textContent?.trim() || '';
         const isOt = hr.includes('Overtime') || textContent.includes('Overtime');
@@ -327,12 +331,16 @@ async function captureViaDirectCanvas2D(
             task: tk,
             client: 'Job Site',
             hours: hr.replace(/hrs|hours/gi, '').trim(),
-            hasOt: isOt
+            hasOt: isOt,
+            isOutOfTown: isOutOfTownRow
           });
         }
       }
     });
   }
+
+  const outOfTownCount = rowsData.filter(r => r.isOutOfTown).length;
+  const hasOutOfTownBanner = !!element.querySelector('[data-out-of-town-banner="true"]') || outOfTownCount > 0;
 
   // Ensure up to 14 rows for consistent professional sheet height
   const MIN_ROWS = 14;
@@ -340,13 +348,14 @@ async function captureViaDirectCanvas2D(
 
   // Dynamic canvas height calculation
   const topHeaderH = 110;
+  const outOfTownBannerH = hasOutOfTownBanner ? 38 : 0;
   const tableHeaderH = 36;
   const rowH = 30;
   const totalsH = 74;
   const cardsH = 90;
   const signaturesH = 90;
   const footerH = 45;
-  const height = topHeaderH + tableHeaderH + totalRowsCount * rowH + totalsH + cardsH + signaturesH + footerH + 40;
+  const height = topHeaderH + outOfTownBannerH + tableHeaderH + totalRowsCount * rowH + totalsH + cardsH + signaturesH + footerH + 40;
 
   const canvas = document.createElement('canvas');
   canvas.width = width * 2;
@@ -401,6 +410,31 @@ async function captureViaDirectCanvas2D(
 
   curY += 26;
 
+  // OPTIONAL OUT OF TOWN BANNER (only drawn if Out of Town work is inputted)
+  if (hasOutOfTownBanner) {
+    const tableW = width - 72;
+    ctx.fillStyle = '#f0f9ff';
+    ctx.strokeStyle = '#0369a1';
+    ctx.lineWidth = 1.5;
+    ctx.fillRect(36, curY, tableW, 28);
+    ctx.strokeRect(36, curY, tableW, 28);
+    ctx.lineWidth = 1;
+
+    ctx.fillStyle = '#0369a1';
+    ctx.fillRect(44, curY + 5, 114, 18);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 9px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('OUT OF TOWN WORK', 44 + 57, curY + 17);
+
+    ctx.fillStyle = '#0c4a6e';
+    ctx.font = 'bold 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(`Includes ${outOfTownCount} Out of Town Shift${outOfTownCount === 1 ? '' : 's'}`, 168, curY + 18);
+
+    curY += 38;
+  }
+
   // TABLE CONFIG
   const tableX = 36;
   const tableW = width - 72;
@@ -446,10 +480,13 @@ async function captureViaDirectCanvas2D(
   for (let i = 0; i < totalRowsCount; i++) {
     const row = rowsData[i];
     const isOt = row?.hasOt;
+    const isOutOfTown = row?.isOutOfTown;
 
     // Row background
     if (isOt) {
       ctx.fillStyle = '#fffbeb';
+    } else if (isOutOfTown) {
+      ctx.fillStyle = '#f0f9ff';
     } else if (i % 2 === 1) {
       ctx.fillStyle = '#f8fafc';
     } else {
@@ -497,8 +534,8 @@ async function captureViaDirectCanvas2D(
           }
         } else {
           ctx.textAlign = 'left';
-          // Truncate if long
-          const maxTextW = col.w - 16;
+          const reservedBadgeW = idx === 4 && isOutOfTown ? 86 : 0;
+          const maxTextW = col.w - 16 - reservedBadgeW;
           let renderText = val;
           if (ctx.measureText(renderText).width > maxTextW) {
             while (renderText.length > 3 && ctx.measureText(renderText + '...').width > maxTextW) {
@@ -507,6 +544,19 @@ async function captureViaDirectCanvas2D(
             renderText += '...';
           }
           ctx.fillText(renderText, curColX + 8, curY + 19);
+
+          if (idx === 4 && isOutOfTown) {
+            const badgeW = 78;
+            const badgeX = curColX + col.w - badgeW - 6;
+            ctx.fillStyle = '#e0f2fe';
+            ctx.strokeStyle = '#0284c7';
+            ctx.fillRect(badgeX, curY + 6, badgeW, 17);
+            ctx.strokeRect(badgeX, curY + 6, badgeW, 17);
+            ctx.fillStyle = '#0c4a6e';
+            ctx.font = 'bold 8.5px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('OUT OF TOWN', badgeX + badgeW / 2, curY + 17.5);
+          }
         }
       }
       curColX += col.w;

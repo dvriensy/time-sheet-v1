@@ -1522,6 +1522,7 @@ export interface ActiveSession {
   daySecondsElapsed?: number;
   dayBreakSecondsElapsed?: number;
   isOvertime?: boolean;
+  isOutOfTown?: boolean;
   taskStartTimestamp?: number;
   clockInTimestamp?: number;
   flhaImageUrl?: string;
@@ -1624,6 +1625,7 @@ export function startOneTapTimer(options?: {
   location?: string;
   notes?: string;
   isOvertime?: boolean;
+  isOutOfTown?: boolean;
 }): ActiveSession | null {
   const currentUsername = localStorage.getItem('timesheets_tracker_current_user');
   if (!currentUsername) return null;
@@ -1652,6 +1654,7 @@ export function startOneTapTimer(options?: {
     daySecondsElapsed: 0,
     dayBreakSecondsElapsed: 0,
     isOvertime: options?.isOvertime || false,
+    ...(options?.isOutOfTown ? { isOutOfTown: true } : {}),
     taskStartTimestamp: nowMs,
     clockInTimestamp: nowMs,
   };
@@ -1672,6 +1675,7 @@ export function stopOneTapTimer(options?: {
   project?: string;
   location?: string;
   isOvertime?: boolean;
+  isOutOfTown?: boolean;
   autoSplitOvertime?: boolean;
 }): TimesheetEntry | null {
   const currentUsername = localStorage.getItem('timesheets_tracker_current_user');
@@ -1692,6 +1696,7 @@ export function stopOneTapTimer(options?: {
   // Lunch deduction: under 5 hours (18000s) = 0 lunch deduction, otherwise 30m unless bypassLunch
   const isUnder5Hours = elapsedSecs < 18000;
   const breakMinutes = (options?.bypassLunch || isUnder5Hours) ? 0 : 30;
+  const resolvedOutOfTown = options?.isOutOfTown !== undefined ? options.isOutOfTown : !!session.isOutOfTown;
 
   const entryPayload: Omit<TimesheetEntry, 'id' | 'totalHours' | 'earnings' | 'isSynced'> = {
     date: now.toISOString().slice(0, 10),
@@ -1704,6 +1709,7 @@ export function stopOneTapTimer(options?: {
     geofencedClockIn: false,
     geofencedClockOut: false,
     isOvertime: options?.isOvertime !== undefined ? options.isOvertime : !!session.isOvertime,
+    ...(resolvedOutOfTown ? { isOutOfTown: true } : {}),
   };
 
   if (session.flhaImageUrl) {
@@ -1723,6 +1729,7 @@ export function stopOneTapTimer(options?: {
       locationName: entryPayload.locationName,
       notes: entryPayload.notes,
       regularThreshold: 8.0,
+      isOutOfTown: resolvedOutOfTown,
       flhaImageUrl: entryPayload.flhaImageUrl,
       flhaTimestamp: entryPayload.flhaTimestamp,
       flhaLocation: entryPayload.flhaLocation
@@ -2230,6 +2237,7 @@ export function splitShiftIntoRegularAndOvertime(params: {
   notes?: string;
   hourlyRate?: number;
   regularThreshold?: number; // default 8.0 hours
+  isOutOfTown?: boolean;
   flhaImageUrl?: string;
   flhaTimestamp?: string;
   flhaLocation?: string;
@@ -2244,6 +2252,7 @@ export function splitShiftIntoRegularAndOvertime(params: {
     notes = '',
     hourlyRate,
     regularThreshold = 8.0,
+    isOutOfTown = false,
     flhaImageUrl,
     flhaTimestamp,
     flhaLocation
@@ -2290,6 +2299,7 @@ export function splitShiftIntoRegularAndOvertime(params: {
     regularHours,
     overtimeHours: 0,
     isOvertime: false,
+    ...(isOutOfTown ? { isOutOfTown: true } : {}),
     flhaImageUrl,
     flhaTimestamp,
     flhaLocation: flhaLocation || locationName,
@@ -2307,6 +2317,7 @@ export function splitShiftIntoRegularAndOvertime(params: {
     regularHours: 0,
     overtimeHours,
     isOvertime: true,
+    ...(isOutOfTown ? { isOutOfTown: true } : {}),
     flhaImageUrl,
     flhaTimestamp,
     flhaLocation: flhaLocation || locationName,
@@ -2339,6 +2350,7 @@ export function splitExistingTimesheetEntry(entryId: string, regularThreshold: n
     notes: existing.notes,
     hourlyRate: existing.hourlyRate,
     regularThreshold,
+    isOutOfTown: !!existing.isOutOfTown,
     flhaImageUrl: existing.flhaImageUrl,
     flhaTimestamp: existing.flhaTimestamp,
     flhaLocation: existing.flhaLocation

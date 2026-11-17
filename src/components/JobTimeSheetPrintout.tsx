@@ -37,9 +37,16 @@ export const JobTimeSheetPrintout: React.FC<JobTimeSheetPrintoutProps> = ({
       totalHours: entry.totalHours,
       notes: entry.notes,
       hasFlha: !!entry.flhaImageUrl,
-      hasOvertime: hasOt
+      hasOvertime: hasOt,
+      isOutOfTown: !!entry.isOutOfTown
     };
   });
+
+  // Out of town aggregates (only shown if explicitly inputted on at least one shift)
+  const outOfTownRows = processedRows.filter(r => r.isOutOfTown);
+  const hasOutOfTown = outOfTownRows.length > 0;
+  const outOfTownHours = outOfTownRows.reduce((sum, r) => sum + (r.totalHours || 0), 0);
+  const outOfTownDates = Array.from(new Set(outOfTownRows.map(r => r.date))).join(', ');
 
   // Calculate totals
   const totalRegularHours = processedRows.reduce((sum, r) => sum + r.regHours, 0);
@@ -78,6 +85,29 @@ export const JobTimeSheetPrintout: React.FC<JobTimeSheetPrintoutProps> = ({
         </div>
       </div>
 
+      {hasOutOfTown && (
+        <div
+          data-out-of-town-banner="true"
+          className="mb-4 px-3.5 py-2.5 rounded-lg border-2 border-sky-700 bg-sky-50 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-sky-950"
+          style={{ backgroundColor: '#f0f9ff', borderColor: '#0369a1', color: '#0c4a6e' }}
+        >
+          <div className="flex items-center gap-2">
+            <span
+              className="inline-block px-2 py-0.5 rounded bg-sky-700 text-white font-black text-[10px] uppercase tracking-wider shrink-0"
+              style={{ backgroundColor: '#0369a1', color: '#ffffff' }}
+            >
+              OUT OF TOWN WORK
+            </span>
+            <span className="font-bold text-xs" style={{ color: '#0c4a6e' }}>
+              Includes Out of Town Work Shifts
+            </span>
+          </div>
+          <span className="font-mono font-bold text-[11px]" style={{ color: '#0c4a6e' }}>
+            {outOfTownRows.length} shift{outOfTownRows.length > 1 ? 's' : ''} • {outOfTownHours.toFixed(2)} hrs ({outOfTownDates})
+          </span>
+        </div>
+      )}
+
       {/* MAIN TABLE */}
       <div className="overflow-x-auto mb-6 sm:mb-8 w-full touch-pan-x" style={{ WebkitOverflowScrolling: 'touch' }}>
         <table className="w-full min-w-[650px] sm:min-w-[700px] border-collapse border border-slate-600 text-xs text-slate-950">
@@ -93,7 +123,12 @@ export const JobTimeSheetPrintout: React.FC<JobTimeSheetPrintoutProps> = ({
           </thead>
           <tbody>
             {processedRows.map((row, idx) => (
-              <tr key={idx} className="h-8 border-b border-slate-400 text-center">
+              <tr
+                key={idx}
+                data-out-of-town={row.isOutOfTown ? 'true' : undefined}
+                className={`h-8 border-b border-slate-400 text-center ${row.isOutOfTown && !row.hasOvertime ? 'bg-sky-50/50' : ''}`}
+                style={row.isOutOfTown && !row.hasOvertime ? { backgroundColor: '#f0f9ff' } : undefined}
+              >
                 <td className="border border-slate-400 py-1.5 px-1.5 font-mono text-[11px] whitespace-nowrap !text-slate-900 font-medium" style={{ color: '#0f172a' }}>
                   {row.date}
                 </td>
@@ -111,8 +146,20 @@ export const JobTimeSheetPrintout: React.FC<JobTimeSheetPrintoutProps> = ({
                     </span>
                   )}
                 </td>
-                <td className="border border-slate-400 py-1.5 px-1.5 text-left truncate !text-slate-900" style={{ color: '#0f172a' }}>
-                  {row.client}
+                <td className="border border-slate-400 py-1.5 px-1.5 text-left !text-slate-900" style={{ color: '#0f172a' }}>
+                  {row.isOutOfTown ? (
+                    <div className="flex items-center justify-between gap-1.5">
+                      <span className="truncate">{row.client}</span>
+                      <span
+                        className="inline-block shrink-0 rounded px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wider border border-sky-600 bg-sky-100 text-sky-900"
+                        style={{ backgroundColor: '#e0f2fe', borderColor: '#0284c7', color: '#0c4a6e' }}
+                      >
+                        OUT OF TOWN
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="block truncate">{row.client}</span>
+                  )}
                 </td>
                 <td 
                   className={`border border-slate-400 py-1.5 px-1.5 font-mono font-semibold whitespace-nowrap ${
@@ -215,6 +262,25 @@ export const JobTimeSheetPrintout: React.FC<JobTimeSheetPrintoutProps> = ({
           <span className="block text-base font-black text-blue-950 font-mono mt-0.5">{grandTotalHours.toFixed(2)} hrs</span>
         </div>
       </div>
+
+      {hasOutOfTown && (
+        <div
+          className="mb-6 p-3 rounded-lg border-2 border-sky-600 bg-sky-50 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
+          style={{ backgroundColor: '#f0f9ff', borderColor: '#0284c7', color: '#0c4a6e' }}
+        >
+          <div>
+            <span className="font-extrabold uppercase tracking-wider block text-[10px]" style={{ color: '#0369a1' }}>
+              Out of Town Work Confirmation
+            </span>
+            <span className="font-semibold" style={{ color: '#0c4a6e' }}>
+              Out-of-town shift dates: <strong className="font-mono">{outOfTownDates}</strong>
+            </span>
+          </div>
+          <div className="font-mono font-black text-sm" style={{ color: '#0369a1' }}>
+            {outOfTownHours.toFixed(2)} hrs ({outOfTownRows.length} shift{outOfTownRows.length > 1 ? 's' : ''})
+          </div>
+        </div>
+      )}
 
       {/* SIGNATURES SECTION */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6 pt-6 sm:pt-12 pb-4 sm:pb-6 px-1 sm:px-4">
